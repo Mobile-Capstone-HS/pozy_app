@@ -1,6 +1,6 @@
 import 'dart:math';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pose_camera_app/main.dart';
+import 'package:pose_camera_app/golden.dart';
 
 void main() {
   group('MathStabilizer Tests', () {
