@@ -1,0 +1,314 @@
+
+03-15 06:32:24.309  5383  5383 D YOLOPlugin: YOLOPlugin attached to engine
+03-15 06:32:24.309  5383  5383 D YOLOPlatformViewFactory: Activity set: MainActivity
+03-15 06:32:24.309  5383  5383 D YOLOPlugin: YOLOPlugin attached to activity: MainActivity, stored binding, and added RequestPermissionsResultListener
+03-15 06:32:41.331  5383  5383 D YOLOPlatformViewFactory: Creating YOLOPlatformView with context: MainActivity, platform int viewId: 0
+03-15 06:32:41.331  5383  5383 D YOLOPlatformViewFactory: Raw creationParams from Dart: {task=pose, viewId=[#976a0], confidenceThreshold=0.5, iouThreshold=0.45, modelPath=yolov8n-pose_float16.tflite, numItemsThreshold=30, lensFacing=back, showOverlays=false, useGpu=true}
+03-15 06:32:41.331  5383  5383 D YOLOPlatformViewFactory: Extracted 'viewId' from creationParams: [#976a0] (type: java.lang.String)
+03-15 06:32:41.331  5383  5383 D YOLOPlatformViewFactory: Resolved viewUniqueId for channel naming: [#976a0]
+03-15 06:32:41.331  5383  5383 D YOLOPlatformViewFactory: Final channel names - Result: com.ultralytics.yolo/detectionResults_[#976a0], Control: com.ultralytics.yolo/controlChannel_[#976a0]
+03-15 06:32:41.336  5383  5383 D YOLOPlatformViewFactory: Created CustomStreamHandler for view 0
+03-15 06:32:41.375  5383  5383 D YOLOView: OverlayView initialized with enhanced Z-order + hardware acceleration
+03-15 06:32:41.380  5383  5383 D YOLOView: YoloView init: forced TextureView usage for camera preview + overlay on top.
+03-15 06:32:41.380  5383  5383 D YOLOPlatformView: YOLOPlatformView[0] INIT BLOCK STARTING
+03-15 06:32:41.382  5383  5383 D YOLOPlatformView: YOLOPlatformView[0 init]: Initialized with viewUniqueId: [#976a0]
+03-15 06:32:41.385  5383  5383 D YOLOPlatformView: Setting initial thresholds: conf=0.5, iou=0.45
+03-15 06:32:41.385  5383  5383 D YOLOPlatformView: Setting lens facing: back
+03-15 06:32:41.386  5383  5383 D YOLOView: ?봽 Setting new streaming config
+03-15 06:32:41.386  5383  5383 D YOLOView: ?뱥 Previous config: null
+03-15 06:32:41.386  5383  5383 D YOLOView: maxFPS throttling disabled
+03-15 06:32:41.386  5383  5383 D YOLOView: throttleInterval disabled
+03-15 06:32:41.386  5383  5383 D YOLOView: Inference frequency control disabled
+03-15 06:32:41.386  5383  5383 D YOLOView: Frame skipping disabled
+03-15 06:32:41.386  5383  5383 D YOLOView: ??New streaming config set: YOLOStreamConfig(includeDetections=true, includeClassifications=true, includeProcessingTimeMs=true, includeFps=true, includeMasks=false, includePoses=false, includeOBB=false, includeOriginalImage=false, maxFPS=null, throttleIntervalMs=null, inferenceFrequency=null, skipFrames=null)
+03-15 06:32:41.386  5383  5383 D YOLOView: ?렞 Key settings - includeMasks: false, includeProcessingTimeMs: true, inferenceFrequency: null
+03-15 06:32:41.386  5383  5383 D YOLOView: Streaming callback set: true
+03-15 06:32:41.386  5383  5383 D YOLOPlatformView: YOLOView streaming configured with setState resilience
+03-15 06:32:41.386  5383  5383 D YOLOPlatformView: Initial context is a LifecycleOwner, notifying YOLOView
+03-15 06:32:41.387  5383  5383 D YOLOView: Lifecycle onStart - restarting camera if stopped
+03-15 06:32:41.388  5383  5383 D YOLOView: Camera is stopped or null, restarting on onStart
+03-15 06:32:41.389  5383  5383 D YOLOView: Lifecycle onResume - ensuring camera is running
+03-15 06:32:41.389  5383  5383 D YOLOView: Camera not running on resume, restarting...
+03-15 06:32:41.390  5383  5383 D YOLOPlatformView: Attempting camera initialization after lifecycle owner setup
+03-15 06:32:41.393  5383  5383 D YOLOPlatformView: Initializing with model: yolov8n-pose_float16.tflite, task: POSE
+03-15 06:32:41.396  5383  5383 D YOLOPlatformViewFactory: Created and stored YOLOPlatformView for viewId: 0
+03-15 06:32:41.409  5383  5461 D YOLOFileUtils?뱚?뱚: Appended ZIP: Attempting to load labels using path: yolov8n-pose_float16.tflite (original attempt: yolov8n-pose_float16.tflite)
+03-15 06:32:41.409  5383  5461 D YOLOFileUtils?뱚?뱚: Appended ZIP: Accessing via Asset path: yolov8n-pose_float16.tflite
+03-15 06:32:41.411  5383  5461 D YOLOFileUtils?뱚?뱚: Appended ZIP: Path=yolov8n-pose_float16.tflite (attempt: yolov8n-pose_float16.tflite), Size=6787353, StartOffset=86274392
+03-15 06:32:41.411  5383  5461 D YOLOFileUtils?뱚?뱚: Appended ZIP: Reading tail. Channel Abs Position: 92995953, Length: 65792
+03-15 06:32:41.412  5383  5461 D YOLOFileUtils?뱚?뱚: Appended ZIP: Found last PK header signature at absolute offset in channel: 93061284
+03-15 06:32:41.415  5383  5383 D YOLOView: Camera provider obtained
+03-15 06:32:41.417  5383  5461 D YOLOFileUtils?뱚?뱚: Appended ZIP: Reading entries from positioned stream...
+03-15 06:32:41.430  5383  5461 V YOLOFileUtils?뱚?뱚: Appended ZIP: Found entry: metadata.json
+03-15 06:32:41.430  5383  5461 V YOLOFileUtils?뱚?뱚: Appended ZIP: Found entry: metadata.json
+03-15 06:32:41.430  5383  5461 I YOLOFileUtils?뱚?뱚: Appended ZIP: Found metadata file in ZIP: metadata.json
+03-15 06:32:41.448  5383  5461 I YOLOFileUtils?뱚?뱚: Labels loaded (Appended ZIP): 1
+03-15 06:32:41.448  5383  5461 I YOLOFileUtils?뱚?뱚: Appended ZIP: Successfully loaded labels using path: yolov8n-pose_float16.tflite (attempt: yolov8n-pose_float16.tflite)
+03-15 06:32:41.448  5383  5461 D YOLOFileUtils?뱚?뱚: Appended ZIP: Closing resources (End of attempt for yolov8n-pose_float16.tflite (attempt: yolov8n-pose_float16.tflite)).
+03-15 06:32:41.448  5383  5461 D YOLOView: Labels loaded from model metadata: 1 classes
+03-15 06:32:41.450  5383  5383 D YOLOView: Unbinding all camera use cases
+03-15 06:32:41.451  5383  5383 D YOLOView: Binding camera use cases to lifecycle
+03-15 06:32:41.498  5383  5461 D YOLOUtils: Loading model from path: yolov8n-pose_float16.tflite
+03-15 06:32:41.498  5383  5461 D YOLOUtils: Loading model from assets: yolov8n-pose_float16.tflite
+03-15 06:32:41.500  5383  5461 D YOLOFileUtils?뱚?뱚: Appended ZIP: Attempting to load labels using path: yolov8n-pose_float16.tflite (original attempt: yolov8n-pose_float16.tflite)
+03-15 06:32:41.501  5383  5461 D YOLOFileUtils?뱚?뱚: Appended ZIP: Accessing via Asset path: yolov8n-pose_float16.tflite
+03-15 06:32:41.501  5383  5461 D YOLOFileUtils?뱚?뱚: Appended ZIP: Path=yolov8n-pose_float16.tflite (attempt: yolov8n-pose_float16.tflite), Size=6787353, StartOffset=86274392
+03-15 06:32:41.502  5383  5461 D YOLOFileUtils?뱚?뱚: Appended ZIP: Reading tail. Channel Abs Position: 92995953, Length: 65792
+03-15 06:32:41.502  5383  5461 D YOLOFileUtils?뱚?뱚: Appended ZIP: Found last PK header signature at absolute offset in channel: 93061284
+03-15 06:32:41.503  5383  5461 D YOLOFileUtils?뱚?뱚: Appended ZIP: Reading entries from positioned stream...
+03-15 06:32:41.504  5383  5461 V YOLOFileUtils?뱚?뱚: Appended ZIP: Found entry: metadata.json
+03-15 06:32:41.505  5383  5461 V YOLOFileUtils?뱚?뱚: Appended ZIP: Found entry: metadata.json
+03-15 06:32:41.505  5383  5461 I YOLOFileUtils?뱚?뱚: Appended ZIP: Found metadata file in ZIP: metadata.json
+03-15 06:32:41.505  5383  5461 I YOLOFileUtils?뱚?뱚: Labels loaded (Appended ZIP): 1
+03-15 06:32:41.506  5383  5461 I YOLOFileUtils?뱚?뱚: Appended ZIP: Successfully loaded labels using path: yolov8n-pose_float16.tflite (attempt: yolov8n-pose_float16.tflite)
+03-15 06:32:41.506  5383  5461 D YOLOFileUtils?뱚?뱚: Appended ZIP: Closing resources (End of attempt for yolov8n-pose_float16.tflite (attempt: yolov8n-pose_float16.tflite)).
+03-15 06:32:41.610  5383  5383 D YOLOView: Setting surface provider to previewView
+03-15 06:32:41.623  5383  5383 D YOLOView: Zoom initialized - min: 1.0, max: 1.0, current: 1.0
+03-15 06:32:41.623  5383  5383 D YOLOView: Camera setup completed successfully
+03-15 06:32:41.645  5383  5383 D YOLOView: Camera provider obtained
+03-15 06:32:41.646  5383  5383 D YOLOView: Unbinding all camera use cases
+03-15 06:32:41.653  5383  5383 D YOLOView: Binding camera use cases to lifecycle
+03-15 06:32:41.689  5383  5383 D YOLOView: Setting surface provider to previewView
+03-15 06:32:41.701  5383  5383 D YOLOView: Zoom initialized - min: 1.0, max: 1.0, current: 1.0
+03-15 06:32:41.701  5383  5383 D YOLOView: Camera setup completed successfully
+03-15 06:32:41.702  5383  5383 D YOLOView: Camera provider obtained
+03-15 06:32:41.703  5383  5383 D YOLOView: Unbinding all camera use cases
+03-15 06:32:41.706  5383  5383 D YOLOView: Binding camera use cases to lifecycle
+03-15 06:32:41.744  5383  5383 D YOLOView: Setting surface provider to previewView
+03-15 06:32:41.752  5383  5383 D YOLOView: Zoom initialized - min: 1.0, max: 1.0, current: 1.0
+03-15 06:32:41.752  5383  5383 D YOLOView: Camera setup completed successfully
+03-15 06:32:42.063  5383  5383 D YOLOView: Camera provider obtained
+03-15 06:32:42.066  5383  5383 D YOLOView: Unbinding all camera use cases
+03-15 06:32:42.079  5383  5383 D YOLOView: Binding camera use cases to lifecycle
+03-15 06:32:42.157  5383  5383 D YOLOView: Setting surface provider to previewView
+03-15 06:32:42.183  5383  5383 D YOLOView: Zoom initialized - min: 1.0, max: 1.0, current: 1.0
+03-15 06:32:42.183  5383  5383 D YOLOView: Camera setup completed successfully
+03-15 06:32:44.283  5383  5461 W YOLOView: Failed to load model: yolov8n-pose_float16.tflite. Camera will run without inference.
+03-15 06:32:44.283  5383  5461 W YOLOView: java.lang.IllegalArgumentException: Internal error: Failed to apply delegate: Can not open OpenCL library on this device - undefined symbol: clEnqueueReleaseEGLObjectsKHR
+03-15 06:32:44.283  5383  5461 W YOLOView: Falling back to OpenGL
+03-15 06:32:44.283  5383  5461 W YOLOView: TfLiteGpuDelegate Init: [GL_INVALID_ENUM]: An unacceptable value is specified for an enumerated argument.: glGetBufferParameteri64v in tflite/delegates/gpu/gl/gl_buffer.cc:51
+03-15 06:32:44.283  5383  5461 W YOLOView: TfLiteGpuDelegate Prepare: delegate is not initialized
+03-15 06:32:44.283  5383  5461 W YOLOView: Node number 440 (TfLiteGpuDelegateV2) failed to prepare.
+03-15 06:32:44.283  5383  5461 W YOLOView: Restored original execution plan after delegate application failur
+03-15 06:32:44.283  5383  5461 W YOLOView: 	at org.tensorflow.lite.NativeInterpreterWrapper.createInterpreter(Native Method)
+03-15 06:32:44.283  5383  5461 W YOLOView: 	at org.tensorflow.lite.NativeInterpreterWrapper.init(NativeInterpreterWrapper.java:110)
+03-15 06:32:44.283  5383  5461 W YOLOView: 	at org.tensorflow.lite.NativeInterpreterWrapper.<init>(NativeInterpreterWrapper.java:73)
+03-15 06:32:44.283  5383  5461 W YOLOView: 	at org.tensorflow.lite.NativeInterpreterWrapperExperimental.<init>(NativeInterpreterWrapperExperimental.java:36)
+03-15 06:32:44.283  5383  5461 W YOLOView: 	at org.tensorflow.lite.Interpreter.<init>(Interpreter.java:230)
+03-15 06:32:44.283  5383  5461 W YOLOView: 	at com.ultralytics.yolo.PoseEstimator.<init>(PoseEstimator.kt:145)
+03-15 06:32:44.283  5383  5461 W YOLOView: 	at com.ultralytics.yolo.PoseEstimator.<init>(PoseEstimator.kt:29)
+03-15 06:32:44.283  5383  5461 W YOLOView: 	at com.ultralytics.yolo.YOLOView.setModel$lambda$0(YOLOView.kt:409)
+03-15 06:32:44.283  5383  5461 W YOLOView: 	at com.ultralytics.yolo.YOLOView.$r8$lambda$5PpwI-mZ0xEJCuBUrQQ9wYsj5HY(Unknown Source:0)
+03-15 06:32:44.283  5383  5461 W YOLOView: 	at com.ultralytics.yolo.YOLOView$$ExternalSyntheticLambda7.run(D8$$SyntheticClass:0)
+03-15 06:32:44.283  5383  5461 W YOLOView: 	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1156)
+03-15 06:32:44.283  5383  5461 W YOLOView: 	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:651)
+03-15 06:32:44.283  5383  5461 W YOLOView: 	at java.lang.Thread.run(Thread.java:1119)
+03-15 06:35:23.472  5577  5577 D YOLOPlugin: YOLOPlugin attached to engine
+03-15 06:35:23.472  5577  5577 D YOLOPlatformViewFactory: Activity set: MainActivity
+03-15 06:35:23.472  5577  5577 D YOLOPlugin: YOLOPlugin attached to activity: MainActivity, stored binding, and added RequestPermissionsResultListener
+03-15 06:35:35.938  5577  5577 D YOLOPlatformViewFactory: Creating YOLOPlatformView with context: MainActivity, platform int viewId: 0
+03-15 06:35:35.938  5577  5577 D YOLOPlatformViewFactory: Raw creationParams from Dart: {task=pose, viewId=[#a30fc], confidenceThreshold=0.5, iouThreshold=0.45, modelPath=yolov8n-pose_float16.tflite, numItemsThreshold=30, lensFacing=back, showOverlays=true, useGpu=true}
+03-15 06:35:35.938  5577  5577 D YOLOPlatformViewFactory: Extracted 'viewId' from creationParams: [#a30fc] (type: java.lang.String)
+03-15 06:35:35.938  5577  5577 D YOLOPlatformViewFactory: Resolved viewUniqueId for channel naming: [#a30fc]
+03-15 06:35:35.938  5577  5577 D YOLOPlatformViewFactory: Final channel names - Result: com.ultralytics.yolo/detectionResults_[#a30fc], Control: com.ultralytics.yolo/controlChannel_[#a30fc]
+03-15 06:35:35.940  5577  5577 D YOLOPlatformViewFactory: Created CustomStreamHandler for view 0
+03-15 06:35:35.984  5577  5577 D YOLOView: OverlayView initialized with enhanced Z-order + hardware acceleration
+03-15 06:35:35.991  5577  5577 D YOLOView: YoloView init: forced TextureView usage for camera preview + overlay on top.
+03-15 06:35:35.992  5577  5577 D YOLOPlatformView: YOLOPlatformView[0] INIT BLOCK STARTING
+03-15 06:35:35.992  5577  5577 D YOLOPlatformView: YOLOPlatformView[0 init]: Initialized with viewUniqueId: [#a30fc]
+03-15 06:35:35.994  5577  5577 D YOLOPlatformView: Setting initial thresholds: conf=0.5, iou=0.45
+03-15 06:35:35.994  5577  5577 D YOLOPlatformView: Setting lens facing: back
+03-15 06:35:35.996  5577  5577 D YOLOView: ?봽 Setting new streaming config
+03-15 06:35:35.996  5577  5577 D YOLOView: ?뱥 Previous config: null
+03-15 06:35:35.996  5577  5577 D YOLOView: maxFPS throttling disabled
+03-15 06:35:35.996  5577  5577 D YOLOView: throttleInterval disabled
+03-15 06:35:35.996  5577  5577 D YOLOView: Inference frequency control disabled
+03-15 06:35:35.996  5577  5577 D YOLOView: Frame skipping disabled
+03-15 06:35:35.997  5577  5577 D YOLOView: ??New streaming config set: YOLOStreamConfig(includeDetections=true, includeClassifications=true, includeProcessingTimeMs=true, includeFps=true, includeMasks=false, includePoses=false, includeOBB=false, includeOriginalImage=false, maxFPS=null, throttleIntervalMs=null, inferenceFrequency=null, skipFrames=null)
+03-15 06:35:35.997  5577  5577 D YOLOView: ?렞 Key settings - includeMasks: false, includeProcessingTimeMs: true, inferenceFrequency: null
+03-15 06:35:35.997  5577  5577 D YOLOView: Streaming callback set: true
+03-15 06:35:35.997  5577  5577 D YOLOPlatformView: YOLOView streaming configured with setState resilience
+03-15 06:35:35.997  5577  5577 D YOLOPlatformView: Initial context is a LifecycleOwner, notifying YOLOView
+03-15 06:35:35.997  5577  5577 D YOLOView: Lifecycle onStart - restarting camera if stopped
+03-15 06:35:35.998  5577  5577 D YOLOView: Camera is stopped or null, restarting on onStart
+03-15 06:35:35.999  5577  5577 D YOLOView: Lifecycle onResume - ensuring camera is running
+03-15 06:35:35.999  5577  5577 D YOLOView: Camera not running on resume, restarting...
+03-15 06:35:35.999  5577  5577 D YOLOPlatformView: Attempting camera initialization after lifecycle owner setup
+03-15 06:35:36.000  5577  5577 D YOLOPlatformView: Initializing with model: yolov8n-pose_float16.tflite, task: POSE
+03-15 06:35:36.001  5577  5577 D YOLOPlatformViewFactory: Created and stored YOLOPlatformView for viewId: 0
+03-15 06:35:36.010  5577  5649 D YOLOFileUtils?뱚?뱚: Appended ZIP: Attempting to load labels using path: yolov8n-pose_float16.tflite (original attempt: yolov8n-pose_float16.tflite)
+03-15 06:35:36.011  5577  5649 D YOLOFileUtils?뱚?뱚: Appended ZIP: Accessing via Asset path: yolov8n-pose_float16.tflite
+03-15 06:35:36.011  5577  5649 D YOLOFileUtils?뱚?뱚: Appended ZIP: Path=yolov8n-pose_float16.tflite (attempt: yolov8n-pose_float16.tflite), Size=6787353, StartOffset=86274392
+03-15 06:35:36.011  5577  5649 D YOLOFileUtils?뱚?뱚: Appended ZIP: Reading tail. Channel Abs Position: 92995953, Length: 65792
+03-15 06:35:36.013  5577  5649 D YOLOFileUtils?뱚?뱚: Appended ZIP: Found last PK header signature at absolute offset in channel: 93061284
+03-15 06:35:36.013  5577  5649 D YOLOFileUtils?뱚?뱚: Appended ZIP: Reading entries from positioned stream...
+03-15 06:35:36.015  5577  5649 V YOLOFileUtils?뱚?뱚: Appended ZIP: Found entry: metadata.json
+03-15 06:35:36.015  5577  5649 V YOLOFileUtils?뱚?뱚: Appended ZIP: Found entry: metadata.json
+03-15 06:35:36.015  5577  5649 I YOLOFileUtils?뱚?뱚: Appended ZIP: Found metadata file in ZIP: metadata.json
+03-15 06:35:36.035  5577  5577 D YOLOView: Camera provider obtained
+03-15 06:35:36.043  5577  5649 I YOLOFileUtils?뱚?뱚: Labels loaded (Appended ZIP): 1
+03-15 06:35:36.044  5577  5649 I YOLOFileUtils?뱚?뱚: Appended ZIP: Successfully loaded labels using path: yolov8n-pose_float16.tflite (attempt: yolov8n-pose_float16.tflite)
+03-15 06:35:36.045  5577  5649 D YOLOFileUtils?뱚?뱚: Appended ZIP: Closing resources (End of attempt for yolov8n-pose_float16.tflite (attempt: yolov8n-pose_float16.tflite)).
+03-15 06:35:36.045  5577  5649 D YOLOView: Labels loaded from model metadata: 1 classes
+03-15 06:35:36.063  5577  5577 D YOLOView: Unbinding all camera use cases
+03-15 06:35:36.064  5577  5577 D YOLOView: Binding camera use cases to lifecycle
+03-15 06:35:36.077  5577  5649 D YOLOUtils: Loading model from path: yolov8n-pose_float16.tflite
+03-15 06:35:36.077  5577  5649 D YOLOUtils: Loading model from assets: yolov8n-pose_float16.tflite
+03-15 06:35:36.079  5577  5649 D YOLOFileUtils?뱚?뱚: Appended ZIP: Attempting to load labels using path: yolov8n-pose_float16.tflite (original attempt: yolov8n-pose_float16.tflite)
+03-15 06:35:36.079  5577  5649 D YOLOFileUtils?뱚?뱚: Appended ZIP: Accessing via Asset path: yolov8n-pose_float16.tflite
+03-15 06:35:36.079  5577  5649 D YOLOFileUtils?뱚?뱚: Appended ZIP: Path=yolov8n-pose_float16.tflite (attempt: yolov8n-pose_float16.tflite), Size=6787353, StartOffset=86274392
+03-15 06:35:36.080  5577  5649 D YOLOFileUtils?뱚?뱚: Appended ZIP: Reading tail. Channel Abs Position: 92995953, Length: 65792
+03-15 06:35:36.080  5577  5649 D YOLOFileUtils?뱚?뱚: Appended ZIP: Found last PK header signature at absolute offset in channel: 93061284
+03-15 06:35:36.080  5577  5649 D YOLOFileUtils?뱚?뱚: Appended ZIP: Reading entries from positioned stream...
+03-15 06:35:36.081  5577  5649 V YOLOFileUtils?뱚?뱚: Appended ZIP: Found entry: metadata.json
+03-15 06:35:36.081  5577  5649 V YOLOFileUtils?뱚?뱚: Appended ZIP: Found entry: metadata.json
+03-15 06:35:36.081  5577  5649 I YOLOFileUtils?뱚?뱚: Appended ZIP: Found metadata file in ZIP: metadata.json
+03-15 06:35:36.081  5577  5649 I YOLOFileUtils?뱚?뱚: Labels loaded (Appended ZIP): 1
+03-15 06:35:36.082  5577  5649 I YOLOFileUtils?뱚?뱚: Appended ZIP: Successfully loaded labels using path: yolov8n-pose_float16.tflite (attempt: yolov8n-pose_float16.tflite)
+03-15 06:35:36.082  5577  5649 D YOLOFileUtils?뱚?뱚: Appended ZIP: Closing resources (End of attempt for yolov8n-pose_float16.tflite (attempt: yolov8n-pose_float16.tflite)).
+03-15 06:35:36.223  5577  5577 D YOLOView: Setting surface provider to previewView
+03-15 06:35:36.257  5577  5577 D YOLOView: Zoom initialized - min: 1.0, max: 1.0, current: 1.0
+03-15 06:35:36.257  5577  5577 D YOLOView: Camera setup completed successfully
+03-15 06:35:36.419  5577  5577 D YOLOView: Camera provider obtained
+03-15 06:35:36.426  5577  5577 D YOLOView: Unbinding all camera use cases
+03-15 06:35:36.437  5577  5577 D YOLOView: Binding camera use cases to lifecycle
+03-15 06:35:36.484  5577  5577 D YOLOView: Setting surface provider to previewView
+03-15 06:35:36.492  5577  5577 D YOLOView: Zoom initialized - min: 1.0, max: 1.0, current: 1.0
+03-15 06:35:36.493  5577  5577 D YOLOView: Camera setup completed successfully
+03-15 06:35:36.496  5577  5577 D YOLOView: Camera provider obtained
+03-15 06:35:36.499  5577  5577 D YOLOView: Unbinding all camera use cases
+03-15 06:35:36.506  5577  5577 D YOLOView: Binding camera use cases to lifecycle
+03-15 06:35:36.599  5577  5577 D YOLOView: Setting surface provider to previewView
+03-15 06:35:36.612  5577  5577 D YOLOView: Zoom initialized - min: 1.0, max: 1.0, current: 1.0
+03-15 06:35:36.612  5577  5577 D YOLOView: Camera setup completed successfully
+03-15 06:35:36.613  5577  5577 D YOLOView: Camera provider obtained
+03-15 06:35:36.615  5577  5577 D YOLOView: Unbinding all camera use cases
+03-15 06:35:36.627  5577  5577 D YOLOView: Binding camera use cases to lifecycle
+03-15 06:35:36.665  5577  5649 W YOLOView: Failed to load model: yolov8n-pose_float16.tflite. Camera will run without inference.
+03-15 06:35:36.665  5577  5649 W YOLOView: java.lang.IllegalArgumentException: Internal error: Failed to apply delegate: Can not open OpenCL library on this device - undefined symbol: clEnqueueReleaseEGLObjectsKHR
+03-15 06:35:36.665  5577  5649 W YOLOView: Falling back to OpenGL
+03-15 06:35:36.665  5577  5649 W YOLOView: TfLiteGpuDelegate Init: [GL_INVALID_ENUM]: An unacceptable value is specified for an enumerated argument.: glGetBufferParameteri64v in tflite/delegates/gpu/gl/gl_buffer.cc:51
+03-15 06:35:36.665  5577  5649 W YOLOView: TfLiteGpuDelegate Prepare: delegate is not initialized
+03-15 06:35:36.665  5577  5649 W YOLOView: Node number 440 (TfLiteGpuDelegateV2) failed to prepare.
+03-15 06:35:36.665  5577  5649 W YOLOView: Restored original execution plan after delegate application failur
+03-15 06:35:36.665  5577  5649 W YOLOView: 	at org.tensorflow.lite.NativeInterpreterWrapper.createInterpreter(Native Method)
+03-15 06:35:36.665  5577  5649 W YOLOView: 	at org.tensorflow.lite.NativeInterpreterWrapper.init(NativeInterpreterWrapper.java:110)
+03-15 06:35:36.665  5577  5649 W YOLOView: 	at org.tensorflow.lite.NativeInterpreterWrapper.<init>(NativeInterpreterWrapper.java:73)
+03-15 06:35:36.665  5577  5649 W YOLOView: 	at org.tensorflow.lite.NativeInterpreterWrapperExperimental.<init>(NativeInterpreterWrapperExperimental.java:36)
+03-15 06:35:36.665  5577  5649 W YOLOView: 	at org.tensorflow.lite.Interpreter.<init>(Interpreter.java:230)
+03-15 06:35:36.665  5577  5649 W YOLOView: 	at com.ultralytics.yolo.PoseEstimator.<init>(PoseEstimator.kt:145)
+03-15 06:35:36.665  5577  5649 W YOLOView: 	at com.ultralytics.yolo.PoseEstimator.<init>(PoseEstimator.kt:29)
+03-15 06:35:36.665  5577  5649 W YOLOView: 	at com.ultralytics.yolo.YOLOView.setModel$lambda$0(YOLOView.kt:409)
+03-15 06:35:36.665  5577  5649 W YOLOView: 	at com.ultralytics.yolo.YOLOView.$r8$lambda$5PpwI-mZ0xEJCuBUrQQ9wYsj5HY(Unknown Source:0)
+03-15 06:35:36.665  5577  5649 W YOLOView: 	at com.ultralytics.yolo.YOLOView$$ExternalSyntheticLambda7.run(D8$$SyntheticClass:0)
+03-15 06:35:36.665  5577  5649 W YOLOView: 	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1156)
+03-15 06:35:36.665  5577  5649 W YOLOView: 	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:651)
+03-15 06:35:36.665  5577  5649 W YOLOView: 	at java.lang.Thread.run(Thread.java:1119)
+03-15 06:35:36.678  5577  5577 D YOLOView: Setting surface provider to previewView
+03-15 06:35:36.689  5577  5577 D YOLOView: Zoom initialized - min: 1.0, max: 1.0, current: 1.0
+03-15 06:35:36.690  5577  5577 D YOLOView: Camera setup completed successfully
+03-15 06:39:38.661  5771  5771 D YOLOPlugin: YOLOPlugin attached to engine
+03-15 06:39:38.662  5771  5771 D YOLOPlatformViewFactory: Activity set: MainActivity
+03-15 06:39:38.662  5771  5771 D YOLOPlugin: YOLOPlugin attached to activity: MainActivity, stored binding, and added RequestPermissionsResultListener
+03-15 06:40:03.019  5771  5771 D YOLOPlatformViewFactory: Creating YOLOPlatformView with context: MainActivity, platform int viewId: 0
+03-15 06:40:03.019  5771  5771 D YOLOPlatformViewFactory: Raw creationParams from Dart: {task=pose, viewId=[#88385], confidenceThreshold=0.5, iouThreshold=0.45, modelPath=yolov8n-pose_float16.tflite, numItemsThreshold=30, lensFacing=back, showOverlays=true, useGpu=true}
+03-15 06:40:03.019  5771  5771 D YOLOPlatformViewFactory: Extracted 'viewId' from creationParams: [#88385] (type: java.lang.String)
+03-15 06:40:03.019  5771  5771 D YOLOPlatformViewFactory: Resolved viewUniqueId for channel naming: [#88385]
+03-15 06:40:03.019  5771  5771 D YOLOPlatformViewFactory: Final channel names - Result: com.ultralytics.yolo/detectionResults_[#88385], Control: com.ultralytics.yolo/controlChannel_[#88385]
+03-15 06:40:03.022  5771  5771 D YOLOPlatformViewFactory: Created CustomStreamHandler for view 0
+03-15 06:40:03.061  5771  5771 D YOLOView: OverlayView initialized with enhanced Z-order + hardware acceleration
+03-15 06:40:03.068  5771  5771 D YOLOView: YoloView init: forced TextureView usage for camera preview + overlay on top.
+03-15 06:40:03.068  5771  5771 D YOLOPlatformView: YOLOPlatformView[0] INIT BLOCK STARTING
+03-15 06:40:03.068  5771  5771 D YOLOPlatformView: YOLOPlatformView[0 init]: Initialized with viewUniqueId: [#88385]
+03-15 06:40:03.068  5771  5771 D YOLOPlatformView: Setting initial thresholds: conf=0.5, iou=0.45
+03-15 06:40:03.068  5771  5771 D YOLOPlatformView: Setting lens facing: back
+03-15 06:40:03.070  5771  5771 D YOLOView: ?봽 Setting new streaming config
+03-15 06:40:03.070  5771  5771 D YOLOView: ?뱥 Previous config: null
+03-15 06:40:03.070  5771  5771 D YOLOView: maxFPS throttling disabled
+03-15 06:40:03.070  5771  5771 D YOLOView: throttleInterval disabled
+03-15 06:40:03.070  5771  5771 D YOLOView: Inference frequency control disabled
+03-15 06:40:03.070  5771  5771 D YOLOView: Frame skipping disabled
+03-15 06:40:03.070  5771  5771 D YOLOView: ??New streaming config set: YOLOStreamConfig(includeDetections=true, includeClassifications=true, includeProcessingTimeMs=true, includeFps=true, includeMasks=false, includePoses=false, includeOBB=false, includeOriginalImage=false, maxFPS=null, throttleIntervalMs=null, inferenceFrequency=null, skipFrames=null)
+03-15 06:40:03.070  5771  5771 D YOLOView: ?렞 Key settings - includeMasks: false, includeProcessingTimeMs: true, inferenceFrequency: null
+03-15 06:40:03.071  5771  5771 D YOLOView: Streaming callback set: true
+03-15 06:40:03.071  5771  5771 D YOLOPlatformView: YOLOView streaming configured with setState resilience
+03-15 06:40:03.071  5771  5771 D YOLOPlatformView: Initial context is a LifecycleOwner, notifying YOLOView
+03-15 06:40:03.071  5771  5771 D YOLOView: Lifecycle onStart - restarting camera if stopped
+03-15 06:40:03.072  5771  5771 D YOLOView: Camera is stopped or null, restarting on onStart
+03-15 06:40:03.072  5771  5771 D YOLOView: Lifecycle onResume - ensuring camera is running
+03-15 06:40:03.072  5771  5771 D YOLOView: Camera not running on resume, restarting...
+03-15 06:40:03.072  5771  5771 D YOLOPlatformView: Attempting camera initialization after lifecycle owner setup
+03-15 06:40:03.073  5771  5771 D YOLOPlatformView: Initializing with model: yolov8n-pose_float16.tflite, task: POSE
+03-15 06:40:03.074  5771  5771 D YOLOPlatformViewFactory: Created and stored YOLOPlatformView for viewId: 0
+03-15 06:40:03.084  5771  5871 D YOLOFileUtils?뱚?뱚: Appended ZIP: Attempting to load labels using path: yolov8n-pose_float16.tflite (original attempt: yolov8n-pose_float16.tflite)
+03-15 06:40:03.084  5771  5871 D YOLOFileUtils?뱚?뱚: Appended ZIP: Accessing via Asset path: yolov8n-pose_float16.tflite
+03-15 06:40:03.087  5771  5871 D YOLOFileUtils?뱚?뱚: Appended ZIP: Path=yolov8n-pose_float16.tflite (attempt: yolov8n-pose_float16.tflite), Size=6787353, StartOffset=88535504
+03-15 06:40:03.088  5771  5871 D YOLOFileUtils?뱚?뱚: Appended ZIP: Reading tail. Channel Abs Position: 95257065, Length: 65792
+03-15 06:40:03.089  5771  5871 D YOLOFileUtils?뱚?뱚: Appended ZIP: Found last PK header signature at absolute offset in channel: 95322396
+03-15 06:40:03.089  5771  5871 D YOLOFileUtils?뱚?뱚: Appended ZIP: Reading entries from positioned stream...
+03-15 06:40:03.091  5771  5871 V YOLOFileUtils?뱚?뱚: Appended ZIP: Found entry: metadata.json
+03-15 06:40:03.091  5771  5871 V YOLOFileUtils?뱚?뱚: Appended ZIP: Found entry: metadata.json
+03-15 06:40:03.091  5771  5871 I YOLOFileUtils?뱚?뱚: Appended ZIP: Found metadata file in ZIP: metadata.json
+03-15 06:40:03.098  5771  5771 D YOLOView: Camera provider obtained
+03-15 06:40:03.109  5771  5871 I YOLOFileUtils?뱚?뱚: Labels loaded (Appended ZIP): 1
+03-15 06:40:03.110  5771  5871 I YOLOFileUtils?뱚?뱚: Appended ZIP: Successfully loaded labels using path: yolov8n-pose_float16.tflite (attempt: yolov8n-pose_float16.tflite)
+03-15 06:40:03.110  5771  5871 D YOLOFileUtils?뱚?뱚: Appended ZIP: Closing resources (End of attempt for yolov8n-pose_float16.tflite (attempt: yolov8n-pose_float16.tflite)).
+03-15 06:40:03.110  5771  5871 D YOLOView: Labels loaded from model metadata: 1 classes
+03-15 06:40:03.121  5771  5771 D YOLOView: Unbinding all camera use cases
+03-15 06:40:03.122  5771  5771 D YOLOView: Binding camera use cases to lifecycle
+03-15 06:40:03.146  5771  5871 D YOLOUtils: Loading model from path: yolov8n-pose_float16.tflite
+03-15 06:40:03.146  5771  5871 D YOLOUtils: Loading model from assets: yolov8n-pose_float16.tflite
+03-15 06:40:03.150  5771  5871 D YOLOFileUtils?뱚?뱚: Appended ZIP: Attempting to load labels using path: yolov8n-pose_float16.tflite (original attempt: yolov8n-pose_float16.tflite)
+03-15 06:40:03.154  5771  5871 D YOLOFileUtils?뱚?뱚: Appended ZIP: Accessing via Asset path: yolov8n-pose_float16.tflite
+03-15 06:40:03.154  5771  5871 D YOLOFileUtils?뱚?뱚: Appended ZIP: Path=yolov8n-pose_float16.tflite (attempt: yolov8n-pose_float16.tflite), Size=6787353, StartOffset=88535504
+03-15 06:40:03.154  5771  5871 D YOLOFileUtils?뱚?뱚: Appended ZIP: Reading tail. Channel Abs Position: 95257065, Length: 65792
+03-15 06:40:03.155  5771  5871 D YOLOFileUtils?뱚?뱚: Appended ZIP: Found last PK header signature at absolute offset in channel: 95322396
+03-15 06:40:03.155  5771  5871 D YOLOFileUtils?뱚?뱚: Appended ZIP: Reading entries from positioned stream...
+03-15 06:40:03.155  5771  5871 V YOLOFileUtils?뱚?뱚: Appended ZIP: Found entry: metadata.json
+03-15 06:40:03.155  5771  5871 V YOLOFileUtils?뱚?뱚: Appended ZIP: Found entry: metadata.json
+03-15 06:40:03.155  5771  5871 I YOLOFileUtils?뱚?뱚: Appended ZIP: Found metadata file in ZIP: metadata.json
+03-15 06:40:03.155  5771  5871 I YOLOFileUtils?뱚?뱚: Labels loaded (Appended ZIP): 1
+03-15 06:40:03.155  5771  5871 I YOLOFileUtils?뱚?뱚: Appended ZIP: Successfully loaded labels using path: yolov8n-pose_float16.tflite (attempt: yolov8n-pose_float16.tflite)
+03-15 06:40:03.155  5771  5871 D YOLOFileUtils?뱚?뱚: Appended ZIP: Closing resources (End of attempt for yolov8n-pose_float16.tflite (attempt: yolov8n-pose_float16.tflite)).
+03-15 06:40:03.322  5771  5771 D YOLOView: Setting surface provider to previewView
+03-15 06:40:03.330  5771  5771 D YOLOView: Zoom initialized - min: 1.0, max: 1.0, current: 1.0
+03-15 06:40:03.330  5771  5771 D YOLOView: Camera setup completed successfully
+03-15 06:40:03.356  5771  5771 D YOLOView: Camera provider obtained
+03-15 06:40:03.358  5771  5771 D YOLOView: Unbinding all camera use cases
+03-15 06:40:03.384  5771  5771 D YOLOView: Binding camera use cases to lifecycle
+03-15 06:40:03.425  5771  5771 D YOLOView: Setting surface provider to previewView
+03-15 06:40:03.433  5771  5771 D YOLOView: Zoom initialized - min: 1.0, max: 1.0, current: 1.0
+03-15 06:40:03.433  5771  5771 D YOLOView: Camera setup completed successfully
+03-15 06:40:03.435  5771  5771 D YOLOView: Camera provider obtained
+03-15 06:40:03.437  5771  5771 D YOLOView: Unbinding all camera use cases
+03-15 06:40:03.441  5771  5771 D YOLOView: Binding camera use cases to lifecycle
+03-15 06:40:03.489  5771  5771 D YOLOView: Setting surface provider to previewView
+03-15 06:40:03.504  5771  5771 D YOLOView: Zoom initialized - min: 1.0, max: 1.0, current: 1.0
+03-15 06:40:03.504  5771  5771 D YOLOView: Camera setup completed successfully
+03-15 06:40:03.538  5771  5871 W YOLOView: Failed to load model: yolov8n-pose_float16.tflite. Camera will run without inference.
+03-15 06:40:03.538  5771  5871 W YOLOView: java.lang.IllegalArgumentException: Internal error: Failed to apply delegate: Can not open OpenCL library on this device - undefined symbol: clEnqueueReleaseEGLObjectsKHR
+03-15 06:40:03.538  5771  5871 W YOLOView: Falling back to OpenGL
+03-15 06:40:03.538  5771  5871 W YOLOView: TfLiteGpuDelegate Init: [GL_INVALID_ENUM]: An unacceptable value is specified for an enumerated argument.: glGetBufferParameteri64v in tflite/delegates/gpu/gl/gl_buffer.cc:51
+03-15 06:40:03.538  5771  5871 W YOLOView: TfLiteGpuDelegate Prepare: delegate is not initialized
+03-15 06:40:03.538  5771  5871 W YOLOView: Node number 440 (TfLiteGpuDelegateV2) failed to prepare.
+03-15 06:40:03.538  5771  5871 W YOLOView: Restored original execution plan after delegate application failur
+03-15 06:40:03.538  5771  5871 W YOLOView: 	at org.tensorflow.lite.NativeInterpreterWrapper.createInterpreter(Native Method)
+03-15 06:40:03.538  5771  5871 W YOLOView: 	at org.tensorflow.lite.NativeInterpreterWrapper.init(NativeInterpreterWrapper.java:110)
+03-15 06:40:03.538  5771  5871 W YOLOView: 	at org.tensorflow.lite.NativeInterpreterWrapper.<init>(NativeInterpreterWrapper.java:73)
+03-15 06:40:03.538  5771  5871 W YOLOView: 	at org.tensorflow.lite.NativeInterpreterWrapperExperimental.<init>(NativeInterpreterWrapperExperimental.java:36)
+03-15 06:40:03.538  5771  5871 W YOLOView: 	at org.tensorflow.lite.Interpreter.<init>(Interpreter.java:230)
+03-15 06:40:03.538  5771  5871 W YOLOView: 	at com.ultralytics.yolo.PoseEstimator.<init>(PoseEstimator.kt:145)
+03-15 06:40:03.538  5771  5871 W YOLOView: 	at com.ultralytics.yolo.PoseEstimator.<init>(PoseEstimator.kt:29)
+03-15 06:40:03.538  5771  5871 W YOLOView: 	at com.ultralytics.yolo.YOLOView.setModel$lambda$0(YOLOView.kt:409)
+03-15 06:40:03.538  5771  5871 W YOLOView: 	at com.ultralytics.yolo.YOLOView.$r8$lambda$5PpwI-mZ0xEJCuBUrQQ9wYsj5HY(Unknown Source:0)
+03-15 06:40:03.538  5771  5871 W YOLOView: 	at com.ultralytics.yolo.YOLOView$$ExternalSyntheticLambda7.run(D8$$SyntheticClass:0)
+03-15 06:40:03.538  5771  5871 W YOLOView: 	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1156)
+03-15 06:40:03.538  5771  5871 W YOLOView: 	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:651)
+03-15 06:40:03.538  5771  5871 W YOLOView: 	at java.lang.Thread.run(Thread.java:1119)
+03-15 06:40:03.702  5771  5771 D YOLOView: Camera provider obtained
+03-15 06:40:03.706  5771  5771 D YOLOView: Unbinding all camera use cases
+03-15 06:40:03.715  5771  5771 D YOLOView: Binding camera use cases to lifecycle
+03-15 06:40:03.766  5771  5771 D YOLOView: Setting surface provider to previewView
+03-15 06:40:03.774  5771  5771 D YOLOView: Zoom initialized - min: 1.0, max: 1.0, current: 1.0
+03-15 06:40:03.775  5771  5771 D YOLOView: Camera setup completed successfully
+
