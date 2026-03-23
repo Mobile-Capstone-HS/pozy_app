@@ -1,5 +1,8 @@
-import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
+import 'package:flutter/material.dart';
+
+import 'detect.dart' as detect;
+import 'figma_design.dart' as figma_design;
 import 'golden.dart' as golden;
 import 'third.dart' as third;
 
@@ -10,9 +13,9 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
     cameras = await availableCameras();
-    // 전역 카메라 리스트를 각 모듈에 전달
     golden.cameras = cameras;
     third.cameras = cameras;
+    detect.cameras = cameras;
   } catch (e) {
     cameraInitError = e.toString();
     debugPrint('Camera Initialization Error: $e');
@@ -44,8 +47,11 @@ class MyApp extends StatelessWidget {
                 child: Padding(
                   padding: const EdgeInsets.all(20.0),
                   child: Text(
-                    "Camera Error: $cameraInitError",
-                    style: const TextStyle(color: Colors.redAccent, fontSize: 16),
+                    'Camera Error: $cameraInitError',
+                    style: const TextStyle(
+                      color: Colors.redAccent,
+                      fontSize: 16,
+                    ),
                     textAlign: TextAlign.center,
                   ),
                 ),
@@ -67,17 +73,12 @@ class HomeScreen extends StatelessWidget {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF1A1A2E),
-              Color(0xFF16213E),
-              Color(0xFF0F3460),
-            ],
+            colors: [Color(0xFF1A1A2E), Color(0xFF16213E), Color(0xFF0F3460)],
           ),
         ),
         child: SafeArea(
           child: Column(
             children: [
-              // 헤더
               Padding(
                 padding: const EdgeInsets.all(30.0),
                 child: Column(
@@ -99,7 +100,7 @@ class HomeScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      '완벽한 구도를 위한 AI 가이드',
+                      'AI composition guide for better photos',
                       style: TextStyle(
                         fontSize: 16,
                         color: Colors.white.withOpacity(0.7),
@@ -109,59 +110,96 @@ class HomeScreen extends StatelessWidget {
                   ],
                 ),
               ),
-
-              // 메뉴 카드들
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _buildMenuCard(
-                        context,
-                        title: '황금비율 (Golden Ratio)',
-                        subtitle: '1:1.618 비율의 완벽한 조화',
-                        icon: Icons.auto_awesome,
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFFFFD700), Color(0xFFFF8C00)],
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        _buildMenuCard(
+                          context,
+                          title: 'Golden Ratio',
+                          subtitle: '1:1.618 composition helper',
+                          icon: Icons.auto_awesome,
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFFFFD700), Color(0xFFFF8C00)],
+                          ),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    const golden.GoldenRatioScreen(),
+                              ),
+                            );
+                          },
                         ),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const golden.GoldenRatioScreen(),
-                            ),
-                          );
-                        },
-                      ),
-                      const SizedBox(height: 20),
-                      _buildMenuCard(
-                        context,
-                        title: '3분할법 (Rule of Thirds)',
-                        subtitle: '클래식한 사진 구도의 기본',
-                        icon: Icons.grid_on,
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF00D4FF), Color(0xFF0099FF)],
+                        const SizedBox(height: 20),
+                        _buildMenuCard(
+                          context,
+                          title: 'Rule of Thirds',
+                          subtitle: 'Classic balanced composition',
+                          icon: Icons.grid_on,
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF00D4FF), Color(0xFF0099FF)],
+                          ),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    const third.RuleOfThirdsScreen(),
+                              ),
+                            );
+                          },
                         ),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const third.RuleOfThirdsScreen(),
-                            ),
-                          );
-                        },
-                      ),
-                    ],
+                        const SizedBox(height: 20),
+                        _buildMenuCard(
+                          context,
+                          title: 'Detect',
+                          subtitle: 'Person + Object Bounding Boxes',
+                          icon: Icons.center_focus_strong,
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF22C55E), Color(0xFF16A34A)],
+                          ),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const detect.DetectScreen(),
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 20),
+                        _buildMenuCard(
+                          context,
+                          title: 'Figma Design',
+                          subtitle: 'Open the new design page',
+                          icon: Icons.design_services_rounded,
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFFF97316), Color(0xFFEA580C)],
+                          ),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    const figma_design.FigmaDesignScreen(),
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                    ),
                   ),
                 ),
               ),
-
-              // 푸터
               Padding(
                 padding: const EdgeInsets.all(20.0),
                 child: Text(
-                  'YOLO Pose Detection',
+                  'YOLO Pose + Object Detection',
                   style: TextStyle(
                     fontSize: 12,
                     color: Colors.white.withOpacity(0.5),
@@ -202,7 +240,6 @@ class HomeScreen extends StatelessWidget {
           ),
           child: Row(
             children: [
-              // 아이콘
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
@@ -216,14 +253,9 @@ class HomeScreen extends StatelessWidget {
                     ),
                   ],
                 ),
-                child: Icon(
-                  icon,
-                  size: 40,
-                  color: Colors.white,
-                ),
+                child: Icon(icon, size: 40, color: Colors.white),
               ),
               const SizedBox(width: 20),
-              // 텍스트
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -247,7 +279,6 @@ class HomeScreen extends StatelessWidget {
                   ],
                 ),
               ),
-              // 화살표
               Icon(
                 Icons.arrow_forward_ios,
                 color: Colors.white.withOpacity(0.5),

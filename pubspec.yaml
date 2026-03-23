@@ -1,5 +1,5 @@
 name: pose_camera_app
-description: "A new Flutter project."
+description: 'A new Flutter project.'
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -38,6 +38,8 @@ dependencies:
   image: ^4.2.0
   ultralytics_yolo: ^0.1.25
   image_picker: ^0.8.7
+  flutter_svg: ^2.2.1
+  path_provider: ^2.1.5
 
 dev_dependencies:
   flutter_test:
@@ -55,11 +57,13 @@ dev_dependencies:
 
 # The following section is specific to Flutter packages.
 flutter:
-
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+  assets:
+    - assets/figma/icons/
+    - assets/figma/camera_icons/
 
   # To add assets to your application, add an assets section, like this:
   # assets:
