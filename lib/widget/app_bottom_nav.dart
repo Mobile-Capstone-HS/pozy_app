@@ -22,45 +22,73 @@ class AppBottomNav extends StatelessWidget {
       _NavItem(icon: Icons.auto_awesome_outlined, activeIcon: Icons.auto_awesome, label: 'Editor'),
     ];
 
-    return Container(
-      height: 84,
-      padding: const EdgeInsets.fromLTRB(10, 8, 10, 16),
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        border: Border(
-          top: BorderSide(color: AppColors.border),
-        ),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: List.generate(items.length, (index) {
-          final selected = currentIndex == index;
-          final item = items[index];
-          final color = selected ? Colors.black : const Color(0xFFB8C0CC);
+    return SafeArea(
+      top: false,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final textScale = MediaQuery.textScalerOf(context).scale(1);
+          final isCompact = constraints.maxWidth < 360 || textScale > 1.1;
+          final bottomPadding = MediaQuery.paddingOf(context).bottom > 0
+              ? 10.0
+              : (isCompact ? 10.0 : 14.0);
 
-          return InkWell(
-            borderRadius: BorderRadius.circular(14),
-            onTap: () => onTap(index),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    selected ? item.activeIcon : item.icon,
-                    size: 22,
-                    color: color,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    item.label,
-                    style: AppTextStyles.nav11.copyWith(color: color),
-                  ),
-                ],
+          return Container(
+            padding: EdgeInsets.fromLTRB(
+              isCompact ? 6 : 8,
+              isCompact ? 6 : 8,
+              isCompact ? 6 : 8,
+              bottomPadding,
+            ),
+            decoration: const BoxDecoration(
+              color: AppColors.surface,
+              border: Border(
+                top: BorderSide(color: AppColors.border),
               ),
             ),
+            child: Row(
+              children: List.generate(items.length, (index) {
+                final selected = currentIndex == index;
+                final item = items[index];
+                final color = selected ? Colors.black : const Color(0xFFB8C0CC);
+
+                return Expanded(
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(14),
+                    onTap: () => onTap(index),
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isCompact ? 2 : 4,
+                        vertical: 4,
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            selected ? item.activeIcon : item.icon,
+                            size: isCompact ? 20 : 22,
+                            color: color,
+                          ),
+                          SizedBox(height: isCompact ? 3 : 4),
+                          Text(
+                            item.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                            style: AppTextStyles.nav11.copyWith(
+                              color: color,
+                              fontSize: isCompact ? 10 : 11,
+                              height: 1.1,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            ),
           );
-        }),
+        },
       ),
     );
   }

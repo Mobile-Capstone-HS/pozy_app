@@ -15,7 +15,6 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   int _currentIndex = 0;
-  final List<int> _history = [];
 
   void goToTab(int index) {
     if (index == 2) {
@@ -25,23 +24,9 @@ class _MainShellState extends State<MainShell> {
 
     if (index == _currentIndex) return;
 
-    _history.add(_currentIndex);
     setState(() {
       _currentIndex = index;
     });
-  }
-
-  void goBackTab() {
-    if (_history.isNotEmpty) {
-      final previous = _history.removeLast();
-      setState(() {
-        _currentIndex = previous;
-      });
-    } else if (_currentIndex != 0) {
-      setState(() {
-        _currentIndex = 0;
-      });
-    }
   }
 
   Future<void> _openCameraScreen() async {
@@ -63,35 +48,17 @@ class _MainShellState extends State<MainShell> {
   Widget _buildPage(int index) {
     switch (index) {
       case 0:
-        return HomeScreen(
-          onMoveTab: goToTab,
-          onBack: goBackTab,
-        );
+        return HomeScreen(onMoveTab: goToTab);
       case 1:
-        return GalleryScreen(
-          onMoveTab: goToTab,
-          onBack: goBackTab,
-        );
+        return GalleryScreen(onMoveTab: goToTab);
       case 2:
-        return HomeScreen(
-          onMoveTab: goToTab,
-          onBack: goBackTab,
-        );
+        return HomeScreen(onMoveTab: goToTab);
       case 3:
-        return BestCutScreen(
-          onMoveTab: goToTab,
-          onBack: goBackTab,
-        );
+        return BestCutScreen(onMoveTab: goToTab);
       case 4:
-        return EditorScreen(
-          onMoveTab: goToTab,
-          onBack: goBackTab,
-        );
+        return EditorScreen(onMoveTab: goToTab);
       default:
-        return HomeScreen(
-          onMoveTab: goToTab,
-          onBack: goBackTab,
-        );
+        return HomeScreen(onMoveTab: goToTab);
     }
   }
 

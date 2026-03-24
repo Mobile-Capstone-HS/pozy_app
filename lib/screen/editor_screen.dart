@@ -15,13 +15,7 @@ import '../widget/app_top_bar.dart';
 const int _editorExportMaxDimension = 3072;
 const int _editorPreviewMaxDimension = 1600;
 
-enum _EditorAdjustment {
-  brightness,
-  contrast,
-  saturation,
-  warmth,
-  fade,
-}
+enum _EditorAdjustment { brightness, contrast, saturation, warmth, fade }
 
 extension on _EditorAdjustment {
   String get label {
@@ -87,13 +81,9 @@ extension on _EditorAdjustment {
 
 class EditorScreen extends StatefulWidget {
   final ValueChanged<int> onMoveTab;
-  final VoidCallback onBack;
+  final VoidCallback? onBack;
 
-  const EditorScreen({
-    super.key,
-    required this.onMoveTab,
-    required this.onBack,
-  });
+  const EditorScreen({super.key, required this.onMoveTab, this.onBack});
 
   @override
   State<EditorScreen> createState() => _EditorScreenState();
@@ -127,10 +117,13 @@ class _EditorScreenState extends State<EditorScreen> {
     super.dispose();
   }
 
-  double _valueOf(_EditorAdjustment adjustment) => _adjustments[adjustment] ?? 0;
+  double _valueOf(_EditorAdjustment adjustment) =>
+      _adjustments[adjustment] ?? 0;
 
   bool get _hasImage =>
-      _sourceBytes != null && _previewSourceBytes != null && _previewBytes != null;
+      _sourceBytes != null &&
+      _previewSourceBytes != null &&
+      _previewBytes != null;
 
   Future<void> _pickImage() async {
     final XFile? file = await _picker.pickImage(source: ImageSource.gallery);
@@ -166,13 +159,9 @@ class _EditorScreenState extends State<EditorScreen> {
       setState(() {
         _isPreparingImage = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '사진을 불러오지 못했습니다: $error',
-          ),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('사진을 불러오지 못했습니다: $error')));
     }
   }
 
@@ -238,11 +227,9 @@ class _EditorScreenState extends State<EditorScreen> {
 
   Future<void> _saveImage() async {
     if (_sourceBytes == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('먼저 사진을 선택해 주세요.'),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('먼저 사진을 선택해 주세요.')));
       return;
     }
 
@@ -260,9 +247,7 @@ class _EditorScreenState extends State<EditorScreen> {
       if (!hasAccess) {
         final granted = await Gal.requestAccess();
         if (!granted) {
-          throw Exception(
-            '갤러리 접근 권한이 허용되지 않았습니다.',
-          );
+          throw Exception('갤러리 접근 권한이 허용되지 않았습니다.');
         }
       }
 
@@ -277,20 +262,14 @@ class _EditorScreenState extends State<EditorScreen> {
       }
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            '보정한 사진이 갤러리에 저장되었습니다.',
-          ),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('보정한 사진이 갤러리에 저장되었습니다.')));
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('사진 저장에 실패했습니다: $error'),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('사진 저장에 실패했습니다: $error')));
     } finally {
       if (!mounted) return;
       setState(() {
@@ -303,61 +282,63 @@ class _EditorScreenState extends State<EditorScreen> {
   Widget build(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final activeValue = _valueOf(_activeAdjustment);
-        final screenWidth = constraints.maxWidth;
-        final previewMetrics = _resolvePreviewMetrics(
-          screenWidth: screenWidth,
-          screenHeight: mediaQuery.size.height,
-        );
+    return SafeArea(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final activeValue = _valueOf(_activeAdjustment);
+          final screenWidth = constraints.maxWidth;
+          final previewMetrics = _resolvePreviewMetrics(
+            screenWidth: screenWidth,
+            screenHeight: mediaQuery.size.height,
+          );
 
-        return SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(
-            18,
-            12,
-            18,
-            mediaQuery.padding.bottom + 24,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              AppTopBar(
-                title: '보정',
-                onBack: widget.onBack,
-                trailingWidth: 64,
-                trailing: GestureDetector(
-                  onTap: _hasImage && !_isSaving ? _saveImage : null,
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: Text(
-                      '저장',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: _hasImage && !_isSaving
-                            ? AppColors.primaryText
-                            : AppColors.lightText,
+          return SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(
+              18,
+              10,
+              18,
+              mediaQuery.padding.bottom + 24,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                AppTopBar(
+                  title: '보정',
+                  onBack: widget.onBack,
+                  trailingWidth: 64,
+                  trailing: GestureDetector(
+                    onTap: _hasImage && !_isSaving ? _saveImage : null,
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        '저장',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: _hasImage && !_isSaving
+                              ? AppColors.primaryText
+                              : AppColors.lightText,
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              _buildPreviewCard(
-                previewWidth: previewMetrics.width,
-                previewHeight: previewMetrics.height,
-              ),
-              const SizedBox(height: 14),
-              _buildActionRow(),
-              const SizedBox(height: 18),
-              _buildAdjustmentPanel(activeValue),
-              const SizedBox(height: 14),
-              _buildToolStrip(screenWidth),
-            ],
-          ),
-        );
-      },
+                const SizedBox(height: 16),
+                _buildPreviewCard(
+                  previewWidth: previewMetrics.width,
+                  previewHeight: previewMetrics.height,
+                ),
+                const SizedBox(height: 14),
+                _buildActionRow(),
+                const SizedBox(height: 18),
+                _buildAdjustmentPanel(activeValue),
+                const SizedBox(height: 14),
+                _buildToolStrip(screenWidth),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -366,7 +347,10 @@ class _EditorScreenState extends State<EditorScreen> {
     required double screenHeight,
   }) {
     final maxWidth = screenWidth;
-    final defaultHeight = (screenWidth * 0.98).clamp(280.0, screenHeight * 0.46);
+    final defaultHeight = (screenWidth * 0.98).clamp(
+      280.0,
+      screenHeight * 0.46,
+    );
     final aspectRatio = _imageAspectRatio;
 
     if (aspectRatio == null || aspectRatio <= 0) {
@@ -460,10 +444,10 @@ class _EditorScreenState extends State<EditorScreen> {
                             const SizedBox(height: 10),
                             Text(
                               _isSaving
-                                ? '사진 저장 중...'
-                                : _isPreparingImage
-                                    ? '사진 준비 중...'
-                                    : '미리보기 적용 중...',
+                                  ? '사진 저장 중...'
+                                  : _isPreparingImage
+                                  ? '사진 준비 중...'
+                                  : '미리보기 적용 중...',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 13,
@@ -487,25 +471,16 @@ class _EditorScreenState extends State<EditorScreen> {
     final replaceButton = OutlinedButton.icon(
       onPressed: _pickImage,
       icon: const Icon(Icons.photo_library_outlined),
-      label: Text(
-        _selectedImagePath == null
-            ? '사진 추가'
-            : '사진 바꾸기',
-      ),
+      label: Text(_selectedImagePath == null ? '사진 추가' : '사진 바꾸기'),
       style: OutlinedButton.styleFrom(
         padding: const EdgeInsets.symmetric(vertical: 14),
         foregroundColor: AppColors.primaryText,
         side: const BorderSide(color: AppColors.border),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       ),
     );
 
-    return SizedBox(
-      width: double.infinity,
-      child: replaceButton,
-    );
+    return SizedBox(width: double.infinity, child: replaceButton);
   }
 
   Widget _buildAdjustmentPanel(double activeValue) {
@@ -758,14 +733,18 @@ Map<String, dynamic> _prepareEditorBuffers(Uint8List rawBytes) {
     normalized,
     _editorExportMaxDimension,
   );
-  final sourceBytes = Uint8List.fromList(img.encodeJpg(exportBase, quality: 92));
+  final sourceBytes = Uint8List.fromList(
+    img.encodeJpg(exportBase, quality: 92),
+  );
 
   final previewBase = _resizeImageToMaxDimension(
     exportBase,
     _editorPreviewMaxDimension,
   );
 
-  final previewBytes = Uint8List.fromList(img.encodeJpg(previewBase, quality: 92));
+  final previewBytes = Uint8List.fromList(
+    img.encodeJpg(previewBase, quality: 92),
+  );
 
   return {
     'source': sourceBytes,
@@ -876,8 +855,9 @@ int _clampChannel(double value) {
 }
 
 img.Image _resizeImageToMaxDimension(img.Image source, int maxDimension) {
-  final longestSide =
-      source.width >= source.height ? source.width : source.height;
+  final longestSide = source.width >= source.height
+      ? source.width
+      : source.height;
 
   if (longestSide <= maxDimension) {
     return source;

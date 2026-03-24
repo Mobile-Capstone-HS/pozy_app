@@ -8,13 +8,8 @@ import '../widget/app_top_bar.dart';
 
 class GalleryScreen extends StatefulWidget {
   final ValueChanged<int> onMoveTab;
-  final VoidCallback onBack;
 
-  const GalleryScreen({
-    super.key,
-    required this.onMoveTab,
-    required this.onBack,
-  });
+  const GalleryScreen({super.key, required this.onMoveTab});
 
   @override
   State<GalleryScreen> createState() => _GalleryScreenState();
@@ -52,7 +47,8 @@ class _GalleryScreenState extends State<GalleryScreen> {
         setState(() {
           _granted = false;
           _loading = false;
-          _showSettingsShortcut = permission == PermissionState.denied ||
+          _showSettingsShortcut =
+              permission == PermissionState.denied ||
               permission == PermissionState.restricted;
           _albums = [];
           _selectedAlbum = null;
@@ -64,10 +60,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
       final filterOption = FilterOptionGroup(
         orders: [
-          const OrderOption(
-            type: OrderOptionType.createDate,
-            asc: false,
-          ),
+          const OrderOption(type: OrderOptionType.createDate, asc: false),
         ],
       );
 
@@ -126,10 +119,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
       if (end <= 0) return [];
 
-      final assets = await album.getAssetListRange(
-        start: 0,
-        end: end,
-      );
+      final assets = await album.getAssetListRange(start: 0, end: end);
 
       return assets;
     } catch (e) {
@@ -169,9 +159,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   Future<Uint8List?> _thumb(AssetEntity asset) async {
     try {
-      return await asset.thumbnailDataWithSize(
-        const ThumbnailSize(500, 500),
-      );
+      return await asset.thumbnailDataWithSize(const ThumbnailSize(500, 500));
     } catch (e) {
       debugPrint('썸네일 생성 에러: $e');
       return null;
@@ -190,116 +178,104 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: const Color(0xFFF7F7F7),
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 10, 18, 0),
-            child: AppTopBar(
-              title: 'Gallery',
-              onBack: widget.onBack,
-              trailing: GestureDetector(
-                onTap: _loadAlbumsAndPhotos,
-                child: Container(
-                  width: 34,
-                  height: 34,
-                  decoration: const BoxDecoration(
-                    color: AppColors.soft,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.refresh,
-                    size: 18,
-                    color: AppColors.primaryText,
+    return SafeArea(
+      child: Container(
+        color: const Color(0xFFF7F7F7),
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 10, 18, 0),
+              child: AppTopBar(
+                title: 'Gallery',
+                trailing: GestureDetector(
+                  onTap: _loadAlbumsAndPhotos,
+                  child: Container(
+                    width: 34,
+                    height: 34,
+                    decoration: const BoxDecoration(
+                      color: AppColors.soft,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.refresh,
+                      size: 18,
+                      color: AppColors.primaryText,
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-          const SizedBox(height: 18),
-          if (_granted && _albums.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 18),
-              child: _AlbumChipRow(
-                albums: _albums,
-                selectedAlbum: _selectedAlbum,
-                onSelected: _selectAlbum,
-                labelBuilder: _albumLabel,
+            const SizedBox(height: 18),
+            if (_granted && _albums.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+                child: _AlbumChipRow(
+                  albums: _albums,
+                  selectedAlbum: _selectedAlbum,
+                  onSelected: _selectAlbum,
+                  labelBuilder: _albumLabel,
+                ),
               ),
+            if (_granted && _albums.isNotEmpty) const SizedBox(height: 18),
+            Expanded(
+              child: _loading
+                  ? const _LoadingView()
+                  : !_granted
+                  ? _PermissionView(
+                      onRetry: _loadAlbumsAndPhotos,
+                      onOpenSettings: _showSettingsShortcut
+                          ? _openSettings
+                          : null,
+                    )
+                  : _errorMessage != null
+                  ? _ErrorView(
+                      message: _errorMessage!,
+                      onRetry: _loadAlbumsAndPhotos,
+                    )
+                  : _albums.isEmpty
+                  ? const _EmptyAlbumView()
+                  : _photos.isEmpty
+                  ? _EmptyPhotoView(albumName: _albumLabel(_selectedAlbum!))
+                  : CustomScrollView(
+                      slivers: [
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(18, 0, 18, 10),
+                            child: Text(
+                              _albumLabel(_selectedAlbum!).toUpperCase(),
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.primaryText,
+                                letterSpacing: 0.2,
+                              ),
+                            ),
+                          ),
+                        ),
+                        SliverPadding(
+                          padding: const EdgeInsets.fromLTRB(18, 0, 18, 24),
+                          sliver: SliverGrid(
+                            delegate: SliverChildBuilderDelegate((
+                              context,
+                              index,
+                            ) {
+                              final asset = _photos[index];
+                              return _GalleryThumb(future: _thumb(asset));
+                            }, childCount: _photos.length),
+                            gridDelegate:
+                                const SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: 3,
+                                  mainAxisSpacing: 4,
+                                  crossAxisSpacing: 4,
+                                  childAspectRatio: 1,
+                                ),
+                          ),
+                        ),
+                      ],
+                    ),
             ),
-          if (_granted && _albums.isNotEmpty) const SizedBox(height: 18),
-          Expanded(
-            child: _loading
-                ? const _LoadingView()
-                : !_granted
-                    ? _PermissionView(
-                        onRetry: _loadAlbumsAndPhotos,
-                        onOpenSettings:
-                            _showSettingsShortcut ? _openSettings : null,
-                      )
-                    : _errorMessage != null
-                        ? _ErrorView(
-                            message: _errorMessage!,
-                            onRetry: _loadAlbumsAndPhotos,
-                          )
-                        : _albums.isEmpty
-                            ? const _EmptyAlbumView()
-                            : _photos.isEmpty
-                                ? _EmptyPhotoView(
-                                    albumName: _albumLabel(_selectedAlbum!),
-                                  )
-                                : CustomScrollView(
-                                    slivers: [
-                                      SliverToBoxAdapter(
-                                        child: Padding(
-                                          padding: const EdgeInsets.fromLTRB(
-                                            18,
-                                            0,
-                                            18,
-                                            10,
-                                          ),
-                                          child: Text(
-                                            _albumLabel(_selectedAlbum!).toUpperCase(),
-                                            style: const TextStyle(
-                                              fontSize: 18,
-                                              fontWeight: FontWeight.w800,
-                                              color: AppColors.primaryText,
-                                              letterSpacing: 0.2,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      SliverPadding(
-                                        padding: const EdgeInsets.fromLTRB(
-                                          18,
-                                          0,
-                                          18,
-                                          24,
-                                        ),
-                                        sliver: SliverGrid(
-                                          delegate: SliverChildBuilderDelegate(
-                                            (context, index) {
-                                              final asset = _photos[index];
-                                              return _GalleryThumb(
-                                                future: _thumb(asset),
-                                              );
-                                            },
-                                            childCount: _photos.length,
-                                          ),
-                                          gridDelegate:
-                                              const SliverGridDelegateWithFixedCrossAxisCount(
-                                            crossAxisCount: 3,
-                                            mainAxisSpacing: 4,
-                                            crossAxisSpacing: 4,
-                                            childAspectRatio: 1,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -363,9 +339,7 @@ class _AlbumChipRow extends StatelessWidget {
 class _GalleryThumb extends StatelessWidget {
   final Future<Uint8List?> future;
 
-  const _GalleryThumb({
-    required this.future,
-  });
+  const _GalleryThumb({required this.future});
 
   @override
   Widget build(BuildContext context) {
@@ -399,10 +373,7 @@ class _GalleryThumb extends StatelessWidget {
 
         return ClipRRect(
           borderRadius: BorderRadius.circular(14),
-          child: Image.memory(
-            snapshot.data!,
-            fit: BoxFit.cover,
-          ),
+          child: Image.memory(snapshot.data!, fit: BoxFit.cover),
         );
       },
     );
@@ -427,10 +398,7 @@ class _PermissionView extends StatelessWidget {
   final VoidCallback onRetry;
   final VoidCallback? onOpenSettings;
 
-  const _PermissionView({
-    required this.onRetry,
-    this.onOpenSettings,
-  });
+  const _PermissionView({required this.onRetry, this.onOpenSettings});
 
   @override
   Widget build(BuildContext context) {
@@ -484,10 +452,7 @@ class _PermissionView extends StatelessWidget {
                   ),
                   child: Text(
                     '권한 허용 다시 시도',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                    ),
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
                   ),
                 ),
               ),
@@ -527,10 +492,7 @@ class _ErrorView extends StatelessWidget {
   final String message;
   final VoidCallback onRetry;
 
-  const _ErrorView({
-    required this.message,
-    required this.onRetry,
-  });
+  const _ErrorView({required this.message, required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
@@ -578,10 +540,7 @@ class _ErrorView extends StatelessWidget {
                   ),
                   child: const Text(
                     '다시 시도',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                    ),
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
                   ),
                 ),
               ),
@@ -629,9 +588,7 @@ class _EmptyAlbumView extends StatelessWidget {
 class _EmptyPhotoView extends StatelessWidget {
   final String albumName;
 
-  const _EmptyPhotoView({
-    required this.albumName,
-  });
+  const _EmptyPhotoView({required this.albumName});
 
   @override
   Widget build(BuildContext context) {

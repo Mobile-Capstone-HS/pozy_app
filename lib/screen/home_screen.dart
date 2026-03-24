@@ -7,13 +7,8 @@ import '../widget/home_feature_card.dart';
 
 class HomeScreen extends StatelessWidget {
   final ValueChanged<int> onMoveTab;
-  final VoidCallback onBack;
 
-  const HomeScreen({
-    super.key,
-    required this.onMoveTab,
-    required this.onBack,
-  });
+  const HomeScreen({super.key, required this.onMoveTab});
 
   @override
   Widget build(BuildContext context) {
@@ -21,15 +16,7 @@ class HomeScreen extends StatelessWidget {
       child: LayoutBuilder(
         builder: (context, constraints) {
           const horizontalPadding = 16.0;
-          const topPadding = 14.0;
-          const bottomPadding = 16.0;
-
-          final usableHeight =
-              constraints.maxHeight - topPadding - bottomPadding;
-          const headerHeight = 94.0;
-          const gap = 12.0;
-          final cardsHeight = usableHeight - headerHeight - (gap * 2);
-          final useExpandedCards = cardsHeight >= 420;
+          const topPadding = 10.0;
 
           final cards = [
             HomeFeatureCard(
@@ -84,7 +71,6 @@ class HomeScreen extends StatelessWidget {
             children: [
               AppTopBar(
                 title: 'Pozy',
-                onBack: onBack,
                 trailing: Container(
                   width: 34,
                   height: 34,
@@ -100,40 +86,14 @@ class HomeScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 22),
-              const Text(
-                '당신의 촬영을 보다 이롭게.',
-                style: AppTextStyles.title20,
-              ),
+              const Text('당신의 촬영을 보다 가볍게', style: AppTextStyles.title20),
               const SizedBox(height: 4),
               const Text(
-                '상상을 현실로, Pozy를 경험해보세요!',
+                '일상 속 순간들을 Pozy로 더 편하게 기록해보세요.',
                 style: AppTextStyles.body13,
               ),
             ],
           );
-
-          if (useExpandedCards) {
-            return Padding(
-              padding: const EdgeInsets.fromLTRB(
-                horizontalPadding,
-                topPadding,
-                horizontalPadding,
-                bottomPadding,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  header,
-                  const SizedBox(height: gap),
-                  Expanded(child: cards[0]),
-                  const SizedBox(height: gap),
-                  Expanded(child: cards[1]),
-                  const SizedBox(height: gap),
-                  Expanded(child: cards[2]),
-                ],
-              ),
-            );
-          }
 
           return SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(
@@ -142,17 +102,22 @@ class HomeScreen extends StatelessWidget {
               horizontalPadding,
               20,
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                header,
-                const SizedBox(height: 18),
-                cards[0],
-                const SizedBox(height: 14),
-                cards[1],
-                const SizedBox(height: 14),
-                cards[2],
-              ],
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: constraints.maxHeight - topPadding,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  header,
+                  const SizedBox(height: 18),
+                  cards[0],
+                  const SizedBox(height: 14),
+                  cards[1],
+                  const SizedBox(height: 14),
+                  cards[2],
+                ],
+              ),
             ),
           );
         },
@@ -171,9 +136,7 @@ class _VisualBox extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: AppColors.primaryText.withOpacity(0.4),
-        ),
+        border: Border.all(color: AppColors.primaryText.withValues(alpha: 0.4)),
       ),
       child: Center(child: child),
     );
