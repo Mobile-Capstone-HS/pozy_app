@@ -508,6 +508,10 @@ SubjectCategory _primaryCategoryOf(String className) {
   return SubjectCategory.object;
 }
 
+SubjectCategory classifySubjectCategory(String className) {
+  return _primaryCategoryOf(className);
+}
+
 Map<SubjectCategory, double> _categoryContribution(String className) {
   final normalized = className.trim().toLowerCase();
 
@@ -607,12 +611,3 @@ Map<SubjectCategory, double> _categoryContribution(String className) {
   }
 }
 
-String _titleCase(String value) {
-  return value
-      .split(' ')
-      .where((part) => part.isNotEmpty)
-      .map(
-        (part) => '${part[0].toUpperCase()}${part.substring(1).toLowerCase()}',
-      )
-      .join(' ');
-}
