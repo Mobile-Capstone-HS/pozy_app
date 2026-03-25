@@ -46,3 +46,8 @@ app.*.map.json
 ai_env/
 __pycache__/
 *.pyc
+claude.md
+CLAUDE.md
+./windows/flutter/generated_plugin_registrant.cc
+./macos/Flutter/GeneratedPluginRegistrant.swift
+./windows/flutter/generated_plugins.cmake
