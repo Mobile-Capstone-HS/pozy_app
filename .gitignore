@@ -43,9 +43,7 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
-ai_env/
-__pycache__/
-*.pyc
+
 claude.md
 CLAUDE.md
 ./windows/flutter/generated_plugin_registrant.cc
