@@ -1,10 +1,15 @@
 import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:photo_manager/photo_manager.dart';
+
+import '../feature/a_cut/layer/gallery/gallery_picker_service.dart';
+import '../feature/a_cut/model/photo_type_mode.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_shadows.dart';
 import '../theme/app_text_styles.dart';
 import '../widget/app_top_bar.dart';
+import 'a_cut_result_screen.dart';
 
 class GalleryScreen extends StatefulWidget {
   final ValueChanged<int> onMoveTab;
@@ -16,6 +21,9 @@ class GalleryScreen extends StatefulWidget {
 }
 
 class _GalleryScreenState extends State<GalleryScreen> {
+  final GalleryPickerService _galleryPickerService =
+      const GalleryPickerService();
+
   bool _loading = true;
   bool _granted = false;
   bool _showSettingsShortcut = false;
@@ -24,6 +32,10 @@ class _GalleryScreenState extends State<GalleryScreen> {
   List<AssetPathEntity> _albums = [];
   AssetPathEntity? _selectedAlbum;
   List<AssetEntity> _photos = [];
+
+  // Keeps selected assets across album switches.
+  final Map<String, AssetEntity> _selectedAssetsById = {};
+  PhotoTypeMode _photoTypeMode = PhotoTypeMode.auto;
 
   @override
   void initState() {
@@ -40,7 +52,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
     });
 
     try {
-      final permission = await PhotoManager.requestPermissionExtend();
+      final permission = await _galleryPickerService.requestPermission();
 
       if (!permission.isAuth && !permission.hasAccess) {
         if (!mounted) return;
@@ -54,20 +66,12 @@ class _GalleryScreenState extends State<GalleryScreen> {
           _selectedAlbum = null;
           _photos = [];
           _errorMessage = null;
+          _selectedAssetsById.clear();
         });
         return;
       }
 
-      final filterOption = FilterOptionGroup(
-        orders: [
-          const OrderOption(type: OrderOptionType.createDate, asc: false),
-        ],
-      );
-
-      final albums = await PhotoManager.getAssetPathList(
-        type: RequestType.image,
-        filterOption: filterOption,
-      );
+      final albums = await _galleryPickerService.loadAlbums();
 
       if (albums.isEmpty) {
         if (!mounted) return;
@@ -79,12 +83,13 @@ class _GalleryScreenState extends State<GalleryScreen> {
           _selectedAlbum = null;
           _photos = [];
           _errorMessage = null;
+          _selectedAssetsById.clear();
         });
         return;
       }
 
       final firstAlbum = albums.first;
-      final photos = await _loadPhotosFromAlbum(firstAlbum);
+      final photos = await _galleryPickerService.loadPhotos(album: firstAlbum);
 
       if (!mounted) return;
       setState(() {
@@ -96,8 +101,8 @@ class _GalleryScreenState extends State<GalleryScreen> {
         _photos = photos;
         _errorMessage = null;
       });
-    } catch (e) {
-      debugPrint('앨범 로드 에러: $e');
+    } catch (error) {
+      debugPrint('Gallery load error: $error');
 
       if (!mounted) return;
       setState(() {
@@ -107,24 +112,8 @@ class _GalleryScreenState extends State<GalleryScreen> {
         _albums = [];
         _selectedAlbum = null;
         _photos = [];
-        _errorMessage = '앨범 정보를 불러오는 중 문제가 발생했습니다.';
+        _errorMessage = 'Could not load albums and photos.';
       });
-    }
-  }
-
-  Future<List<AssetEntity>> _loadPhotosFromAlbum(AssetPathEntity album) async {
-    try {
-      final totalCount = await album.assetCountAsync;
-      final end = totalCount > 200 ? 200 : totalCount;
-
-      if (end <= 0) return [];
-
-      final assets = await album.getAssetListRange(start: 0, end: end);
-
-      return assets;
-    } catch (e) {
-      debugPrint('앨범 사진 로드 에러: $e');
-      return [];
     }
   }
 
@@ -138,30 +127,30 @@ class _GalleryScreenState extends State<GalleryScreen> {
     });
 
     try {
-      final photos = await _loadPhotosFromAlbum(album);
+      final photos = await _galleryPickerService.loadPhotos(album: album);
 
       if (!mounted) return;
       setState(() {
         _photos = photos;
         _loading = false;
       });
-    } catch (e) {
-      debugPrint('앨범 선택 에러: $e');
+    } catch (error) {
+      debugPrint('Album switch error: $error');
 
       if (!mounted) return;
       setState(() {
         _photos = [];
         _loading = false;
-        _errorMessage = '선택한 앨범을 불러오는 중 문제가 발생했습니다.';
+        _errorMessage = 'Could not load selected album.';
       });
     }
   }
 
   Future<Uint8List?> _thumb(AssetEntity asset) async {
     try {
-      return await asset.thumbnailDataWithSize(const ThumbnailSize(500, 500));
-    } catch (e) {
-      debugPrint('썸네일 생성 에러: $e');
+      return await _galleryPickerService.loadThumbnail(asset);
+    } catch (error) {
+      debugPrint('Thumbnail error: $error');
       return null;
     }
   }
@@ -172,8 +161,50 @@ class _GalleryScreenState extends State<GalleryScreen> {
     return name;
   }
 
-  Future<void> _openSettings() async {
-    await PhotoManager.openSetting();
+  Future<void> _openSettings() {
+    return _galleryPickerService.openSystemSettings();
+  }
+
+  void _toggleAssetSelection(AssetEntity asset) {
+    setState(() {
+      if (_selectedAssetsById.containsKey(asset.id)) {
+        _selectedAssetsById.remove(asset.id);
+      } else {
+        _selectedAssetsById[asset.id] = asset;
+      }
+    });
+  }
+
+  int? _selectionOrder(String assetId) {
+    final index = _selectedAssetsById.keys.toList().indexOf(assetId);
+    if (index < 0) return null;
+    return index + 1;
+  }
+
+  Future<void> _openACutResultScreen() async {
+    if (_selectedAssetsById.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('먼저 사진을 1장 이상 선택해 주세요.')));
+      return;
+    }
+
+    final selectedAssets = _selectedAssetsById.values.toList(growable: false);
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => ACutResultScreen(
+          selectedAssets: selectedAssets,
+          initialPhotoTypeMode: _photoTypeMode,
+        ),
+      ),
+    );
+  }
+
+  void _clearSelection() {
+    setState(() {
+      _selectedAssetsById.clear();
+    });
   }
 
   @override
@@ -216,7 +247,20 @@ class _GalleryScreenState extends State<GalleryScreen> {
                   labelBuilder: _albumLabel,
                 ),
               ),
-            if (_granted && _albums.isNotEmpty) const SizedBox(height: 18),
+            if (_granted && _albums.isNotEmpty) const SizedBox(height: 12),
+            if (_granted && _albums.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+                child: _PhotoTypeSelector(
+                  selected: _photoTypeMode,
+                  onSelected: (mode) {
+                    setState(() {
+                      _photoTypeMode = mode;
+                    });
+                  },
+                ),
+              ),
+            if (_granted && _albums.isNotEmpty) const SizedBox(height: 10),
             Expanded(
               child: _loading
                   ? const _LoadingView()
@@ -260,7 +304,12 @@ class _GalleryScreenState extends State<GalleryScreen> {
                               index,
                             ) {
                               final asset = _photos[index];
-                              return _GalleryThumb(future: _thumb(asset));
+                              final order = _selectionOrder(asset.id);
+                              return _GalleryThumb(
+                                future: _thumb(asset),
+                                selectedOrder: order,
+                                onTap: () => _toggleAssetSelection(asset),
+                              );
                             }, childCount: _photos.length),
                             gridDelegate:
                                 const SliverGridDelegateWithFixedCrossAxisCount(
@@ -274,8 +323,118 @@ class _GalleryScreenState extends State<GalleryScreen> {
                       ],
                     ),
             ),
+            if (_granted && _albums.isNotEmpty)
+              _SelectionActionBar(
+                selectedCount: _selectedAssetsById.length,
+                onClear: _selectedAssetsById.isEmpty ? null : _clearSelection,
+                onAnalyze: _openACutResultScreen,
+              ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _PhotoTypeSelector extends StatelessWidget {
+  final PhotoTypeMode selected;
+  final ValueChanged<PhotoTypeMode> onSelected;
+
+  const _PhotoTypeSelector({required this.selected, required this.onSelected});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: PhotoTypeMode.values.map((mode) {
+        final isSelected = selected == mode;
+        return Expanded(
+          child: Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: GestureDetector(
+              onTap: () => onSelected(mode),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                height: 38,
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? const Color(0xFF3A3A3A)
+                      : const Color(0xFFEFEFEF),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Center(
+                  child: Text(
+                    mode.label,
+                    style: TextStyle(
+                      color: isSelected
+                          ? Colors.white
+                          : const Color(0xFF5A5A5A),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+}
+
+class _SelectionActionBar extends StatelessWidget {
+  final int selectedCount;
+  final VoidCallback? onClear;
+  final VoidCallback onAnalyze;
+
+  const _SelectionActionBar({
+    required this.selectedCount,
+    required this.onClear,
+    required this.onAnalyze,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 10, 18, 18),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: AppColors.border)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '선택됨 $selectedCount장',
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: AppColors.primaryText,
+              ),
+            ),
+          ),
+          if (onClear != null)
+            TextButton(onPressed: onClear, child: const Text('초기화')),
+          const SizedBox(width: 8),
+          SizedBox(
+            height: 42,
+            child: ElevatedButton(
+              onPressed: onAnalyze,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.buttonDark,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text(
+                'A컷 분석',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -301,7 +460,7 @@ class _AlbumChipRow extends StatelessWidget {
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: albums.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        separatorBuilder: (context, index) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
           final album = albums[index];
           final selected = selectedAlbum?.id == album.id;
@@ -338,44 +497,94 @@ class _AlbumChipRow extends StatelessWidget {
 
 class _GalleryThumb extends StatelessWidget {
   final Future<Uint8List?> future;
+  final int? selectedOrder;
+  final VoidCallback onTap;
 
-  const _GalleryThumb({required this.future});
+  const _GalleryThumb({
+    required this.future,
+    required this.selectedOrder,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<Uint8List?>(
-      future: future,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return Container(
-            decoration: BoxDecoration(
-              color: const Color(0xFFEDEFF3),
-              borderRadius: BorderRadius.circular(14),
-            ),
-          );
-        }
+    final isSelected = selectedOrder != null;
 
-        if (!snapshot.hasData || snapshot.data == null) {
-          return Container(
-            decoration: BoxDecoration(
-              color: const Color(0xFFEDEFF3),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: const Center(
-              child: Icon(
-                Icons.broken_image_outlined,
-                color: AppColors.lightText,
-                size: 22,
+    return GestureDetector(
+      onTap: onTap,
+      child: FutureBuilder<Uint8List?>(
+        future: future,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFFEDEFF3),
+                borderRadius: BorderRadius.circular(14),
               ),
-            ),
-          );
-        }
+            );
+          }
 
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(14),
-          child: Image.memory(snapshot.data!, fit: BoxFit.cover),
-        );
-      },
+          Widget child;
+          if (!snapshot.hasData || snapshot.data == null) {
+            child = Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFFEDEFF3),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Center(
+                child: Icon(
+                  Icons.broken_image_outlined,
+                  color: AppColors.lightText,
+                  size: 22,
+                ),
+              ),
+            );
+          } else {
+            child = ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: Image.memory(snapshot.data!, fit: BoxFit.cover),
+            );
+          }
+
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              child,
+              if (isSelected)
+                Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: AppColors.primaryText, width: 2),
+                    color: Colors.black.withValues(alpha: 0.18),
+                  ),
+                ),
+              if (isSelected)
+                Positioned(
+                  right: 8,
+                  top: 8,
+                  child: Container(
+                    width: 22,
+                    height: 22,
+                    decoration: const BoxDecoration(
+                      color: AppColors.primaryText,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Center(
+                      child: Text(
+                        '$selectedOrder',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
     );
   }
 }
@@ -421,8 +630,8 @@ class _PermissionView extends StatelessWidget {
                 color: AppColors.primaryText,
               ),
               const SizedBox(height: 14),
-              Text(
-                '갤러리 접근 권한이 필요합니다.',
+              const Text(
+                'Gallery permission is required.',
                 style: TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.w700,
@@ -431,8 +640,8 @@ class _PermissionView extends StatelessWidget {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
-              Text(
-                '허용하면 휴대폰에 있는 사진과 앨범을\n앱에서 불러올 수 있습니다.',
+              const Text(
+                'Allow permission to read photos from your library.',
                 style: AppTextStyles.body13,
                 textAlign: TextAlign.center,
               ),
@@ -450,8 +659,8 @@ class _PermissionView extends StatelessWidget {
                       borderRadius: BorderRadius.circular(14),
                     ),
                   ),
-                  child: Text(
-                    '권한 허용 다시 시도',
+                  child: const Text(
+                    'Retry Permission',
                     style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
                   ),
                 ),
@@ -470,7 +679,7 @@ class _PermissionView extends StatelessWidget {
                         borderRadius: BorderRadius.circular(14),
                       ),
                     ),
-                    child: Text(
+                    child: const Text(
                       'Open Settings',
                       style: TextStyle(
                         fontSize: 15,
@@ -539,7 +748,7 @@ class _ErrorView extends StatelessWidget {
                     ),
                   ),
                   child: const Text(
-                    '다시 시도',
+                    'Retry',
                     style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
                   ),
                 ),
@@ -570,7 +779,7 @@ class _EmptyAlbumView extends StatelessWidget {
             ),
             SizedBox(height: 14),
             Text(
-              '표시할 앨범이 없습니다.',
+              'No albums found.',
               style: TextStyle(
                 fontSize: 17,
                 fontWeight: FontWeight.w700,
@@ -612,7 +821,7 @@ class _EmptyPhotoView extends StatelessWidget {
               ),
               const SizedBox(height: 14),
               Text(
-                '$albumName 앨범에 표시할 사진이 없습니다.',
+                'No photos in $albumName.',
                 style: const TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.w700,
