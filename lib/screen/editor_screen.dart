@@ -8,6 +8,8 @@ import 'package:gal/gal.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 
+import '../service/gemini_service.dart';
+import 'crop_screen.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 import '../widget/app_top_bar.dart';
@@ -15,7 +17,7 @@ import '../widget/app_top_bar.dart';
 const int _editorExportMaxDimension = 3072;
 const int _editorPreviewMaxDimension = 1600;
 
-enum _EditorAdjustment { brightness, contrast, saturation, warmth, fade }
+enum _EditorAdjustment { brightness, contrast, saturation, warmth, fade, sharpness }
 
 extension on _EditorAdjustment {
   String get label {
@@ -30,6 +32,8 @@ extension on _EditorAdjustment {
         return '색온도';
       case _EditorAdjustment.fade:
         return '페이드';
+      case _EditorAdjustment.sharpness:
+        return '선명도';
     }
   }
 
@@ -45,6 +49,8 @@ extension on _EditorAdjustment {
         return '온도';
       case _EditorAdjustment.fade:
         return '페이드';
+      case _EditorAdjustment.sharpness:
+        return '선명도';
     }
   }
 
@@ -60,6 +66,8 @@ extension on _EditorAdjustment {
         return '차갑거나 따뜻한 색감으로 바꿉니다';
       case _EditorAdjustment.fade:
         return '대비를 누그러뜨려 부드러운 분위기를 만듭니다';
+      case _EditorAdjustment.sharpness:
+        return '이미지의 디테일과 경계를 강조합니다';
     }
   }
 
@@ -75,6 +83,8 @@ extension on _EditorAdjustment {
         return Icons.thermostat_auto_outlined;
       case _EditorAdjustment.fade:
         return Icons.blur_on_outlined;
+      case _EditorAdjustment.sharpness:
+        return Icons.deblur;
     }
   }
 }
@@ -98,6 +108,11 @@ class _EditorScreenState extends State<EditorScreen> {
   String? _selectedImagePath;
   double? _imageAspectRatio;
 
+  Uint8List? _originalSourceBytes;
+  Uint8List? _originalPreviewSourceBytes;
+  double? _originalAspectRatio;
+  bool _imageModified = false;
+
   bool _isPreparingImage = false;
   bool _isRenderingPreview = false;
   bool _isSaving = false;
@@ -110,6 +125,8 @@ class _EditorScreenState extends State<EditorScreen> {
   final Map<_EditorAdjustment, double> _adjustments = {
     for (final adjustment in _EditorAdjustment.values) adjustment: 0,
   };
+
+  final GeminiService _geminiService = GeminiService();
 
   @override
   void dispose() {
@@ -124,6 +141,30 @@ class _EditorScreenState extends State<EditorScreen> {
       _sourceBytes != null &&
       _previewSourceBytes != null &&
       _previewBytes != null;
+
+  bool get _hasNonZeroAdjustment =>
+      _adjustments.values.any((v) => v != 0);
+
+  bool get _hasAnyEdit => _imageModified || _hasNonZeroAdjustment;
+
+  void _resetEverything() {
+    if (_originalSourceBytes == null) return;
+    setState(() {
+      _sourceBytes = _originalSourceBytes;
+      _previewSourceBytes = _originalPreviewSourceBytes;
+      _previewBytes = _originalPreviewSourceBytes;
+      _imageAspectRatio = _originalAspectRatio;
+      _imageModified = false;
+      _resetAdjustmentsLocally();
+    });
+  }
+
+  void _resetAllAdjustments() {
+    setState(() {
+      _resetAdjustmentsLocally();
+    });
+    _schedulePreviewRender();
+  }
 
   Future<void> _pickImage() async {
     final XFile? file = await _picker.pickImage(source: ImageSource.gallery);
@@ -152,6 +193,10 @@ class _EditorScreenState extends State<EditorScreen> {
         _previewSourceBytes = prepared['preview'];
         _previewBytes = prepared['preview'];
         _imageAspectRatio = prepared['aspectRatio'] as double;
+        _originalSourceBytes = prepared['source'];
+        _originalPreviewSourceBytes = prepared['preview'];
+        _originalAspectRatio = prepared['aspectRatio'] as double;
+        _imageModified = false;
         _isPreparingImage = false;
       });
     } catch (error) {
@@ -222,7 +267,93 @@ class _EditorScreenState extends State<EditorScreen> {
       'saturation': _valueOf(_EditorAdjustment.saturation),
       'warmth': _valueOf(_EditorAdjustment.warmth),
       'fade': _valueOf(_EditorAdjustment.fade),
+      'sharpness': _valueOf(_EditorAdjustment.sharpness),
     };
+  }
+
+  Future<void> _runAiEdit(String prompt) async {
+    debugPrint('[EditorScreen] _runAiEdit 호출됨, 프롬프트: $prompt');
+
+    if (_previewSourceBytes == null) {
+      debugPrint('[EditorScreen] _previewSourceBytes가 null → 조기 반환');
+      return;
+    }
+
+    debugPrint('[EditorScreen] _previewSourceBytes 크기: ${_previewSourceBytes!.lengthInBytes} bytes');
+
+    try {
+      final result = await _geminiService.editImage(
+        imageBytes: _previewSourceBytes!,
+        prompt: prompt,
+      );
+
+      debugPrint('[EditorScreen] editImage 결과: ${result == null ? "null" : "${result.lengthInBytes} bytes"}');
+
+      if (!mounted) return;
+
+      if (result != null) {
+        setState(() {
+          _previewBytes = result;
+          _sourceBytes = result;
+          _previewSourceBytes = result;
+          _imageModified = true;
+          _resetAdjustmentsLocally();
+        });
+        debugPrint('[EditorScreen] 이미지 업데이트 완료');
+      } else {
+        debugPrint('[EditorScreen] result null → 예외 throw');
+        throw Exception('이미지 생성에 실패했어요.');
+      }
+    } catch (e, stackTrace) {
+      debugPrint('[EditorScreen] _runAiEdit 오류: $e');
+      debugPrint('[EditorScreen] 스택트레이스: $stackTrace');
+      rethrow;
+    }
+  }
+
+  Future<void> _openCropScreen() async {
+    if (_sourceBytes == null) return;
+
+    final result = await Navigator.of(context).push<Uint8List>(
+      MaterialPageRoute(
+        builder: (_) => CropScreen(sourceBytes: _sourceBytes!),
+      ),
+    );
+
+    if (result == null || !mounted) return;
+
+    setState(() {
+      _isPreparingImage = true;
+    });
+
+    try {
+      final prepared = await compute(_prepareEditorBuffers, result);
+      if (!mounted) return;
+      setState(() {
+        _sourceBytes = prepared['source'];
+        _previewSourceBytes = prepared['preview'];
+        _previewBytes = prepared['preview'];
+        _imageAspectRatio = prepared['aspectRatio'] as double;
+        _imageModified = true;
+        _isPreparingImage = false;
+        _resetAdjustmentsLocally();
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _isPreparingImage = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('자르기에 실패했습니다: $error')),
+      );
+    }
+  }
+
+  void _showAiEditSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _AiEditSheet(onGenerate: _runAiEdit),
+    );
   }
 
   Future<void> _saveImage() async {
@@ -330,6 +461,14 @@ class _EditorScreenState extends State<EditorScreen> {
                 ),
                 const SizedBox(height: 14),
                 _buildActionRow(),
+                if (_hasImage) ...[
+                  const SizedBox(height: 10),
+                  _buildAiEditButton(),
+                  if (_hasAnyEdit) ...[
+                    const SizedBox(height: 10),
+                    _buildFullResetButton(),
+                  ],
+                ],
                 const SizedBox(height: 18),
                 _buildAdjustmentPanel(activeValue),
                 const SizedBox(height: 14),
@@ -467,20 +606,97 @@ class _EditorScreenState extends State<EditorScreen> {
     );
   }
 
-  Widget _buildActionRow() {
-    final replaceButton = OutlinedButton.icon(
-      onPressed: _pickImage,
-      icon: const Icon(Icons.photo_library_outlined),
-      label: Text(_selectedImagePath == null ? '사진 추가' : '사진 바꾸기'),
-      style: OutlinedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        foregroundColor: AppColors.primaryText,
-        side: const BorderSide(color: AppColors.border),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+  Widget _buildAiEditButton() {
+    return GestureDetector(
+      onTap: _showAiEditSheet,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        decoration: BoxDecoration(
+          color: AppColors.soft,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.auto_awesome, size: 18, color: AppColors.primaryText),
+            SizedBox(width: 8),
+            Text(
+              'AI로 편집하기',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: AppColors.primaryText,
+              ),
+            ),
+          ],
+        ),
       ),
     );
+  }
 
-    return SizedBox(width: double.infinity, child: replaceButton);
+  Widget _buildFullResetButton() {
+    return GestureDetector(
+      onTap: _resetEverything,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        decoration: BoxDecoration(
+          color: AppColors.soft,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.restart_alt, size: 18, color: AppColors.primaryText),
+            SizedBox(width: 8),
+            Text(
+              '전체 초기화',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: AppColors.primaryText,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionRow() {
+    final buttonStyle = OutlinedButton.styleFrom(
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      foregroundColor: AppColors.primaryText,
+      side: const BorderSide(color: AppColors.border),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+    );
+
+    return Row(
+      children: [
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: _pickImage,
+            icon: const Icon(Icons.photo_library_outlined),
+            label: Text(_selectedImagePath == null ? '사진 추가' : '사진 바꾸기'),
+            style: buttonStyle,
+          ),
+        ),
+        if (_hasImage) ...[
+          const SizedBox(width: 10),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: _openCropScreen,
+              icon: const Icon(Icons.crop),
+              label: const Text('자르기'),
+              style: buttonStyle,
+            ),
+          ),
+        ],
+      ],
+    );
   }
 
   Widget _buildAdjustmentPanel(double activeValue) {
@@ -549,6 +765,30 @@ class _EditorScreenState extends State<EditorScreen> {
                   ),
                 ),
               ),
+              if (_hasNonZeroAdjustment) ...[
+                const SizedBox(width: 10),
+                GestureDetector(
+                  onTap: _resetAllAdjustments,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.soft,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Text(
+                      '초기화',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.primaryText,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 14),
@@ -644,16 +884,6 @@ class _PlusPlaceholder extends StatelessWidget {
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
                 color: Colors.white,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            SizedBox(height: 8),
-            Text(
-              '밝기, 대비, 채도, 색온도, 페이드 조절을 지원합니다.',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: Colors.white70,
               ),
               textAlign: TextAlign.center,
             ),
@@ -760,13 +990,14 @@ Uint8List _renderAdjustedJpg(Map<String, dynamic> request) {
   final saturation = (request['saturation'] as num).toDouble();
   final warmth = (request['warmth'] as num).toDouble();
   final fade = (request['fade'] as num).toDouble();
+  final sharpness = (request['sharpness'] as num).toDouble();
 
   final decoded = img.decodeImage(bytes);
   if (decoded == null) {
     throw Exception('이미지를 해석할 수 없습니다.');
   }
 
-  final edited = _applyEditorAdjustments(
+  var edited = _applyEditorAdjustments(
     decoded,
     brightness: brightness,
     contrast: contrast,
@@ -774,6 +1005,10 @@ Uint8List _renderAdjustedJpg(Map<String, dynamic> request) {
     warmth: warmth,
     fade: fade,
   );
+
+  if (sharpness != 0) {
+    edited = _applySharpness(edited, sharpness);
+  }
 
   return Uint8List.fromList(img.encodeJpg(edited, quality: 90));
 }
@@ -852,6 +1087,193 @@ int _clampChannel(double value) {
   if (value < 0) return 0;
   if (value > 255) return 255;
   return value.round();
+}
+
+img.Image _applySharpness(img.Image source, double sharpness) {
+  if (sharpness > 0) {
+    final amount = sharpness / 100 * 1.5;
+    final blurred = img.gaussianBlur(img.Image.from(source), radius: 2);
+    final output = img.Image.from(source);
+
+    for (int y = 0; y < output.height; y++) {
+      for (int x = 0; x < output.width; x++) {
+        final orig = source.getPixel(x, y);
+        final blur = blurred.getPixel(x, y);
+
+        output.setPixelRgba(
+          x,
+          y,
+          _clampChannel(orig.r + amount * (orig.r - blur.r)),
+          _clampChannel(orig.g + amount * (orig.g - blur.g)),
+          _clampChannel(orig.b + amount * (orig.b - blur.b)),
+          orig.a.toInt(),
+        );
+      }
+    }
+    return output;
+  } else {
+    final radius = (sharpness.abs() / 100 * 5).round().clamp(1, 5);
+    return img.gaussianBlur(source, radius: radius);
+  }
+}
+
+class _AiEditSheet extends StatefulWidget {
+  final Future<void> Function(String prompt) onGenerate;
+
+  const _AiEditSheet({required this.onGenerate});
+
+  @override
+  State<_AiEditSheet> createState() => _AiEditSheetState();
+}
+
+class _AiEditSheetState extends State<_AiEditSheet> {
+  final TextEditingController _controller = TextEditingController();
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final canSubmit = !_isLoading && _controller.text.trim().isNotEmpty;
+
+    return Container(
+      padding: EdgeInsets.fromLTRB(20, 16, 20, 24 + bottomInset),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 20),
+              decoration: BoxDecoration(
+                color: AppColors.border,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: AppColors.soft,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.auto_awesome,
+                  size: 20,
+                  color: AppColors.primaryText,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('AI 이미지 편집', style: AppTextStyles.title16),
+                  const SizedBox(height: 2),
+                  Text('원하는 수정사항을 입력하세요', style: AppTextStyles.caption12),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          TextField(
+            controller: _controller,
+            maxLines: 3,
+            minLines: 2,
+            enabled: !_isLoading,
+            decoration: InputDecoration(
+              hintText: '예: 배경을 노을로 바꿔줘',
+              hintStyle: const TextStyle(
+                color: AppColors.lightText,
+                fontSize: 14,
+              ),
+              filled: true,
+              fillColor: AppColors.soft,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide.none,
+              ),
+              contentPadding: const EdgeInsets.all(16),
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: TextButton(
+              onPressed: canSubmit
+                  ? () async {
+                      final navigator = Navigator.of(context);
+                      final messenger = ScaffoldMessenger.of(context);
+                      setState(() {
+                        _isLoading = true;
+                      });
+                      try {
+                        await widget.onGenerate(_controller.text.trim());
+                        if (mounted) navigator.pop();
+                      } catch (_) {
+                        if (!mounted) return;
+                        setState(() {
+                          _isLoading = false;
+                        });
+                        messenger.showSnackBar(
+                          const SnackBar(
+                            content: Text('이미지 생성에 실패했어요. 다시 시도해주세요.'),
+                          ),
+                        );
+                      }
+                    }
+                  : null,
+              style: TextButton.styleFrom(
+                backgroundColor: AppColors.buttonDark,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                disabledBackgroundColor: AppColors.soft,
+                disabledForegroundColor: AppColors.secondaryText,
+              ),
+              child: _isLoading
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text(
+                      '재생성',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 img.Image _resizeImageToMaxDimension(img.Image source, int maxDimension) {
