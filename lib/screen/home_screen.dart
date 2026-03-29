@@ -4,6 +4,7 @@ import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 import '../widget/app_top_bar.dart';
 import '../widget/home_feature_card.dart';
+import '../portrait/portrait_camera_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   final ValueChanged<int> onMoveTab;
@@ -25,7 +26,13 @@ class HomeScreen extends StatelessWidget {
               description:
                   'Start capturing high-quality moments instantly with one tap.',
               buttonText: 'Launch',
-              onTap: () => onMoveTab(2),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const PortraitCameraScreen(),
+                  ),
+                );
+              },
               visual: const _VisualBox(
                 child: Icon(
                   Icons.camera_alt_outlined,
