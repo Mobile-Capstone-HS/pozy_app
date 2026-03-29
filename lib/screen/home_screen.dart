@@ -22,8 +22,7 @@ class HomeScreen extends StatelessWidget {
             HomeFeatureCard(
               icon: Icons.flash_on_outlined,
               title: 'Quick Shoot',
-              description:
-                  'Start capturing high-quality moments instantly with one tap.',
+              description: 'Pozy의 실시간 코칭을 통해 완벽한 촬영을 경험해보세요.',
               buttonText: 'Launch',
               onTap: () => onMoveTab(2),
               visual: const _VisualBox(
@@ -37,8 +36,7 @@ class HomeScreen extends StatelessWidget {
             HomeFeatureCard(
               icon: Icons.photo_library_outlined,
               title: 'Gallery',
-              description:
-                  'View, organize, and manage your entire media library.',
+              description: '당신의 사진을 한 눈에 보고 관리해보세요.',
               buttonText: 'Open',
               onTap: () => onMoveTab(1),
               visual: const _VisualBox(
@@ -52,8 +50,7 @@ class HomeScreen extends StatelessWidget {
             HomeFeatureCard(
               icon: Icons.auto_awesome_outlined,
               title: 'Pick your Best',
-              description:
-                  'Enjoy Pozy to the fullest and surface the strongest frames fast.',
+              description: '지금 바로 Pozy가 선택한 최고의 컷을 확인해보세요.',
               buttonText: 'Try Now',
               onTap: () => onMoveTab(4),
               visual: const _VisualBox(
@@ -86,10 +83,10 @@ class HomeScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 22),
-              const Text('당신의 촬영을 보다 가볍게', style: AppTextStyles.title20),
+              const Text('당신의 촬영을 보다 이롭게', style: AppTextStyles.title20),
               const SizedBox(height: 4),
               const Text(
-                '일상 속 순간들을 Pozy로 더 편하게 기록해보세요.',
+                '일상 속 순간들을 Pozy로 더 편하게 기록해보세요!',
                 style: AppTextStyles.body13,
               ),
             ],

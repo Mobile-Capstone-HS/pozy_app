@@ -11,7 +11,7 @@ Future<void> main() async {
   try {
     cameras = await availableCameras();
   } catch (error) {
-    debugPrint('Camera initialization error: $error');
+    debugPrint('Camera initialization error: $error'); 
   }
 
   runApp(const PozyApp());

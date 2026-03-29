@@ -36,12 +36,16 @@ dependencies:
   cupertino_icons: ^1.0.8
   camera: ^0.11.0
   image: ^4.2.0
-  ultralytics_yolo: ^0.1.25
+  ultralytics_yolo:
+    path: ../packages/ultralytics_yolo
   image_picker: ^0.8.7
   gal: ^2.3.2
   photo_manager: ^3.9.0
   permission_handler: any
-  
+  sensors_plus: ^4.0.2
+  http: ^1.2.0
+  tflite_flutter: ^0.12.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

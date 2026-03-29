@@ -141,7 +141,7 @@ class SubjectSelector {
     return SubjectSelectionResult(
       mode: SelectionMode.subject,
       best: best,
-      guidance: 'Main subject: ${best.detection.className}',
+      guidance: '주요 피사체: ${best.detection.className}',
       scored: scored,
     );
   }
@@ -187,7 +187,7 @@ class SubjectSelector {
     List<SubjectScoreBreakdown>? scored,
   }) {
     if (detections.isEmpty || imageSize == Size.zero) {
-      return 'Scene is balanced';
+      return '장면이 균형 잡혀 있어요';
     }
 
     final basis = scored ??
@@ -219,18 +219,18 @@ class SubjectSelector {
 
     final total = leftWeight + rightWeight;
     if (total <= 0) {
-      return 'Scene is balanced';
+      return '장면이 균형 잡혀 있어요';
     }
 
     final diffRatio = (leftWeight - rightWeight).abs() / total;
     if (diffRatio < 0.15) {
-      return 'Scene is balanced';
+      return '장면이 균형 잡혀 있어요';
     }
 
     if (leftWeight > rightWeight) {
-      return 'Move subject to the right';
+      return '피사체를 오른쪽으로 이동하세요';
     }
-    return 'Move subject to the left';
+    return '피사체를 왼쪽으로 이동하세요';
   }
 
   Rect _clampNormalizedRect(Rect box) {

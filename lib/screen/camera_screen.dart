@@ -2,12 +2,18 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:gal/gal.dart';
+import 'package:sensors_plus/sensors_plus.dart';
+import 'package:ultralytics_yolo/widgets/yolo_controller.dart';
 import 'package:ultralytics_yolo/yolo.dart';
 import 'package:ultralytics_yolo/yolo_streaming_config.dart';
 import 'package:ultralytics_yolo/yolo_view.dart';
-import 'package:ultralytics_yolo/widgets/yolo_controller.dart';
 
-import '../subject_detection.dart' show detectModelPath, detectionConfidenceThreshold;
+import '../coaching/coaching_result.dart';
+import '../coaching/pixel_analysis_service.dart';
+import '../coaching/object_coaching_engine.dart';
+import '../coaching/vlm_composition_service.dart';
+import '../subject_detection.dart'
+    show detectModelPath, detectionConfidenceThreshold;
 import '../subject_selector.dart';
 
 class CameraScreen extends StatefulWidget {
@@ -25,10 +31,8 @@ class CameraScreen extends StatefulWidget {
 }
 
 class _CameraScreenState extends State<CameraScreen> {
-  static const List<double> _zoomPresets = [0.5, 1.0, 2.0];
-
-  final YOLOViewController _cameraController = YOLOViewController();
-  final SubjectSelector _subjectSelector = const SubjectSelector(
+  final _cameraController = YOLOViewController();
+  final _subjectSelector = const SubjectSelector(
     wSize: 0.35,
     wCenter: 0.25,
     wClass: 0.2,
@@ -36,22 +40,39 @@ class _CameraScreenState extends State<CameraScreen> {
     wSaliency: 0.1,
     threshold: 0.3,
   );
+  final _objectCoachingEngine = ObjectCoachingEngine();
+  final _pixelService = PixelAnalysisService();
+  final _vlmService = VlmCompositionService();
 
-  final List<_DetectionBox> _detections = [];
-
+  List<double> _zoomPresets = [1.0, 2.0];
   Size _previewSize = Size.zero;
-  int _detectedCount = 0;
-  int _personCount = 0;
-  int _objectCount = 0;
-  String _guidance = 'Scene is balanced';
-  String? _mainSubjectLabel;
+  String _guidance = '구도를 잡는 중...';
+  String? _subGuidance;
+  CoachingLevel _coachingLevel = CoachingLevel.caution;
+  ShootingMode _shootingMode = ShootingMode.object;
   _TrackedSubject? _currentMainSubject;
-  _TrackedSubject? _lockedSubject;
-  double _currentZoom = 1.0;
+  _TrackedSubject? _pendingSubject;
+  Offset? _tapNorm;
   double _selectedZoom = 1.0;
   bool _isFrontCamera = false;
   bool _isSaving = false;
   bool _showFlash = false;
+  bool _torchOn = false;
+  Offset? _focusPoint;
+  bool _showFocusIndicator = false;
+  int _timerSeconds = 0;
+  int _countdown = 0;
+  double _tiltX = 0.0;
+  CoachingResult _nimaResult = const CoachingResult(
+    guidance: '구도를 잡는 중...',
+    level: CoachingLevel.caution,
+  );
+  bool _isAnalyzing = false;
+  bool _isVlmRefining = false;
+  bool _lastPixelWasBad = false;
+  Timer? _countdownTimer;
+  Timer? _nimaTimer;
+  StreamSubscription<AccelerometerEvent>? _accelerometerSub;
 
   @override
   void initState() {
@@ -61,261 +82,335 @@ class _CameraScreenState extends State<CameraScreen> {
       if (!mounted) return;
       await _cameraController.restartCamera();
       await _cameraController.setZoomLevel(_selectedZoom);
+      await _configureZoomPresets();
+    });
+    _startTiltMonitoring();
+    _nimaTimer = Timer.periodic(const Duration(milliseconds: 1500), (_) {
+      _runPixelAnalysis();
     });
   }
 
-  Rect _toPreviewRect(Rect normalizedBox, Size previewSize) {
-    return Rect.fromLTRB(
-      (normalizedBox.left * previewSize.width).clamp(0.0, previewSize.width),
-      (normalizedBox.top * previewSize.height).clamp(0.0, previewSize.height),
-      (normalizedBox.right * previewSize.width).clamp(0.0, previewSize.width),
-      (normalizedBox.bottom * previewSize.height).clamp(0.0, previewSize.height),
-    );
+  void _startTiltMonitoring() {
+    try {
+      _accelerometerSub =
+          accelerometerEventStream(
+            samplingPeriod: SensorInterval.normalInterval,
+          ).listen((event) {
+            _tiltX = (_tiltX * 0.85) + (event.x * 0.15);
+          });
+    } catch (_) {}
   }
 
-  SubjectSelectionResult _selectMainSubject(
-    List<YOLOResult> results,
-    Size previewSize,
-  ) {
-    final detections = results
-        .asMap()
-        .entries
-        .map(
-          (entry) => SubjectDetection(
-            id: entry.key,
-            normalizedBox: Rect.fromLTRB(
-              entry.value.normalizedBox.left,
-              entry.value.normalizedBox.top,
-              entry.value.normalizedBox.right,
-              entry.value.normalizedBox.bottom,
-            ),
-            className: entry.value.className,
-            confidence: entry.value.confidence,
-          ),
-        )
-        .toList();
+  Future<void> _configureZoomPresets() async {
+    double minZoom = 1.0;
+    for (int i = 0; i < 3; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 800));
+      if (!mounted) return;
+      minZoom = await _cameraController.getMinZoomLevel();
+      if (minZoom < 1.0) break;
+    }
+    final next = minZoom < 1.0 ? [minZoom, 1.0, 2.0] : [1.0, 2.0];
+    if (next.length == _zoomPresets.length &&
+        next.indexed.every((e) => (e.$2 - _zoomPresets[e.$1]).abs() < 0.001)) {
+      return;
+    }
+    setState(() => _zoomPresets = next);
+  }
 
+  Future<void> _runPixelAnalysis() async {
+    if (_isAnalyzing || !mounted || _isSaving) return;
+    _isAnalyzing = true;
+    try {
+      final bytes = await _cameraController.captureFrame();
+      if (bytes == null || bytes.isEmpty || !mounted) return;
+      final pixelResult = await _pixelService.analyze(bytes);
+      if (!mounted) return;
+      if (pixelResult != null) {
+        // 밝기 문제 → 직접 표시, VLM 불필요
+        _lastPixelWasBad = true;
+        setState(() => _nimaResult = pixelResult);
+      } else {
+        // 밝기 정상 → 직전에 밝기 경고 표시 중이었으면 초기화 후 VLM 호출
+        if (_lastPixelWasBad) {
+          setState(() => _nimaResult = const CoachingResult(
+            guidance: '구도를 잡는 중...',
+            level: CoachingLevel.caution,
+          ));
+        }
+        _lastPixelWasBad = false;
+        _runVlmGuidance(bytes);
+      }
+    } finally {
+      _isAnalyzing = false;
+    }
+  }
+
+  Future<void> _runVlmGuidance(List<int> bytes) async {
+    if (_isVlmRefining || !mounted) return;
+    _isVlmRefining = true;
+    try {
+      final refined = await _vlmService.refine(bytes);
+      if (refined == null || !mounted) return;
+      final isGood = refined.guidance.contains('이 정도면');
+      setState(() {
+        _nimaResult = CoachingResult(
+          guidance: refined.guidance,
+          level: isGood ? CoachingLevel.good : CoachingLevel.caution,
+          subGuidance: refined.subGuidance.isEmpty ? null : refined.subGuidance,
+        );
+      });
+    } finally {
+      _isVlmRefining = false;
+    }
+  }
+
+  SubjectSelectionResult _selectMainSubject(List<YOLOResult> results) {
     return _subjectSelector.selectMainSubject(
-      detections: detections,
-      imageSize: previewSize,
+      detections: results
+          .asMap()
+          .entries
+          .map(
+            (entry) => SubjectDetection(
+              id: entry.key,
+              normalizedBox: Rect.fromLTRB(
+                entry.value.normalizedBox.left,
+                entry.value.normalizedBox.top,
+                entry.value.normalizedBox.right,
+                entry.value.normalizedBox.bottom,
+              ),
+              className: entry.value.className,
+              confidence: entry.value.confidence,
+            ),
+          )
+          .toList(),
+      imageSize: _previewSize == Size.zero
+          ? MediaQuery.sizeOf(context)
+          : _previewSize,
     );
   }
 
-  _TrackedSubject? _subjectFromResult(
-    YOLOResult result,
-    Size previewSize,
-  ) {
-    final rect = _toPreviewRect(result.normalizedBox, previewSize);
-    return _TrackedSubject(
-      className: result.className,
-      normalizedBox: Rect.fromLTRB(
-        result.normalizedBox.left,
-        result.normalizedBox.top,
-        result.normalizedBox.right,
-        result.normalizedBox.bottom,
-      ),
-      rect: rect,
-      confidence: result.confidence,
-    );
-  }
-
-  int? _matchLockedSubject(List<YOLOResult> results) {
-    final locked = _lockedSubject;
-    if (locked == null || results.isEmpty) {
-      return null;
+  List<YOLOResult> _filterResultsForMode(List<YOLOResult> results) {
+    switch (_shootingMode) {
+      case ShootingMode.person:
+        return results
+            .where((r) => r.className.toLowerCase() == 'person')
+            .toList();
+      case ShootingMode.object:
+        return results
+            .where((r) => r.className.toLowerCase() != 'person')
+            .toList();
+      case ShootingMode.landscape:
+        return results;
     }
-
-    int? bestIndex;
-    double bestScore = 0;
-
-    for (final entry in results.asMap().entries) {
-      final result = entry.value;
-      final sameClass = result.className.toLowerCase() == locked.className.toLowerCase();
-      final iou = _intersectionOverUnion(
-        locked.normalizedBox,
-        Rect.fromLTRB(
-          result.normalizedBox.left,
-          result.normalizedBox.top,
-          result.normalizedBox.right,
-          result.normalizedBox.bottom,
-        ),
-      );
-      final centerDistance =
-          (result.normalizedBox.center - locked.normalizedBox.center).distance;
-      final distanceScore = (1 - (centerDistance / 0.45)).clamp(0.0, 1.0);
-      final classScore = sameClass ? 1.0 : 0.0;
-      final score =
-          (classScore * 0.45) + (iou * 0.35) + (distanceScore * 0.20);
-
-      if (score > bestScore) {
-        bestScore = score;
-        bestIndex = entry.key;
-      }
-    }
-
-    if (bestScore < 0.35) {
-      return null;
-    }
-
-    return bestIndex;
-  }
-
-  double _intersectionOverUnion(Rect a, Rect b) {
-    final intersection = a.intersect(b);
-    if (intersection.isEmpty) {
-      return 0;
-    }
-
-    final intersectionArea = intersection.width * intersection.height;
-    final unionArea =
-        (a.width * a.height) + (b.width * b.height) - intersectionArea;
-    if (unionArea <= 0) {
-      return 0;
-    }
-    return intersectionArea / unionArea;
-  }
-
-  void _toggleSubjectLock() {
-    setState(() {
-      if (_lockedSubject != null) {
-        _lockedSubject = null;
-        return;
-      }
-
-      if (_currentMainSubject != null) {
-        _lockedSubject = _currentMainSubject;
-      }
-    });
   }
 
   void _handleDetections(List<YOLOResult> results) {
     if (!mounted) return;
+    final filtered = _filterResultsForMode(results);
+    final selection = _selectMainSubject(filtered);
+    _TrackedSubject? currentMain;
 
-    final previewSize =
-        _previewSize == Size.zero ? MediaQuery.sizeOf(context) : _previewSize;
-    final selection = _selectMainSubject(results, previewSize);
-    final lockedIndex = _matchLockedSubject(results);
-    final mainId = _lockedSubject != null ? lockedIndex : selection.best?.detection.id;
-    final currentMain = mainId == null ? null : _subjectFromResult(results[mainId], previewSize);
-    final visibleResults = _lockedSubject != null
-        ? (mainId == null ? <YOLOResult>[] : <YOLOResult>[results[mainId]])
-        : results;
-
-    setState(() {
-      _detectedCount = visibleResults.length;
-      _personCount = visibleResults
-          .where((result) => result.className.toLowerCase() == 'person')
-          .length;
-      _objectCount = visibleResults.length - _personCount;
-      _guidance = _lockedSubject != null
-          ? (currentMain == null ? '고정한 피사체를 찾는 중이에요.' : '피사체 고정 중')
-          : selection.guidance;
-      _mainSubjectLabel = _lockedSubject != null
-          ? (currentMain?.className ?? _lockedSubject?.className)
-          : selection.best?.detection.className;
-      _currentMainSubject = currentMain;
-      if (_lockedSubject != null && currentMain != null) {
-        _lockedSubject = currentMain;
+    if (_tapNorm != null && filtered.isNotEmpty) {
+      final tap = _tapNorm!;
+      YOLOResult? best;
+      double bestDist = double.infinity;
+      for (final result in filtered) {
+        final box = result.normalizedBox;
+        final cx = (box.left + box.right) / 2;
+        final cy = (box.top + box.bottom) / 2;
+        final dist =
+            ((cx - tap.dx) * (cx - tap.dx)) + ((cy - tap.dy) * (cy - tap.dy));
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = result;
+        }
       }
-
-      _detections
-        ..clear()
-        ..addAll(
-          visibleResults.asMap().entries.map(
-            (entry) => _DetectionBox(
-              rect: _lockedSubject != null
-                  ? (currentMain?.rect ?? _toPreviewRect(entry.value.normalizedBox, previewSize))
-                  : _toPreviewRect(entry.value.normalizedBox, previewSize),
-              className: entry.value.className,
-              confidence: entry.value.confidence,
-              isMainSubject: _lockedSubject != null ? true : entry.key == mainId,
-            ),
+      if (best != null && bestDist <= 0.25 * 0.25) {
+        currentMain = _TrackedSubject(
+          normalizedBox: Rect.fromLTRB(
+            best.normalizedBox.left,
+            best.normalizedBox.top,
+            best.normalizedBox.right,
+            best.normalizedBox.bottom,
           ),
         );
-    });
+      }
+    }
+
+    if (currentMain == null) {
+      final mainId = selection.best?.detection.id;
+      if (mainId != null) {
+        final result = filtered[mainId];
+        currentMain = _TrackedSubject(
+          normalizedBox: Rect.fromLTRB(
+            result.normalizedBox.left,
+            result.normalizedBox.top,
+            result.normalizedBox.right,
+            result.normalizedBox.bottom,
+          ),
+        );
+      }
+    }
+
+    if (currentMain != null && _pendingSubject != null) {
+      _currentMainSubject = currentMain;
+    } else if (currentMain == null) {
+      _currentMainSubject = null;
+    }
+    _pendingSubject = currentMain;
+
+    final priority = _isFrontCamera
+        ? _objectCoachingEngine.evaluateTiltOnly(tiltX: _tiltX)
+        : _objectCoachingEngine.evaluateZoomAndTilt(
+            _currentMainSubject?.normalizedBox,
+            tiltX: _tiltX,
+          );
+    final CoachingResult coaching;
+    if (priority == null) {
+      coaching = _nimaResult;
+    } else if (priority.level == CoachingLevel.warning) {
+      coaching = priority;
+    } else {
+      // priority is caution — VLM warning이 있으면 VLM 우선
+      coaching = _nimaResult.level == CoachingLevel.warning
+          ? _nimaResult
+          : priority;
+    }
+    if (coaching.guidance != _guidance ||
+        coaching.subGuidance != _subGuidance ||
+        coaching.level != _coachingLevel) {
+      setState(() {
+        _guidance = coaching.guidance;
+        _subGuidance = coaching.subGuidance;
+        _coachingLevel = coaching.level;
+      });
+    }
   }
 
   Future<void> _setZoom(double zoomLevel) async {
-    setState(() {
-      _selectedZoom = zoomLevel;
-    });
-
+    setState(() => _selectedZoom = zoomLevel);
     await _cameraController.setZoomLevel(zoomLevel);
   }
 
   Future<void> _switchCamera() async {
     await _cameraController.switchCamera();
     if (!mounted) return;
-
     setState(() {
       _isFrontCamera = !_isFrontCamera;
-      _currentZoom = 1.0;
       _selectedZoom = 1.0;
-      _detections.clear();
-      _detectedCount = 0;
-      _personCount = 0;
-      _objectCount = 0;
-      _guidance = 'Scene is balanced';
-      _mainSubjectLabel = null;
+      _guidance = '구도를 잡는 중...';
+      _subGuidance = null;
+      _coachingLevel = CoachingLevel.caution;
       _currentMainSubject = null;
-      _lockedSubject = null;
+      _pendingSubject = null;
+      _tapNorm = null;
+      _focusPoint = null;
+      _showFocusIndicator = false;
     });
-
     await _cameraController.setZoomLevel(1.0);
   }
 
-  Future<void> _captureAndSavePhoto() async {
-    if (_isSaving) return;
-
+  void _onModeChanged(ShootingMode mode) {
     setState(() {
-      _isSaving = true;
+      _shootingMode = mode;
+      _guidance = '구도를 잡는 중...';
+      _subGuidance = null;
+      _coachingLevel = CoachingLevel.caution;
+      _currentMainSubject = null;
+      _pendingSubject = null;
+      _tapNorm = null;
     });
+  }
 
-    try {
-      final hasAccess = await Gal.hasAccess();
-      if (!hasAccess) {
-        final granted = await Gal.requestAccess();
-        if (!granted) {
-          return;
+  void _onTapFocus(Offset localPosition) {
+    if (_previewSize == Size.zero) return;
+    final nx = (localPosition.dx / _previewSize.width).clamp(0.0, 1.0);
+    final ny = (localPosition.dy / _previewSize.height).clamp(0.0, 1.0);
+    _cameraController.setFocusPoint(nx, ny);
+    setState(() {
+      _focusPoint = localPosition;
+      _showFocusIndicator = true;
+      _tapNorm = Offset(nx, ny);
+    });
+    Future.delayed(const Duration(milliseconds: 1200), () {
+      if (mounted) setState(() => _showFocusIndicator = false);
+    });
+  }
+
+  void _toggleTorch() => setState(() => _torchOn = !_torchOn);
+  void _cycleTimer() {
+    const options = [0, 3, 10];
+    final idx = options.indexOf(_timerSeconds);
+    setState(() => _timerSeconds = options[(idx + 1) % options.length]);
+  }
+
+  Future<void> _captureAndSavePhoto() async {
+    if (_isSaving || _countdown > 0) return;
+    if (_timerSeconds > 0) {
+      setState(() => _countdown = _timerSeconds);
+      _countdownTimer?.cancel();
+      _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (!mounted) return timer.cancel();
+        setState(() => _countdown--);
+        if (_countdown <= 0) {
+          timer.cancel();
+          _doCapture();
         }
-      }
+      });
+      return;
+    }
+    await _doCapture();
+  }
 
-      final bytes = await _cameraController.captureFrame();
+  Future<void> _doCapture() async {
+    if (!mounted) return;
+    final hasAccess = await Gal.hasAccess();
+    if (!hasAccess && !await Gal.requestAccess()) return;
+    setState(() => _isSaving = true);
+    try {
+      if (_torchOn && !_isFrontCamera) {
+        await _cameraController.setTorchMode(true);
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+      }
+      final bytes = await _cameraController.captureHighRes();
+      if (_torchOn && !_isFrontCamera) {
+        await _cameraController.setTorchMode(false);
+      }
       if (bytes == null || bytes.isEmpty) {
         throw Exception('Failed to capture camera frame.');
       }
-
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      await Gal.putImageBytes(bytes, name: 'pozy_$timestamp');
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Photo saved to gallery.')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to save photo: $e')),
-      );
-    } finally {
       if (mounted) {
         setState(() {
           _isSaving = false;
           _showFlash = true;
         });
-
         Future.delayed(const Duration(milliseconds: 150), () {
-          if (!mounted) return;
-          setState(() {
-            _showFlash = false;
-          });
+          if (mounted) setState(() => _showFlash = false);
         });
+      }
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      Gal.putImageBytes(bytes, name: 'pozy_$timestamp').then((_) {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('사진을 갤러리에 저장했어요.')));
+        }
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isSaving = false);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('촬영에 실패했어요: $e')));
       }
     }
   }
 
   @override
   void dispose() {
+    _accelerometerSub?.cancel();
+    _countdownTimer?.cancel();
+    _nimaTimer?.cancel();
     _cameraController.stop();
     super.dispose();
   }
@@ -331,8 +426,10 @@ class _CameraScreenState extends State<CameraScreen> {
           children: [
             LayoutBuilder(
               builder: (context, constraints) {
-                _previewSize = Size(constraints.maxWidth, constraints.maxHeight);
-
+                _previewSize = Size(
+                  constraints.maxWidth,
+                  constraints.maxHeight,
+                );
                 return YOLOView(
                   controller: _cameraController,
                   modelPath: detectModelPath,
@@ -344,12 +441,7 @@ class _CameraScreenState extends State<CameraScreen> {
                   streamingConfig: const YOLOStreamingConfig.minimal(),
                   lensFacing: LensFacing.back,
                   onResult: _handleDetections,
-                  onZoomChanged: (zoomLevel) {
-                    if (!mounted) return;
-                    setState(() {
-                      _currentZoom = zoomLevel;
-                    });
-                  },
+                  onZoomChanged: null,
                 );
               },
             ),
@@ -376,10 +468,33 @@ class _CameraScreenState extends State<CameraScreen> {
                 size: Size.infinite,
               ),
             ),
-            IgnorePointer(
-              child: CustomPaint(
-                painter: _CameraDetectionPainter(detections: _detections),
-                size: Size.infinite,
+            GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTapUp: (details) => _onTapFocus(details.localPosition),
+            ),
+            if (_showFocusIndicator && _focusPoint != null)
+              Positioned(
+                left: _focusPoint!.dx - 30,
+                top: _focusPoint!.dy - 30,
+                child: IgnorePointer(
+                  child: Container(
+                    width: 60,
+                    height: 60,
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.white, width: 1.5),
+                    ),
+                  ),
+                ),
+              ),
+            Positioned(
+              top: 64,
+              right: 12,
+              child: IgnorePointer(
+                child: _CoachingSpeechBubble(
+                  guidance: _guidance,
+                  subGuidance: _subGuidance,
+                  level: _coachingLevel,
+                ),
               ),
             ),
             Positioned(
@@ -388,16 +503,10 @@ class _CameraScreenState extends State<CameraScreen> {
               right: 16,
               child: _TopCameraBar(
                 onBack: widget.onBack,
-                detectedCount: _detectedCount,
-                personCount: _personCount,
-                objectCount: _objectCount,
-                guidance: _guidance,
-                mainSubjectLabel: _mainSubjectLabel,
-                isFrontCamera: _isFrontCamera,
-                currentZoom: _currentZoom,
-                isLocked: _lockedSubject != null,
-                canLock: _currentMainSubject != null,
-                onToggleLock: _toggleSubjectLock,
+                torchOn: _torchOn,
+                onToggleTorch: _isFrontCamera ? null : _toggleTorch,
+                timerSeconds: _timerSeconds,
+                onCycleTimer: _cycleTimer,
               ),
             ),
             Positioned(
@@ -408,12 +517,26 @@ class _CameraScreenState extends State<CameraScreen> {
                 zoomPresets: _zoomPresets,
                 selectedZoom: _selectedZoom,
                 isSaving: _isSaving,
+                shootingMode: _shootingMode,
+                coachingLevel: _coachingLevel,
                 onSelectZoom: _setZoom,
                 onGallery: () => widget.onMoveTab(1),
                 onCapture: _captureAndSavePhoto,
                 onFlipCamera: _switchCamera,
+                onModeChanged: _onModeChanged,
               ),
             ),
+            if (_countdown > 0)
+              Center(
+                child: Text(
+                  '$_countdown',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 120,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
             if (_showFlash) Container(color: Colors.white),
           ],
         ),
@@ -424,104 +547,37 @@ class _CameraScreenState extends State<CameraScreen> {
 
 class _TopCameraBar extends StatelessWidget {
   final VoidCallback onBack;
-  final int detectedCount;
-  final int personCount;
-  final int objectCount;
-  final String guidance;
-  final String? mainSubjectLabel;
-  final bool isFrontCamera;
-  final double currentZoom;
-  final bool isLocked;
-  final bool canLock;
-  final VoidCallback onToggleLock;
-
+  final bool torchOn;
+  final VoidCallback? onToggleTorch;
+  final int timerSeconds;
+  final VoidCallback onCycleTimer;
   const _TopCameraBar({
     required this.onBack,
-    required this.detectedCount,
-    required this.personCount,
-    required this.objectCount,
-    required this.guidance,
-    required this.mainSubjectLabel,
-    required this.isFrontCamera,
-    required this.currentZoom,
-    required this.isLocked,
-    required this.canLock,
-    required this.onToggleLock,
+    required this.torchOn,
+    required this.onToggleTorch,
+    required this.timerSeconds,
+    required this.onCycleTimer,
   });
 
   @override
   Widget build(BuildContext context) {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _GlassIconButton(
-          icon: Icons.arrow_back_ios_new_rounded,
-          onTap: onBack,
-        ),
+        _GlassIconButton(icon: Icons.arrow_back_ios_new_rounded, onTap: onBack),
         const Spacer(),
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 240),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.45),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white24),
-            ),
-            child: DefaultTextStyle(
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                height: 1.35,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    '${isFrontCamera ? 'Front' : 'Back'} | ${currentZoom.toStringAsFixed(1)}x',
-                  ),
-                  Text('Total: $detectedCount  Person: $personCount  Object: $objectCount'),
-                  Text(mainSubjectLabel == null ? guidance : 'Main: $mainSubjectLabel'),
-                  if (mainSubjectLabel != null) Text(guidance),
-                  const SizedBox(height: 8),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: GestureDetector(
-                      onTap: canLock || isLocked ? onToggleLock : null,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: isLocked
-                              ? const Color(0xFF38BDF8)
-                              : Colors.white.withValues(alpha: 0.10),
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(
-                            color: isLocked
-                                ? const Color(0xFF38BDF8)
-                                : Colors.white24,
-                          ),
-                        ),
-                        child: Text(
-                          isLocked ? '고정 해제' : '피사체 고정',
-                          style: TextStyle(
-                            color: isLocked
-                                ? const Color(0xFF0F172A)
-                                : (canLock ? Colors.white : Colors.white54),
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+        if (onToggleTorch != null) ...[
+          _GlassIconButton(
+            icon: torchOn ? Icons.flash_on_rounded : Icons.flash_off_rounded,
+            onTap: onToggleTorch!,
+            tint: torchOn ? const Color(0xFFFBBF24) : null,
           ),
+          const SizedBox(width: 8),
+        ],
+        _GlassIconButton(
+          icon: Icons.timer_outlined,
+          onTap: onCycleTimer,
+          tint: timerSeconds > 0 ? const Color(0xFF38BDF8) : null,
+          label: timerSeconds > 0 ? '${timerSeconds}s' : null,
         ),
       ],
     );
@@ -532,19 +588,24 @@ class _BottomCameraControls extends StatelessWidget {
   final List<double> zoomPresets;
   final double selectedZoom;
   final bool isSaving;
+  final ShootingMode shootingMode;
+  final CoachingLevel coachingLevel;
   final ValueChanged<double> onSelectZoom;
   final VoidCallback onGallery;
   final Future<void> Function() onCapture;
   final Future<void> Function() onFlipCamera;
-
+  final ValueChanged<ShootingMode> onModeChanged;
   const _BottomCameraControls({
     required this.zoomPresets,
     required this.selectedZoom,
     required this.isSaving,
+    required this.shootingMode,
+    required this.coachingLevel,
     required this.onSelectZoom,
     required this.onGallery,
     required this.onCapture,
     required this.onFlipCamera,
+    required this.onModeChanged,
   });
 
   @override
@@ -552,26 +613,23 @@ class _BottomCameraControls extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
-          height: 40,
-          padding: const EdgeInsets.all(4),
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.45),
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: Colors.white24),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: zoomPresets
-                .map(
-                  (zoom) => _ZoomPill(
-                    label: '${zoom.toStringAsFixed(zoom == zoom.truncateToDouble() ? 0 : 1)}x',
+        _ModeSwitcher(selected: shootingMode, onChanged: onModeChanged),
+        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: zoomPresets
+              .map(
+                (zoom) => Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: _ZoomPill(
+                    label:
+                        '${zoom.toStringAsFixed(zoom == zoom.truncateToDouble() ? 0 : 1)}x',
                     selected: (selectedZoom - zoom).abs() < 0.05,
                     onTap: () => onSelectZoom(zoom),
                   ),
-                )
-                .toList(),
-          ),
+                ),
+              )
+              .toList(),
         ),
         const SizedBox(height: 24),
         Row(
@@ -583,45 +641,10 @@ class _BottomCameraControls extends StatelessWidget {
               diameter: 48,
             ),
             const SizedBox(width: 48),
-            GestureDetector(
-              onTap: isSaving ? null : onCapture,
-              child: Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x33000000),
-                      blurRadius: 20,
-                      offset: Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: Center(
-                  child: isSaving
-                      ? const SizedBox(
-                          width: 28,
-                          height: 28,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 3,
-                            color: Color(0xFF333333),
-                          ),
-                        )
-                      : Container(
-                          width: 64,
-                          height: 64,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: const Color(0x1A333333),
-                              width: 2,
-                            ),
-                          ),
-                        ),
-                ),
-              ),
+            _CaptureButton(
+              isSaving: isSaving,
+              isShootReady: coachingLevel == CoachingLevel.good,
+              onCapture: onCapture,
             ),
             const SizedBox(width: 48),
             _GlassIconButton(
@@ -636,32 +659,260 @@ class _BottomCameraControls extends StatelessWidget {
   }
 }
 
-class _GlassIconButton extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onTap;
-  final double diameter;
-
-  const _GlassIconButton({
-    required this.icon,
-    required this.onTap,
-    this.diameter = 40,
+class _CoachingSpeechBubble extends StatelessWidget {
+  final String guidance;
+  final String? subGuidance;
+  final CoachingLevel level;
+  const _CoachingSpeechBubble({
+    required this.guidance,
+    required this.subGuidance,
+    required this.level,
   });
 
   @override
   Widget build(BuildContext context) {
+    final color = switch (level) {
+      CoachingLevel.good => const Color(0xFF4ADE80),
+      CoachingLevel.warning => const Color(0xFFFBBF24),
+      CoachingLevel.caution => Colors.white,
+    };
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 220),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: level == CoachingLevel.good
+              ? color
+              : color.withValues(alpha: 0.35),
+          width: level == CoachingLevel.good ? 2.0 : 1.5,
+        ),
+        boxShadow: level == CoachingLevel.good
+            ? [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.4),
+                  blurRadius: 8,
+                  spreadRadius: 1,
+                ),
+              ]
+            : null,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text(
+            guidance,
+            textAlign: TextAlign.right,
+            style: TextStyle(
+              color: color,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              height: 1.3,
+            ),
+          ),
+          if (subGuidance != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              subGuidance!,
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                color: color.withValues(alpha: 0.7),
+                fontSize: 11,
+                height: 1.3,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _CaptureButton extends StatefulWidget {
+  final bool isSaving;
+  final bool isShootReady;
+  final Future<void> Function() onCapture;
+  const _CaptureButton({
+    required this.isSaving,
+    required this.isShootReady,
+    required this.onCapture,
+  });
+
+  @override
+  State<_CaptureButton> createState() => _CaptureButtonState();
+}
+
+class _CaptureButtonState extends State<_CaptureButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulseController;
+  late final Animation<double> _pulseAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+    _pulseAnim = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: widget.isSaving ? null : widget.onCapture,
+      child: AnimatedBuilder(
+        animation: _pulseAnim,
+        builder: (context, child) {
+          final glow = widget.isShootReady ? _pulseAnim.value : 0.0;
+          return Container(
+            width: 80,
+            height: 80,
+            decoration: BoxDecoration(
+              color: widget.isShootReady
+                  ? const Color(0xFF4ADE80)
+                  : Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: widget.isShootReady
+                  ? [
+                      BoxShadow(
+                        color: const Color(0xFF4ADE80).withValues(
+                          alpha: 0.35 + glow * 0.45,
+                        ),
+                        blurRadius: 12 + glow * 20,
+                        spreadRadius: 2 + glow * 8,
+                      ),
+                    ]
+                  : null,
+            ),
+            child: Center(
+              child: widget.isSaving
+                  ? const SizedBox(
+                      width: 28,
+                      height: 28,
+                      child: CircularProgressIndicator(strokeWidth: 3),
+                    )
+                  : Container(
+                      width: 64,
+                      height: 64,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: const Color(0x1A333333),
+                          width: 2,
+                        ),
+                      ),
+                    ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ModeSwitcher extends StatelessWidget {
+  final ShootingMode selected;
+  final ValueChanged<ShootingMode> onChanged;
+  const _ModeSwitcher({required this.selected, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white24),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: ShootingMode.values
+            .map(
+              (mode) => GestureDetector(
+                onTap: () => onChanged(mode),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 22,
+                    vertical: 7,
+                  ),
+                  decoration: BoxDecoration(
+                    color: selected == mode ? Colors.white : Colors.transparent,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    mode.label,
+                    style: TextStyle(
+                      color: selected == mode
+                          ? const Color(0xFF333333)
+                          : Colors.white70,
+                    ),
+                  ),
+                ),
+              ),
+            )
+            .toList(),
+      ),
+    );
+  }
+}
+
+class _GlassIconButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  final double diameter;
+  final Color? tint;
+  final String? label;
+  const _GlassIconButton({
+    required this.icon,
+    required this.onTap,
+    this.diameter = 40,
+    this.tint,
+    this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = tint ?? const Color(0x66333333);
+    final iconColor = tint != null ? const Color(0xFF0F172A) : Colors.white;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(999),
       child: Container(
-        width: diameter,
+        width: label != null ? null : diameter,
         height: diameter,
+        padding: label != null
+            ? const EdgeInsets.symmetric(horizontal: 10)
+            : null,
         decoration: BoxDecoration(
-          color: const Color(0x66333333),
+          color: bg,
           borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: const Color(0x4DFFFFFF), width: 1),
+          border: Border.all(color: tint ?? const Color(0x4DFFFFFF), width: 1),
         ),
         alignment: Alignment.center,
-        child: Icon(icon, color: Colors.white, size: diameter * 0.45),
+        child: label != null
+            ? Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, color: iconColor, size: diameter * 0.42),
+                  const SizedBox(width: 4),
+                  Text(
+                    label!,
+                    style: TextStyle(color: iconColor, fontSize: 11),
+                  ),
+                ],
+              )
+            : Icon(icon, color: iconColor, size: diameter * 0.45),
       ),
     );
   }
@@ -671,7 +922,6 @@ class _ZoomPill extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
-
   const _ZoomPill({
     required this.label,
     required this.selected,
@@ -709,12 +959,10 @@ class _ThirdsGridPainter extends CustomPainter {
     final paint = Paint()
       ..color = const Color(0x33FFFFFF)
       ..strokeWidth = 1;
-
     final dx1 = size.width / 3;
     final dx2 = size.width * 2 / 3;
     final dy1 = size.height / 3;
     final dy2 = size.height * 2 / 3;
-
     canvas.drawLine(Offset(dx1, 0), Offset(dx1, size.height), paint);
     canvas.drawLine(Offset(dx2, 0), Offset(dx2, size.height), paint);
     canvas.drawLine(Offset(0, dy1), Offset(size.width, dy1), paint);
@@ -725,97 +973,7 @@ class _ThirdsGridPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-class _DetectionBox {
-  final Rect rect;
-  final String className;
-  final double confidence;
-  final bool isMainSubject;
-
-  const _DetectionBox({
-    required this.rect,
-    required this.className,
-    required this.confidence,
-    required this.isMainSubject,
-  });
-
-  bool get isPerson => className.toLowerCase() == 'person';
-}
-
 class _TrackedSubject {
-  final String className;
   final Rect normalizedBox;
-  final Rect rect;
-  final double confidence;
-
-  const _TrackedSubject({
-    required this.className,
-    required this.normalizedBox,
-    required this.rect,
-    required this.confidence,
-  });
-}
-
-class _CameraDetectionPainter extends CustomPainter {
-  final List<_DetectionBox> detections;
-
-  const _CameraDetectionPainter({required this.detections});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    for (final detection in detections) {
-      final accent = detection.isMainSubject
-          ? const Color(0xFF38BDF8)
-          : detection.isPerson
-              ? const Color(0xFF4ADE80)
-              : const Color(0xFFFB923C);
-
-      final rect = Rect.fromLTRB(
-        detection.rect.left.clamp(0.0, size.width),
-        detection.rect.top.clamp(0.0, size.height),
-        detection.rect.right.clamp(0.0, size.width),
-        detection.rect.bottom.clamp(0.0, size.height),
-      );
-
-      canvas.drawRect(
-        rect,
-        Paint()
-          ..color = Colors.black.withValues(alpha: 0.55)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = detection.isMainSubject ? 4 : 3,
-      );
-
-      canvas.drawRect(
-        rect,
-        Paint()
-          ..color = accent
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = detection.isMainSubject ? 3 : 2,
-      );
-
-      final label =
-          '${detection.className} ${(detection.confidence * 100).toStringAsFixed(1)}%';
-      final textPainter = TextPainter(
-        text: TextSpan(
-          text: label,
-          style: TextStyle(
-            color: accent,
-            fontSize: detection.isMainSubject ? 13 : 12,
-            fontWeight: FontWeight.w700,
-            shadows: const [Shadow(color: Colors.black, blurRadius: 4)],
-          ),
-        ),
-        textDirection: TextDirection.ltr,
-      )..layout();
-
-      textPainter.paint(
-        canvas,
-        Offset(rect.left, (rect.top - 20).clamp(0.0, size.height - 20)),
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _CameraDetectionPainter oldDelegate) {
-    return oldDelegate.detections != detections;
-  }
+  const _TrackedSubject({required this.normalizedBox});
 }

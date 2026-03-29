@@ -260,7 +260,21 @@ class _GalleryScreenState extends State<GalleryScreen> {
                               index,
                             ) {
                               final asset = _photos[index];
-                              return _GalleryThumb(future: _thumb(asset));
+                              return GestureDetector(
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => _PhotoDetailPage(
+                                      photos: _photos,
+                                      initialIndex: index,
+                                    ),
+                                  ),
+                                ),
+                                child: Hero(
+                                  tag: 'photo_${asset.id}',
+                                  child: _GalleryThumb(future: _thumb(asset)),
+                                ),
+                              );
                             }, childCount: _photos.length),
                             gridDelegate:
                                 const SliverGridDelegateWithFixedCrossAxisCount(
@@ -301,7 +315,7 @@ class _AlbumChipRow extends StatelessWidget {
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: albums.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        separatorBuilder: (context, i) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
           final album = albums[index];
           final selected = selectedAlbum?.id == album.id;
@@ -580,6 +594,111 @@ class _EmptyAlbumView extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _PhotoDetailPage extends StatefulWidget {
+  final List<AssetEntity> photos;
+  final int initialIndex;
+
+  const _PhotoDetailPage({required this.photos, required this.initialIndex});
+
+  @override
+  State<_PhotoDetailPage> createState() => _PhotoDetailPageState();
+}
+
+class _PhotoDetailPageState extends State<_PhotoDetailPage> {
+  late int _currentIndex;
+  late PageController _pageController;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex;
+    _pageController = PageController(initialPage: widget.initialIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          PageView.builder(
+            controller: _pageController,
+            itemCount: widget.photos.length,
+            onPageChanged: (i) => setState(() => _currentIndex = i),
+            itemBuilder: (context, index) {
+              final asset = widget.photos[index];
+              return InteractiveViewer(
+                minScale: 1.0,
+                maxScale: 4.0,
+                child: Center(
+                  child: Hero(
+                    tag: 'photo_${asset.id}',
+                    child: FutureBuilder<Uint8List?>(
+                      future: asset.originBytes,
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          return const Center(
+                            child: CircularProgressIndicator(
+                              color: Colors.white54,
+                              strokeWidth: 2,
+                            ),
+                          );
+                        }
+                        if (snapshot.data == null) {
+                          return const Icon(
+                            Icons.broken_image_outlined,
+                            color: Colors.white38,
+                            size: 48,
+                          );
+                        }
+                        return Image.memory(
+                          snapshot.data!,
+                          fit: BoxFit.contain,
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                children: [
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.arrow_back_ios_new_rounded,
+                        color: Colors.white),
+                  ),
+                  const Spacer(),
+                  Text(
+                    '${_currentIndex + 1} / ${widget.photos.length}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
