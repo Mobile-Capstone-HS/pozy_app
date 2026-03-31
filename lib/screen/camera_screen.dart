@@ -7,8 +7,14 @@ import 'package:ultralytics_yolo/yolo_streaming_config.dart';
 import 'package:ultralytics_yolo/yolo_view.dart';
 import 'package:ultralytics_yolo/widgets/yolo_controller.dart';
 
+import '../models/composition_candidate.dart';
+import '../services/composition_candidate_generator.dart';
+import '../services/composition_scorer.dart';
+import '../services/composition_stabilizer.dart';
+import '../services/level_provider.dart';
 import '../subject_detection.dart' show detectModelPath, detectionConfidenceThreshold;
 import '../subject_selector.dart';
+import '../widget/composition_overlay_painter.dart';
 
 class CameraScreen extends StatefulWidget {
   final ValueChanged<int> onMoveTab;
@@ -52,6 +58,18 @@ class _CameraScreenState extends State<CameraScreen> {
   bool _isFrontCamera = false;
   bool _isSaving = false;
   bool _showFlash = false;
+
+  // ── Composition demo ────────────────────────────────────────────────────────
+  bool _compositionMode = false;
+  bool _showCompDebug = false;
+  CompositionCandidate? _activeCompositionCandidate;
+  List<CompositionCandidate> _allCandidates = [];
+
+  final CompositionCandidateGenerator _candidateGenerator =
+      CompositionCandidateGenerator();
+  final CompositionScorer _scorer = const CompositionScorer();
+  final CompositionStabilizer _stabilizer = CompositionStabilizer();
+  final LevelProvider _levelProvider = const LevelProvider();
 
   @override
   void initState() {
@@ -188,6 +206,17 @@ class _CameraScreenState extends State<CameraScreen> {
     });
   }
 
+  void _toggleCompositionMode() {
+    setState(() {
+      _compositionMode = !_compositionMode;
+      if (!_compositionMode) {
+        _stabilizer.reset();
+        _activeCompositionCandidate = null;
+        _allCandidates = [];
+      }
+    });
+  }
+
   void _handleDetections(List<YOLOResult> results) {
     if (!mounted) return;
 
@@ -200,6 +229,24 @@ class _CameraScreenState extends State<CameraScreen> {
     final visibleResults = _lockedSubject != null
         ? (mainId == null ? <YOLOResult>[] : <YOLOResult>[results[mainId]])
         : results;
+
+    // ── Composition pipeline (runs outside setState for performance) ─────────
+    CompositionCandidate? newActiveCandidate;
+    List<CompositionCandidate> newAllCandidates = [];
+    if (_compositionMode) {
+      final subjectBox = currentMain?.normalizedBox;
+      final candidates = _candidateGenerator.generate(
+        previewSize: previewSize,
+        subjectNormalized: subjectBox,
+      );
+      final scored = _scorer.score(
+        candidates: candidates,
+        subjectNormalized: subjectBox,
+        previewSize: previewSize,
+      );
+      newActiveCandidate = _stabilizer.stabilize(scored);
+      newAllCandidates = scored;
+    }
 
     setState(() {
       _detectedCount = visibleResults.length;
@@ -232,6 +279,11 @@ class _CameraScreenState extends State<CameraScreen> {
             ),
           ),
         );
+
+      if (_compositionMode) {
+        _activeCompositionCandidate = newActiveCandidate;
+        _allCandidates = newAllCandidates;
+      }
     });
   }
 
@@ -382,6 +434,18 @@ class _CameraScreenState extends State<CameraScreen> {
                 size: Size.infinite,
               ),
             ),
+            if (_compositionMode)
+              IgnorePointer(
+                child: CustomPaint(
+                  painter: CompositionOverlayPainter(
+                    activeCandidate: _activeCompositionCandidate,
+                    allCandidates: _allCandidates,
+                    showDebug: _showCompDebug,
+                    showLevelGuide: _levelProvider.isLevel(),
+                  ),
+                  size: Size.infinite,
+                ),
+              ),
             Positioned(
               top: 8,
               left: 16,
@@ -398,6 +462,10 @@ class _CameraScreenState extends State<CameraScreen> {
                 isLocked: _lockedSubject != null,
                 canLock: _currentMainSubject != null,
                 onToggleLock: _toggleSubjectLock,
+                compositionMode: _compositionMode,
+                onToggleComposition: _toggleCompositionMode,
+                onLongPressComposition: () =>
+                    setState(() => _showCompDebug = !_showCompDebug),
               ),
             ),
             Positioned(
@@ -434,6 +502,9 @@ class _TopCameraBar extends StatelessWidget {
   final bool isLocked;
   final bool canLock;
   final VoidCallback onToggleLock;
+  final bool compositionMode;
+  final VoidCallback onToggleComposition;
+  final VoidCallback onLongPressComposition;
 
   const _TopCameraBar({
     required this.onBack,
@@ -447,6 +518,9 @@ class _TopCameraBar extends StatelessWidget {
     required this.isLocked,
     required this.canLock,
     required this.onToggleLock,
+    required this.compositionMode,
+    required this.onToggleComposition,
+    required this.onLongPressComposition,
   });
 
   @override
@@ -457,6 +531,35 @@ class _TopCameraBar extends StatelessWidget {
         _GlassIconButton(
           icon: Icons.arrow_back_ios_new_rounded,
           onTap: onBack,
+        ),
+        const SizedBox(width: 8),
+        GestureDetector(
+          onTap: onToggleComposition,
+          onLongPress: onLongPressComposition,
+          child: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: compositionMode
+                  ? const Color(0xCCFFD700)
+                  : const Color(0x66333333),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(
+                color: compositionMode
+                    ? const Color(0xFFFFD700)
+                    : const Color(0x4DFFFFFF),
+                width: 1,
+              ),
+            ),
+            alignment: Alignment.center,
+            child: Icon(
+              compositionMode
+                  ? Icons.crop_square_rounded
+                  : Icons.grid_on_outlined,
+              color: compositionMode ? Colors.black : Colors.white,
+              size: 18,
+            ),
+          ),
         ),
         const Spacer(),
         ConstrainedBox(
