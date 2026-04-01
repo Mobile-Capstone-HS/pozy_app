@@ -43,11 +43,6 @@ class _EditorScreenState extends State<EditorScreen> {
   double? _originalAspectRatio;
   bool _imageModified = false;
 
-  Uint8List? _originalSourceBytes;
-  Uint8List? _originalPreviewSourceBytes;
-  double? _originalAspectRatio;
-  bool _imageModified = false;
-
   bool _isPreparingImage = false;
   bool _isRenderingPreview = false;
   bool _isSaving = false;
@@ -174,10 +169,6 @@ class _EditorScreenState extends State<EditorScreen> {
         _previewSourceBytes = prepared['preview'];
         _previewBytes = prepared['preview'];
         _imageAspectRatio = prepared['aspectRatio'] as double;
-        _originalSourceBytes = prepared['source'];
-        _originalPreviewSourceBytes = prepared['preview'];
-        _originalAspectRatio = prepared['aspectRatio'] as double;
-        _imageModified = false;
         _originalSourceBytes = prepared['source'];
         _originalPreviewSourceBytes = prepared['preview'];
         _originalAspectRatio = prepared['aspectRatio'] as double;
@@ -756,66 +747,6 @@ class _EditorScreenState extends State<EditorScreen> {
     );
   }
 
-  Widget _buildAiEditButton() {
-    return GestureDetector(
-      onTap: _showAiEditSheet,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-        decoration: BoxDecoration(
-          color: AppColors.soft,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: const Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.auto_awesome, size: 18, color: AppColors.primaryText),
-            SizedBox(width: 8),
-            Text(
-              'AI로 편집하기',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: AppColors.primaryText,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFullResetButton() {
-    return GestureDetector(
-      onTap: _resetEverything,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-        decoration: BoxDecoration(
-          color: AppColors.soft,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: const Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.restart_alt, size: 18, color: AppColors.primaryText),
-            SizedBox(width: 8),
-            Text(
-              '전체 초기화',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: AppColors.primaryText,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildActionRow() {
     final buttonStyle = OutlinedButton.styleFrom(
       padding: const EdgeInsets.symmetric(vertical: 14),
@@ -970,33 +901,6 @@ class _EditorScreenState extends State<EditorScreen> {
                     fontSize: 24,
                     fontWeight: FontWeight.w700,
                     color: AppColors.primaryText,
-                  ),
-                ),
-              ),
-              if (_hasNonZeroAdjustment) ...[
-                const SizedBox(width: 10),
-                GestureDetector(
-                  onTap: _resetAllAdjustments,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 5,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.soft,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Text(
-                      '초기화',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.primaryText,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
                   ),
                 ),
               ),
