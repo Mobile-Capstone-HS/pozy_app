@@ -76,9 +76,8 @@ class PhotoEvaluationResult {
   }) {
     final normalizedFinal = finalScore.clamp(0.0, 1.0).toDouble();
     final normalizedTechnical = technicalScore.clamp(0.0, 1.0).toDouble();
-    final normalizedAesthetic = aestheticScore == null
-        ? null
-        : aestheticScore.clamp(0.0, 1.0).toDouble();
+    final normalizedAesthetic =
+        (aestheticScore?.clamp(0.0, 1.0) as num?)?.toDouble();
 
     return PhotoEvaluationResult(
       finalScore: normalizedFinal,
@@ -98,8 +97,13 @@ class PhotoEvaluationResult {
 
   int get technicalPct => (technicalScore * 100).round();
 
-  int? get aestheticPct =>
-      aestheticScore == null ? null : (aestheticScore! * 100).round();
+  int? get aestheticPct {
+    final score = aestheticScore;
+    if (score == null) {
+      return null;
+    }
+    return (score * 100).round();
+  }
 
   Iterable<ModelScoreDetail> get technicalDetails =>
       scoreDetails.where(
