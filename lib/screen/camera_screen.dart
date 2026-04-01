@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
-
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:gal/gal.dart';
 import 'package:image/image.dart' as img;
@@ -17,7 +17,7 @@ import '../portrait/portrait_scene_state.dart';
 import '../subject_detection.dart'
     show detectModelPath, detectionConfidenceThreshold;
 import '../subject_selector.dart';
-
+import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 // ─── YOLO Pose 키포인트 인덱스 (COCO 17) ────────────────────
 // 0: nose, 1: leftEye, 2: rightEye, 3: leftEar, 4: rightEar,
 // 5: leftShoulder, 6: rightShoulder, 7: leftElbow, 8: rightElbow,
@@ -103,7 +103,23 @@ class _CameraScreenState extends State<CameraScreen> {
   bool _isLightingProcessing = false;
   LightingCondition _lastLighting = LightingCondition.unknown;
   double _lastLightingConf = 0.0;
-
+  // ─── 얼굴 분석 상태 (ML Kit) ────────────────────────
+  static const int _faceAnalysisEveryNFrames = 10;
+  int _faceFrameCount = 0;
+  bool _isFaceProcessing = false;
+  final FaceDetector _faceDetector = FaceDetector(
+    options: FaceDetectorOptions(
+      enableClassification: true, // 눈 감김, 웃음 확률
+      enableTracking: false,
+      performanceMode: FaceDetectorMode.fast,
+    ),
+  );
+  double? _lastFaceYaw;
+  double? _lastFacePitch;
+  double? _lastFaceRoll;
+  double? _lastLeftEyeOpenProb;
+  double? _lastRightEyeOpenProb;
+  double? _lastSmileProb;
   CoachingResult _currentCoaching = const CoachingResult(
     message: '카메라를 사람에게 향해주세요',
     priority: CoachingPriority.critical,
@@ -223,6 +239,62 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
+  Future<void> _runFaceAnalysis() async {
+    _faceFrameCount++;
+    if (!_isPortraitMode ||
+        _isFaceProcessing ||
+        _isSaving ||
+        _faceFrameCount % _faceAnalysisEveryNFrames != 0) {
+      return;
+    }
+
+    _isFaceProcessing = true;
+
+    try {
+      final bytes = await _cameraController.captureFrame();
+      if (bytes == null || bytes.isEmpty) return;
+
+      // JPEG 바이트를 임시 파일로 저장 후 ML Kit에 전달
+      final tempDir = Directory.systemTemp;
+      final tempFile = File('${tempDir.path}/pozy_face_temp.jpg');
+      await tempFile.writeAsBytes(bytes);
+      final inputImage = InputImage.fromFilePath(tempFile.path);
+
+      final faces = await _faceDetector.processImage(inputImage);
+
+      if (faces.isNotEmpty) {
+        final face = faces.first;
+        final changed =
+            _lastFaceYaw != face.headEulerAngleY ||
+            _lastFacePitch != face.headEulerAngleX ||
+            _lastFaceRoll != face.headEulerAngleZ;
+
+        if (changed && mounted) {
+          setState(() {
+            _lastFaceYaw = face.headEulerAngleY;
+            _lastFacePitch = face.headEulerAngleX;
+            _lastFaceRoll = face.headEulerAngleZ;
+            _lastLeftEyeOpenProb = face.leftEyeOpenProbability;
+            _lastRightEyeOpenProb = face.rightEyeOpenProbability;
+            _lastSmileProb = face.smilingProbability;
+          });
+        }
+
+        debugPrint(
+          '[FACE] yaw=${face.headEulerAngleY?.toStringAsFixed(1)} '
+          'pitch=${face.headEulerAngleX?.toStringAsFixed(1)} '
+          'roll=${face.headEulerAngleZ?.toStringAsFixed(1)} '
+          'leftEye=${face.leftEyeOpenProbability?.toStringAsFixed(2)} '
+          'rightEye=${face.rightEyeOpenProbability?.toStringAsFixed(2)}',
+        );
+      }
+    } catch (e) {
+      debugPrint('[FACE] error=$e');
+    } finally {
+      _isFaceProcessing = false;
+    }
+  }
+
   Uint8List _toLuminanceBytes(img.Image image) {
     final bytes = Uint8List(image.width * image.height);
     var index = 0;
@@ -321,6 +393,14 @@ class _CameraScreenState extends State<CameraScreen> {
       _isLightingProcessing = false;
       _lastLighting = LightingCondition.unknown;
       _lastLightingConf = 0.0;
+      _faceFrameCount = 0;
+      _isFaceProcessing = false;
+      _lastFaceYaw = null;
+      _lastFacePitch = null;
+      _lastFaceRoll = null;
+      _lastLeftEyeOpenProb = null;
+      _lastRightEyeOpenProb = null;
+      _lastSmileProb = null;
       _overlayData = OverlayData(
         coaching: const CoachingResult(
           message: '',
@@ -732,7 +812,7 @@ class _CameraScreenState extends State<CameraScreen> {
       rightShoulder: rightShoulder,
     );
     unawaited(_runLightingClassification(mainPerson, faceRect: faceRect));
-
+    unawaited(_runFaceAnalysis());
     double? shoulderAngle;
     final shoulderConf = math.min(
       _getKeypointConfidence(mainPerson, _PoseKeypointIndex.leftShoulder),
@@ -841,13 +921,12 @@ class _CameraScreenState extends State<CameraScreen> {
 
     final state = PortraitSceneState(
       personCount: personCount,
-      shotType: shotType,
-      faceYaw: null,
-      facePitch: null,
-      faceRoll: null,
-      smileProbability: null,
-      leftEyeOpenProb: null,
-      rightEyeOpenProb: null,
+      faceYaw: _lastFaceYaw,
+      facePitch: _lastFacePitch,
+      faceRoll: _lastFaceRoll,
+      smileProbability: _lastSmileProb,
+      leftEyeOpenProb: _lastLeftEyeOpenProb,
+      rightEyeOpenProb: _lastRightEyeOpenProb,
       shoulderAngleDeg: shoulderAngle,
       leftArmBodyGap: leftArmGap,
       rightArmBodyGap: rightArmGap,
@@ -1050,6 +1129,13 @@ class _CameraScreenState extends State<CameraScreen> {
       }
 
       final timestamp = DateTime.now().millisecondsSinceEpoch;
+      debugPrint('[CAPTURE] size=${bytes.length} bytes');
+      final capturedImage = img.decodeImage(bytes);
+      if (capturedImage != null) {
+        debugPrint(
+          '[CAPTURE] resolution=${capturedImage.width}x${capturedImage.height} size=${bytes.length} bytes',
+        );
+      }
       await Gal.putImageBytes(bytes, name: 'pozy_$timestamp');
 
       if (!mounted) return;
@@ -1082,6 +1168,7 @@ class _CameraScreenState extends State<CameraScreen> {
   void dispose() {
     _cameraController.stop();
     _lightingClassifier.dispose();
+    _faceDetector.close();
     super.dispose();
   }
 
