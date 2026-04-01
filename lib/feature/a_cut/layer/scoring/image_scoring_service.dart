@@ -1,12 +1,10 @@
 import 'package:photo_manager/photo_manager.dart';
 
+import '../../model/multi_photo_ranking_result.dart';
 import '../../model/photo_type_mode.dart';
 import '../../model/scored_photo_result.dart';
-import '../inference/aesthetic_inference_service.dart';
+import '../evaluation/photo_evaluation_service.dart';
 import '../ranking/a_cut_ranking_service.dart';
-
-const String nimaAestheticModelPath =
-    'assets/models/nima_aesthetic_fp16_flex.tflite';
 
 abstract class ImageScoreService {
   Future<void> scoreAssets({
@@ -14,7 +12,7 @@ abstract class ImageScoreService {
     required PhotoTypeMode photoTypeMode,
     required double topPercent,
     required void Function(
-      List<ScoredPhotoResult> snapshot,
+      MultiPhotoRankingResult snapshot,
       int done,
       int total,
     )
@@ -22,18 +20,15 @@ abstract class ImageScoreService {
   });
 }
 
-class NimaImageScoreService implements ImageScoreService {
-  NimaImageScoreService({
-    PhotoInferenceService? aestheticInference,
+class OnDeviceImageScoreService implements ImageScoreService {
+  OnDeviceImageScoreService({
+    PhotoEvaluationService? evaluationService,
     ACutRankingService? rankingService,
-  }) : _aestheticInference =
-           aestheticInference ??
-           NimaAestheticInferenceService(
-             modelAssetPath: nimaAestheticModelPath,
-           ),
+  }) : _evaluationService =
+           evaluationService ?? OnDevicePhotoEvaluationService(),
        _rankingService = rankingService ?? const ACutRankingService();
 
-  final PhotoInferenceService _aestheticInference;
+  final PhotoEvaluationService _evaluationService;
   final ACutRankingService _rankingService;
 
   @override
@@ -42,7 +37,7 @@ class NimaImageScoreService implements ImageScoreService {
     required PhotoTypeMode photoTypeMode,
     required double topPercent,
     required void Function(
-      List<ScoredPhotoResult> snapshot,
+      MultiPhotoRankingResult snapshot,
       int done,
       int total,
     )
@@ -51,14 +46,14 @@ class NimaImageScoreService implements ImageScoreService {
     final total = assets.length;
     final working = <ScoredPhotoResult>[];
 
-    for (var i = 0; i < assets.length; i++) {
-      final asset = assets[i];
-      final name = await _resolveFilename(asset, i);
+    for (var index = 0; index < assets.length; index++) {
+      final asset = assets[index];
+      final name = await _resolveFilename(asset, index);
       working.add(
         ScoredPhotoResult(
           asset: asset,
           fileName: name,
-          selectedIndex: i,
+          selectedIndex: index,
           status: ScoreStatus.pending,
           photoTypeMode: photoTypeMode,
         ),
@@ -72,8 +67,8 @@ class NimaImageScoreService implements ImageScoreService {
     );
 
     var done = 0;
-    for (var i = 0; i < working.length; i++) {
-      final current = working[i];
+    for (var index = 0; index < working.length; index++) {
+      final current = working[index];
 
       try {
         final originBytes = await current.asset.originBytes;
@@ -81,20 +76,21 @@ class NimaImageScoreService implements ImageScoreService {
           throw Exception('Cannot read image bytes.');
         }
 
-        final inferenceOutput = await _aestheticInference.run(originBytes);
+        final evaluation = await _evaluationService.evaluate(
+          originBytes,
+          fileName: current.fileName,
+        );
 
-        working[i] = current.copyWith(
+        working[index] = current.copyWith(
           status: ScoreStatus.success,
-          aestheticScore: inferenceOutput.meanScore,
-          aestheticDistribution: inferenceOutput.distribution,
+          evaluation: evaluation,
           clearErrorMessage: true,
-          photoTypeMode: photoTypeMode,
         );
       } catch (error) {
-        working[i] = current.copyWith(
+        working[index] = current.copyWith(
           status: ScoreStatus.failed,
           errorMessage: error.toString(),
-          photoTypeMode: photoTypeMode,
+          clearEvaluation: true,
         );
       }
 

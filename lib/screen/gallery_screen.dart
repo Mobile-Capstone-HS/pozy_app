@@ -10,6 +10,7 @@ import '../theme/app_shadows.dart';
 import '../theme/app_text_styles.dart';
 import '../widget/app_top_bar.dart';
 import 'a_cut_result_screen.dart';
+import 'single_photo_eval_screen.dart';
 
 class GalleryScreen extends StatefulWidget {
   final ValueChanged<int> onMoveTab;
@@ -201,6 +202,38 @@ class _GalleryScreenState extends State<GalleryScreen> {
     );
   }
 
+  Future<void> _openSinglePhotoEvaluation() async {
+    if (_selectedAssetsById.length != 1) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('사진 1장을 선택해 주세요.')));
+      return;
+    }
+
+    final asset = _selectedAssetsById.values.first;
+    final bytes = await asset.originBytes;
+    if (!mounted) return;
+
+    if (bytes == null || bytes.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('이미지 원본을 불러오지 못했습니다.')));
+      return;
+    }
+
+    final title = await asset.titleAsync;
+    if (!mounted) return;
+
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => SinglePhotoEvalScreen(
+          imageBytes: bytes,
+          fileName: title.trim().isEmpty ? 'photo_1' : title,
+        ),
+      ),
+    );
+  }
+
   void _clearSelection() {
     setState(() {
       _selectedAssetsById.clear();
@@ -327,6 +360,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
               _SelectionActionBar(
                 selectedCount: _selectedAssetsById.length,
                 onClear: _selectedAssetsById.isEmpty ? null : _clearSelection,
+                onEvaluateSingle: _openSinglePhotoEvaluation,
                 onAnalyze: _openACutResultScreen,
               ),
           ],
@@ -385,11 +419,13 @@ class _PhotoTypeSelector extends StatelessWidget {
 class _SelectionActionBar extends StatelessWidget {
   final int selectedCount;
   final VoidCallback? onClear;
+  final VoidCallback onEvaluateSingle;
   final VoidCallback onAnalyze;
 
   const _SelectionActionBar({
     required this.selectedCount,
     required this.onClear,
+    required this.onEvaluateSingle,
     required this.onAnalyze,
   });
 
@@ -401,38 +437,71 @@ class _SelectionActionBar extends StatelessWidget {
         color: Colors.white,
         border: Border(top: BorderSide(color: AppColors.border)),
       ),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
-            child: Text(
-              '선택됨 $selectedCount장',
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: AppColors.primaryText,
-              ),
-            ),
-          ),
-          if (onClear != null)
-            TextButton(onPressed: onClear, child: const Text('초기화')),
-          const SizedBox(width: 8),
-          SizedBox(
-            height: 42,
-            child: ElevatedButton(
-              onPressed: onAnalyze,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.buttonDark,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '선택됨 $selectedCount장',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primaryText,
+                  ),
                 ),
               ),
-              child: const Text(
-                'A컷 분석',
-                style: TextStyle(fontWeight: FontWeight.w700),
+              if (onClear != null)
+                TextButton(onPressed: onClear, child: const Text('초기화')),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              if (selectedCount == 1) ...[
+                Expanded(
+                  child: SizedBox(
+                    height: 42,
+                    child: OutlinedButton(
+                      onPressed: onEvaluateSingle,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.primaryText,
+                        side: const BorderSide(color: AppColors.border),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text(
+                        '사진 평가',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
+              Expanded(
+                child: SizedBox(
+                  height: 42,
+                  child: ElevatedButton(
+                    onPressed: onAnalyze,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.buttonDark,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text(
+                      'A컷 분석',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
         ],
       ),

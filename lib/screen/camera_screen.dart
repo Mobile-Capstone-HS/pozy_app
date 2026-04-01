@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:gal/gal.dart';
@@ -8,18 +9,20 @@ import 'package:ultralytics_yolo/yolo_streaming_config.dart';
 import 'package:ultralytics_yolo/yolo_view.dart';
 import 'package:ultralytics_yolo/widgets/yolo_controller.dart';
 
+import '../feature/a_cut/layer/evaluation/photo_evaluation_service.dart';
 import '../models/composition_candidate.dart';
 import '../models/tracked_subject.dart';
 import '../services/composition_candidate_generator.dart';
 import '../services/composition_feedback_service.dart';
-import '../services/composition_scorer.dart';
 import '../services/composition_stabilizer.dart';
+import '../services/model_composition_scorer.dart';
 import '../services/level_provider.dart'
     show LevelProviderBase, StubLevelProvider;
 import '../subject_detection.dart'
     show detectModelPath, detectionConfidenceThreshold;
 import '../subject_selector.dart';
 import '../widget/composition_overlay_painter.dart';
+import 'single_photo_eval_screen.dart';
 
 class CameraScreen extends StatefulWidget {
   final ValueChanged<int> onMoveTab;
@@ -59,7 +62,9 @@ class _CameraScreenState extends State<CameraScreen> {
 
   final CompositionCandidateGenerator _candidateGenerator =
       CompositionCandidateGenerator();
-  final CompositionScorerBase _scorer = const HeuristicCompositionScorer();
+  // ModelCompositionScorer fuses AADB model scores with heuristic geometry
+  // scores.  It falls back to pure heuristic if the model file is absent.
+  final ModelCompositionScorer _scorer = ModelCompositionScorer();
   final CompositionStabilizer _stabilizer = CompositionStabilizer();
   final CompositionFeedbackService _feedbackService = CompositionFeedbackService();
   final LevelProviderBase _levelProvider = const StubLevelProvider();
@@ -123,11 +128,15 @@ class _CameraScreenState extends State<CameraScreen> {
           previewSize: previewSize,
           subjectNormalized: subjectBox,
         );
+        // Synchronous: returns heuristic scores fused with cached model scores.
         _cachedRankedCandidates = _scorer.score(
           candidates: candidates,
           subjectNormalized: subjectBox,
           previewSize: previewSize,
         );
+        // Async fire-and-forget: captures current frame and runs AADB model on
+        // top-K candidates.  Updated scores are used on the next throttle tick.
+        _scheduleModelUpdate(previewSize);
       }
 
       final stableBest = _stabilizer.stabilize(_cachedRankedCandidates);
@@ -148,6 +157,7 @@ class _CameraScreenState extends State<CameraScreen> {
       // No subject or grace period expired.
       _stabilizer.reset();
       _feedbackService.reset();
+      _scorer.reset();
       _cachedRankedCandidates = [];
       _smoothedRenderRect = null;
       newActiveCandidate = null;
@@ -180,6 +190,31 @@ class _CameraScreenState extends State<CameraScreen> {
       _feedbackResult = feedback;
       _lastCompTimeMs = _compStopwatch.elapsedMilliseconds;
     });
+  }
+
+  // ── Model inference fire-and-forget ────────────────────────────────────────
+
+  /// Captures the current camera frame and asks [_scorer] to update its
+  /// internal model scores asynchronously.
+  ///
+  /// This is called once per composition throttle tick.  It never blocks
+  /// [_handleDetections] — any exception is silently swallowed and the scorer
+  /// continues in heuristic-only mode.
+  Future<void> _scheduleModelUpdate(Size previewSize) async {
+    if (_scorer.isInferring) return; // previous inference still running — skip
+    final Uint8List? frameBytes;
+    try {
+      frameBytes = await _cameraController.captureFrame();
+    } catch (_) {
+      return; // capture failed — skip this tick
+    }
+    if (frameBytes == null || frameBytes.isEmpty || !mounted) return;
+    // Fire-and-forget: errors inside updateModelScores are handled gracefully.
+    unawaited(_scorer.updateModelScores(
+      frameBytes: frameBytes,
+      heuristicTop: _cachedRankedCandidates,
+      frameSize: previewSize,
+    ));
   }
 
   CompositionCandidate _retargetCandidate(
@@ -261,6 +296,7 @@ class _CameraScreenState extends State<CameraScreen> {
                   feedback: _feedbackResult,
                   showDebug: _showCompDebug,
                   tiltAngle: _levelProvider.isLevel() ? _levelProvider.tiltAngle : null,
+                  scorerDebug: _showCompDebug ? _scorer.debugSummary : null,
                 ),
                 size: Size.infinite,
               ),
@@ -393,27 +429,59 @@ class _CameraScreenState extends State<CameraScreen> {
   Future<void> _captureAndSavePhoto() async {
     if (_isSaving) return;
     setState(() => _isSaving = true);
+
+    Uint8List? capturedBytes;
+    String? savedFileName;
+
     try {
       final hasAccess = await Gal.hasAccess() || await Gal.requestAccess();
       if (!hasAccess) return;
       final bytes = await _cameraController.captureFrame();
       if (bytes == null || bytes.isEmpty) throw Exception('Failed to capture frame.');
-      await Gal.putImageBytes(bytes, name: 'pozy_${DateTime.now().millisecondsSinceEpoch}');
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Photo saved.')));
+      capturedBytes = bytes;
+      savedFileName = 'pozy_${DateTime.now().millisecondsSinceEpoch}';
+      await Gal.putImageBytes(bytes, name: savedFileName);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to save: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to save: $e')),
+      );
     } finally {
       if (mounted) {
         setState(() => _isSaving = false);
-        // Visual feedback for capture
         setState(() => _showFlash = true);
         Future.delayed(const Duration(milliseconds: 150), () {
           if (mounted) setState(() => _showFlash = false);
         });
       }
     }
+
+    // ── Post-capture: offer single-photo evaluation ─────────────────────────
+    if (capturedBytes != null && mounted) {
+      _showPostCaptureSheet(capturedBytes, savedFileName);
+    }
+  }
+
+  void _showPostCaptureSheet(Uint8List bytes, String? fileName) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _PostCaptureSheet(
+        onEvaluate: () {
+          Navigator.of(ctx).pop();
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => SinglePhotoEvalScreen(
+                imageBytes: bytes,
+                fileName: fileName,
+                evaluationService: OnDevicePhotoEvaluationService(),
+              ),
+            ),
+          );
+        },
+        onDismiss: () => Navigator.of(ctx).pop(),
+      ),
+    );
   }
 
   @override
@@ -690,4 +758,101 @@ class _CameraDetectionPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _CameraDetectionPainter oldDelegate) => oldDelegate.detections != detections;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Post-capture bottom sheet
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Appears after a photo is saved, giving the user the option to evaluate it.
+class _PostCaptureSheet extends StatelessWidget {
+  final VoidCallback onEvaluate;
+  final VoidCallback onDismiss;
+
+  const _PostCaptureSheet({
+    required this.onEvaluate,
+    required this.onDismiss,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 36,
+            height: 4,
+            margin: const EdgeInsets.only(bottom: 18),
+            decoration: BoxDecoration(
+              color: const Color(0xFFDDDDDD),
+              borderRadius: BorderRadius.circular(999),
+            ),
+          ),
+          const Text(
+            '사진이 저장되었습니다',
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF1A1A1A),
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'AI가 이 사진의 미적 품질을 평가해드릴 수 있어요.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: Color(0xFF6B7280),
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: ElevatedButton.icon(
+              onPressed: onEvaluate,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF1A1A1A),
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              icon: const Icon(Icons.auto_awesome_rounded, size: 18),
+              label: const Text(
+                '사진 평가하기',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            height: 44,
+            child: TextButton(
+              onPressed: onDismiss,
+              child: const Text(
+                '나중에',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF9CA3AF),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

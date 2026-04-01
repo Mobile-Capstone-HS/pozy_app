@@ -10,6 +10,10 @@ class CompositionOverlayPainter extends CustomPainter {
   final bool showDebug;
   final double? tiltAngle;
 
+  /// One-line scorer status string from [ModelCompositionScorer.debugSummary].
+  /// Rendered below the main debug label when non-null.
+  final String? scorerDebug;
+
   static const Color _guideColor = Color(0x66FFFFFF);
   static const Color _almostColor = Color(0xFFFFD700);
   static const Color _goodColor = Color(0xFF4ADE80);
@@ -20,6 +24,7 @@ class CompositionOverlayPainter extends CustomPainter {
     required this.feedback,
     this.showDebug = false,
     this.tiltAngle,
+    this.scorerDebug,
   });
 
   @override
@@ -59,6 +64,9 @@ class CompositionOverlayPainter extends CustomPainter {
 
       if (showDebug) {
         _drawDebugLabel(canvas, px, active, feedback);
+        if (scorerDebug != null) {
+          _drawScorerDebug(canvas, px, scorerDebug!);
+        }
       }
     }
 
@@ -166,6 +174,25 @@ class CompositionOverlayPainter extends CustomPainter {
         Offset(rect.left + 4, (rect.bottom + 6).clamp(0, double.infinity)));
   }
 
+  /// Renders the scorer status string (model mode, inference time, fallback).
+  void _drawScorerDebug(Canvas canvas, Rect rect, String text) {
+    final tp = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: const TextStyle(
+          color: Color(0xFFAAFFAA), // green tint — distinct from the main label
+          fontSize: 9,
+          fontWeight: FontWeight.w600,
+          shadows: [Shadow(color: Colors.black, blurRadius: 3)],
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    // Render one text-height below the main debug label (which sits at rect.bottom + 4).
+    tp.paint(canvas,
+        Offset(rect.left + 4, (rect.bottom + 16).clamp(0, double.infinity)));
+  }
+
   void _drawLevelGuide(Canvas canvas, Size size, double tilt) {
     final cy = size.height / 2;
     final paint = Paint()
@@ -185,6 +212,7 @@ class CompositionOverlayPainter extends CustomPainter {
     return old.activeCandidate != activeCandidate ||
         old.feedback != feedback ||
         old.showDebug != showDebug ||
-        old.tiltAngle != tiltAngle;
+        old.tiltAngle != tiltAngle ||
+        old.scorerDebug != scorerDebug;
   }
 }

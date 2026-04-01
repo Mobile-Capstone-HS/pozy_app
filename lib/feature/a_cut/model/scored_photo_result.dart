@@ -1,5 +1,6 @@
 import 'package:photo_manager/photo_manager.dart';
 
+import 'photo_evaluation_result.dart';
 import 'photo_type_mode.dart';
 
 enum ScoreStatus { pending, success, failed }
@@ -9,8 +10,7 @@ class ScoredPhotoResult {
   final String fileName;
   final int selectedIndex;
   final ScoreStatus status;
-  final double? aestheticScore;
-  final List<double>? aestheticDistribution;
+  final PhotoEvaluationResult? evaluation;
   final int? rank;
   final bool isACut;
   final String? errorMessage;
@@ -22,19 +22,22 @@ class ScoredPhotoResult {
     required this.selectedIndex,
     required this.status,
     required this.photoTypeMode,
-    this.aestheticScore,
-    this.aestheticDistribution,
+    this.evaluation,
     this.rank,
     this.isACut = false,
     this.errorMessage,
   });
 
-  double? get finalScore => aestheticScore;
+  double? get finalScore => evaluation?.finalScore;
+
+  double? get technicalScore => evaluation?.technicalScore;
+
+  bool get isBestShot => status == ScoreStatus.success && rank == 1;
 
   ScoredPhotoResult copyWith({
     ScoreStatus? status,
-    double? aestheticScore,
-    List<double>? aestheticDistribution,
+    PhotoEvaluationResult? evaluation,
+    bool clearEvaluation = false,
     int? rank,
     bool? isACut,
     String? errorMessage,
@@ -46,9 +49,7 @@ class ScoredPhotoResult {
       fileName: fileName,
       selectedIndex: selectedIndex,
       status: status ?? this.status,
-      aestheticScore: aestheticScore ?? this.aestheticScore,
-      aestheticDistribution:
-          aestheticDistribution ?? this.aestheticDistribution,
+      evaluation: clearEvaluation ? null : (evaluation ?? this.evaluation),
       rank: rank,
       isACut: isACut ?? this.isACut,
       errorMessage: clearErrorMessage

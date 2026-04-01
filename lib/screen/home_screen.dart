@@ -55,10 +55,10 @@ class HomeScreen extends StatelessWidget {
               description:
                   'Enjoy Pozy to the fullest and surface the strongest frames fast.',
               buttonText: 'Try Now',
-              onTap: () => onMoveTab(4),
+              onTap: () => onMoveTab(3),
               visual: const _VisualBox(
                 child: Icon(
-                  Icons.edit_outlined,
+                  Icons.content_cut_outlined,
                   size: 54,
                   color: AppColors.primaryText,
                 ),

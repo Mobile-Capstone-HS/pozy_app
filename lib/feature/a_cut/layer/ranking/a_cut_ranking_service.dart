@@ -1,14 +1,15 @@
+import '../../model/multi_photo_ranking_result.dart';
 import '../../model/scored_photo_result.dart';
 
 class ACutRankingService {
   const ACutRankingService();
 
-  List<ScoredPhotoResult> rank({
+  MultiPhotoRankingResult rank({
     required List<ScoredPhotoResult> results,
     required double topPercent,
   }) {
     if (results.isEmpty) {
-      return const [];
+      return const MultiPhotoRankingResult.empty();
     }
 
     final successItems =
@@ -21,16 +22,17 @@ class ACutRankingService {
             .toList()
           ..sort((a, b) => b.finalScore!.compareTo(a.finalScore!));
 
+    final clampedTopPercent = topPercent.clamp(0.1, 1.0).toDouble();
     final cutCount = successItems.isEmpty
         ? 0
-        : _resolveCutCount(total: successItems.length, topPercent: topPercent);
+        : _resolveCutCount(total: successItems.length, topPercent: clampedTopPercent);
 
     final rankedById = <String, ScoredPhotoResult>{};
-    for (var i = 0; i < successItems.length; i++) {
-      final item = successItems[i];
+    for (var index = 0; index < successItems.length; index++) {
+      final item = successItems[index];
       rankedById[item.asset.id] = item.copyWith(
-        rank: i + 1,
-        isACut: i < cutCount,
+        rank: index + 1,
+        isACut: index < cutCount,
       );
     }
 
@@ -48,16 +50,18 @@ class ACutRankingService {
       }
     }
 
-    return [
-      ...successItems.map((item) => rankedById[item.asset.id]!),
-      ...pendingItems,
-      ...failedItems,
-    ];
+    return MultiPhotoRankingResult(
+      items: [
+        ...successItems.map((item) => rankedById[item.asset.id]!),
+        ...pendingItems,
+        ...failedItems,
+      ],
+      topPercent: clampedTopPercent,
+    );
   }
 
   int _resolveCutCount({required int total, required double topPercent}) {
-    final clamped = topPercent.clamp(0.1, 1.0);
-    final raw = (total * clamped).ceil();
+    final raw = (total * topPercent).ceil();
     return raw < 1 ? 1 : raw;
   }
 }
