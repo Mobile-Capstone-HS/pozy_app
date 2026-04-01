@@ -26,6 +26,10 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>NSCameraUsageDescription</key>
 	<string>This app needs camera access for real-time object detection</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>This app needs photo library access to show and select images from your gallery.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>This app needs permission to save edited photos to your gallery.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>

@@ -43,6 +43,12 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
-ai_env/
-__pycache__/
-*.pyc
+
+.env
+
+claude.md
+CLAUDE.md
+./windows/flutter/generated_plugin_registrant.cc
+./macos/Flutter/GeneratedPluginRegistrant.swift
+./windows/flutter/generated_plugins.cmake
+.claude
