@@ -133,10 +133,14 @@ class LightingClassifier {
 
   LightingCondition _labelToCondition(String label) {
     switch (label) {
-      case 'normal_light':
+      case 'front_light':
         return LightingCondition.normal;
+      case 'short_light':
+        return LightingCondition.short;
       case 'side_light':
         return LightingCondition.side;
+      case 'rim_light':
+        return LightingCondition.rim;
       case 'back_light':
         return LightingCondition.back;
       default:
