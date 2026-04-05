@@ -100,7 +100,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
     _startTiltMonitoring();
 
-    _cameraController.onImageMetrics = _onImageMetrics;
+    _attachImageMetricsCallback();
   }
 
   void _startTiltMonitoring() {
@@ -155,6 +155,47 @@ class _CameraScreenState extends State<CameraScreen> {
         _coachingLevel = coaching.level;
       });
     }
+  }
+
+  void _attachImageMetricsCallback() {
+    try {
+      final dynamic controller = _cameraController;
+      controller.onImageMetrics = _onImageMetrics;
+    } catch (_) {
+      // Hosted ultralytics_yolo versions do not expose image-metrics callbacks.
+    }
+  }
+
+  void _setLockedRoi({
+    double? left,
+    double? top,
+    double? right,
+    double? bottom,
+  }) {
+    try {
+      final dynamic controller = _cameraController;
+      controller.setLockedRoi(
+        left: left,
+        top: top,
+        right: right,
+        bottom: bottom,
+      );
+    } catch (_) {
+      // Hosted ultralytics_yolo versions do not expose locked-ROI controls.
+    }
+  }
+
+  List<double>? _appearanceSignatureOf(YOLOResult result) {
+    try {
+      final dynamic dynamicResult = result;
+      final value = dynamicResult.appearanceSignature;
+      if (value is List) {
+        return value.whereType<num>().map((v) => v.toDouble()).toList();
+      }
+    } catch (_) {
+      // Hosted ultralytics_yolo versions do not expose appearance signatures.
+    }
+    return null;
   }
 
   List<YOLOResult> _filterResultsForMode(List<YOLOResult> results) {
@@ -276,7 +317,7 @@ class _CameraScreenState extends State<CameraScreen> {
     final anchorSignature = _lockedAppearanceSignature;
     final recentSignature =
         _lockedRecentAppearanceSignature ?? _lockedAppearanceSignature;
-    final candidateSignature = det.appearanceSignature;
+    final candidateSignature = _appearanceSignatureOf(det);
     final hasAnchorAppearance =
         anchorSignature != null && candidateSignature != null;
     final hasRecentAppearance =
@@ -443,7 +484,7 @@ class _CameraScreenState extends State<CameraScreen> {
     final cameraRoi = _normalizedRect(detection);
     final screenRoi = _cameraToScreen(cameraRoi);
 
-    _cameraController.setLockedRoi(
+    _setLockedRoi(
       left: cameraRoi.left,
       top: cameraRoi.top,
       right: cameraRoi.right,
@@ -457,8 +498,8 @@ class _CameraScreenState extends State<CameraScreen> {
       _lockedClassName = detection.className.toLowerCase();
       _lockedClassIndex = detection.classIndex;
       _lockedAnchorRoiCamera = cameraRoi;
-      _lockedAppearanceSignature = detection.appearanceSignature;
-      _lockedRecentAppearanceSignature = detection.appearanceSignature;
+      _lockedAppearanceSignature = _appearanceSignatureOf(detection);
+      _lockedRecentAppearanceSignature = _appearanceSignatureOf(detection);
       _lockedTrackingDetection = detection;
       _lockedLostFrames = 0;
       _isDrawingRoi = false;
@@ -535,13 +576,13 @@ class _CameraScreenState extends State<CameraScreen> {
         _lockedRoiCamera = rawBox;
         _lockedClassName = bestMatch.className.toLowerCase();
         _lockedClassIndex = bestMatch.classIndex;
-        _lockedAppearanceSignature ??= bestMatch.appearanceSignature;
+        _lockedAppearanceSignature ??= _appearanceSignatureOf(bestMatch);
         _lockedRecentAppearanceSignature = _blendAppearanceSignature(
           _lockedRecentAppearanceSignature,
-          bestMatch.appearanceSignature,
+          _appearanceSignatureOf(bestMatch),
         );
         _lockedTrackingDetection = bestMatch;
-        _cameraController.setLockedRoi(
+        _setLockedRoi(
           left: rawBox.left, top: rawBox.top,
           right: rawBox.right, bottom: rawBox.bottom,
         );
@@ -557,7 +598,7 @@ class _CameraScreenState extends State<CameraScreen> {
         } else {
           _lockedTrackingDetection = null;
           subjectInFrameForCoaching = false;
-          _cameraController.setLockedRoi();
+          _setLockedRoi();
           forCoaching = [];
         }
       }
@@ -684,7 +725,7 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   void _clearLockedRoi() {
-    _cameraController.setLockedRoi();
+    _setLockedRoi();
     _sceneCoach.reset();
     setState(() {
       _lockedRoi = null;
@@ -823,7 +864,7 @@ class _CameraScreenState extends State<CameraScreen> {
     //
 
     // Send camera-coord ROI to Kotlin (matching xywhn coordinate space)
-    _cameraController.setLockedRoi(
+    _setLockedRoi(
       left: cameraRoi.left,
       top: cameraRoi.top,
       right: cameraRoi.right,
