@@ -1,0 +1,65 @@
+{
+  "preset": "koniq",
+  "display_name": "KonIQ Technical Regressor",
+  "task": "technical_quality_regression",
+  "input": {
+    "image_size": [
+      224,
+      224
+    ],
+    "dtype": "float32",
+    "color_format": "RGB",
+    "tensor_layout": "NHWC",
+    "normalization": "pixel_value / 255.0"
+  },
+  "output": {
+    "shape": [
+      1,
+      1
+    ],
+    "summary": "Single scalar technical-quality score.",
+    "interpretation": "Raw MOS-like score. Current repo mobile scoring normalizes with clip(score / 100.0, 0, 1).",
+    "postprocess": "Squeeze to scalar float. Optional normalized score = clip(raw_score / 100.0, 0, 1)."
+  },
+  "source": {
+    "checkpoint_path": "checkpoints/technical_koniq_gpu/final_model.keras",
+    "weights_path": "checkpoints/technical_koniq_gpu/best.weights.h5",
+    "saved_model_dir": "checkpoints/technical_koniq_gpu/saved_model"
+  },
+  "export": {
+    "requested_export_source": "rebuild",
+    "used_export_source": "rebuild",
+    "rebuild_failure": null,
+    "requested_conversion_mode": "builtin",
+    "used_conversion_mode": "builtin",
+    "requires_select_tf_ops": false,
+    "tflite_path": "exports/tflite/koniq_mobile.tflite",
+    "tflite_size_bytes": 9545852,
+    "builtin_failure": null
+  },
+  "saved_model_signature": null,
+  "export_model_io": {
+    "inputs": [
+      {
+        "name": "keras_tensor_154",
+        "shape": [
+          null,
+          224,
+          224,
+          3
+        ],
+        "dtype": "float32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "keras_tensor_159",
+        "shape": [
+          null,
+          1
+        ],
+        "dtype": "float32"
+      }
+    ]
+  }
+}

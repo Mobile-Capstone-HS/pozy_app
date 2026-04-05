@@ -52,10 +52,10 @@ class HomeScreen extends StatelessWidget {
               title: 'Pick your Best',
               description: '지금 바로 Pozy가 선택한 최고의 컷을 확인해보세요.',
               buttonText: 'Try Now',
-              onTap: () => onMoveTab(4),
+              onTap: () => onMoveTab(3),
               visual: const _VisualBox(
                 child: Icon(
-                  Icons.edit_outlined,
+                  Icons.content_cut_outlined,
                   size: 54,
                   color: AppColors.primaryText,
                 ),
