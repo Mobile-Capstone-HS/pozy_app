@@ -15,7 +15,7 @@ class PozyApp extends StatelessWidget {
         scaffoldBackgroundColor: AppColors.background,
         colorScheme: ColorScheme.fromSeed(
           seedColor: AppColors.primaryText,
-          background: AppColors.background,
+          surface: AppColors.background,
         ),
         splashColor: Colors.transparent,
         highlightColor: Colors.transparent,

@@ -568,10 +568,9 @@ packages:
   ultralytics_yolo:
     dependency: "direct main"
     description:
-      name: ultralytics_yolo
-      sha256: a708197eb4a4aaf46103ec2108ef6584fa61c9624076c75bc39ad782bbdbd9ab
-      url: "https://pub.dev"
-    source: hosted
+      path: "packages/ultralytics_yolo"
+      relative: true
+    source: path
     version: "0.1.46"
   vector_math:
     dependency: transitive
