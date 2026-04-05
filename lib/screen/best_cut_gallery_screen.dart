@@ -1,22 +1,23 @@
 import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:photo_manager/photo_manager.dart';
+
+import '../feature/a_cut/model/photo_type_mode.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_shadows.dart';
 import '../theme/app_text_styles.dart';
 import '../widget/app_top_bar.dart';
+import 'a_cut_result_screen.dart';
 
-class GalleryScreen extends StatefulWidget {
-  final ValueChanged<int> onMoveTab;
-  final void Function(Future<Uint8List?> future)? onOpenInEditor;
-
-  const GalleryScreen({super.key, required this.onMoveTab, this.onOpenInEditor});
+class BestCutGalleryScreen extends StatefulWidget {
+  const BestCutGalleryScreen({super.key});
 
   @override
-  State<GalleryScreen> createState() => _GalleryScreenState();
+  State<BestCutGalleryScreen> createState() => _BestCutGalleryScreenState();
 }
 
-class _GalleryScreenState extends State<GalleryScreen> {
+class _BestCutGalleryScreenState extends State<BestCutGalleryScreen> {
   bool _loading = true;
   bool _granted = false;
   bool _showSettingsShortcut = false;
@@ -25,6 +26,8 @@ class _GalleryScreenState extends State<GalleryScreen> {
   List<AssetPathEntity> _albums = [];
   AssetPathEntity? _selectedAlbum;
   List<AssetEntity> _photos = [];
+  final Map<String, AssetEntity> _selectedAssetsById = {};
+  PhotoTypeMode _photoTypeMode = PhotoTypeMode.auto;
 
   @override
   void initState() {
@@ -54,6 +57,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
           _albums = [];
           _selectedAlbum = null;
           _photos = [];
+          _selectedAssetsById.clear();
           _errorMessage = null;
         });
         return;
@@ -79,6 +83,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
           _albums = [];
           _selectedAlbum = null;
           _photos = [];
+          _selectedAssetsById.clear();
           _errorMessage = null;
         });
         return;
@@ -98,7 +103,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
         _errorMessage = null;
       });
     } catch (e) {
-      debugPrint('앨범 로드 에러: $e');
+      debugPrint('Best cut gallery load error: $e');
 
       if (!mounted) return;
       setState(() {
@@ -108,7 +113,8 @@ class _GalleryScreenState extends State<GalleryScreen> {
         _albums = [];
         _selectedAlbum = null;
         _photos = [];
-        _errorMessage = '앨범 정보를 불러오는 중 문제가 발생했습니다.';
+        _selectedAssetsById.clear();
+        _errorMessage = '갤러리 정보를 불러오는 중 문제가 발생했습니다.';
       });
     }
   }
@@ -120,11 +126,9 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
       if (end <= 0) return [];
 
-      final assets = await album.getAssetListRange(start: 0, end: end);
-
-      return assets;
+      return await album.getAssetListRange(start: 0, end: end);
     } catch (e) {
-      debugPrint('앨범 사진 로드 에러: $e');
+      debugPrint('Best cut album load error: $e');
       return [];
     }
   }
@@ -138,62 +142,87 @@ class _GalleryScreenState extends State<GalleryScreen> {
       _errorMessage = null;
     });
 
-    try {
-      final photos = await _loadPhotosFromAlbum(album);
+    final photos = await _loadPhotosFromAlbum(album);
+    if (!mounted) return;
 
-      if (!mounted) return;
-      setState(() {
-        _photos = photos;
-        _loading = false;
-      });
-    } catch (e) {
-      debugPrint('앨범 선택 에러: $e');
-
-      if (!mounted) return;
-      setState(() {
-        _photos = [];
-        _loading = false;
-        _errorMessage = '선택한 앨범을 불러오는 중 문제가 발생했습니다.';
-      });
-    }
+    setState(() {
+      _photos = photos;
+      _loading = false;
+    });
   }
 
   Future<Uint8List?> _thumb(AssetEntity asset) async {
     try {
       return await asset.thumbnailDataWithSize(const ThumbnailSize(500, 500));
     } catch (e) {
-      debugPrint('썸네일 생성 에러: $e');
+      debugPrint('Best cut thumbnail error: $e');
       return null;
     }
   }
 
   String _albumLabel(AssetPathEntity album) {
     final name = album.name.trim();
-    if (name.isEmpty) return 'Album';
-    return name;
+    return name.isEmpty ? 'Album' : name;
   }
 
   Future<void> _openSettings() async {
     await PhotoManager.openSetting();
   }
 
-  void _handlePhotoDeleted(String assetId) {
+  void _toggleAssetSelection(AssetEntity asset) {
     setState(() {
-      _photos.removeWhere((a) => a.id == assetId);
+      if (_selectedAssetsById.containsKey(asset.id)) {
+        _selectedAssetsById.remove(asset.id);
+      } else {
+        _selectedAssetsById[asset.id] = asset;
+      }
     });
+  }
+
+  int? _selectionOrder(String assetId) {
+    final index = _selectedAssetsById.keys.toList().indexOf(assetId);
+    if (index < 0) return null;
+    return index + 1;
+  }
+
+  void _clearSelection() {
+    setState(() {
+      _selectedAssetsById.clear();
+    });
+  }
+
+  Future<void> _openACutResultScreen() async {
+    if (_selectedAssetsById.length < 2) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('사진을 2장 이상 선택해 주세요.')),
+      );
+      return;
+    }
+
+    final selectedAssets = _selectedAssetsById.values.toList(growable: false);
+
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ACutResultScreen(
+          selectedAssets: selectedAssets,
+          initialPhotoTypeMode: _photoTypeMode,
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Container(
-        color: const Color(0xFFF7F7F7),
+    return Scaffold(
+      backgroundColor: const Color(0xFFF7F7F7),
+      body: SafeArea(
         child: Column(
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(18, 10, 18, 0),
               child: AppTopBar(
-                title: 'Gallery',
+                title: 'Best Cut Gallery',
+                onBack: () => Navigator.of(context).pop(),
                 trailing: GestureDetector(
                   onTap: _loadAlbumsAndPhotos,
                   child: Container(
@@ -216,33 +245,48 @@ class _GalleryScreenState extends State<GalleryScreen> {
             if (_granted && _albums.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 18),
-                child: _AlbumChipRow(
+                child: _BestCutAlbumChipRow(
                   albums: _albums,
                   selectedAlbum: _selectedAlbum,
                   onSelected: _selectAlbum,
                   labelBuilder: _albumLabel,
                 ),
               ),
-            if (_granted && _albums.isNotEmpty) const SizedBox(height: 18),
+            if (_granted && _albums.isNotEmpty) const SizedBox(height: 12),
+            if (_granted && _albums.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+                child: _BestCutPhotoTypeSelector(
+                  selected: _photoTypeMode,
+                  onSelected: (mode) {
+                    setState(() {
+                      _photoTypeMode = mode;
+                    });
+                  },
+                ),
+              ),
+            if (_granted && _albums.isNotEmpty) const SizedBox(height: 10),
             Expanded(
               child: _loading
-                  ? const _LoadingView()
+                  ? const _BestCutLoadingView()
                   : !_granted
-                  ? _PermissionView(
+                  ? _BestCutPermissionView(
                       onRetry: _loadAlbumsAndPhotos,
                       onOpenSettings: _showSettingsShortcut
                           ? _openSettings
                           : null,
                     )
                   : _errorMessage != null
-                  ? _ErrorView(
+                  ? _BestCutErrorView(
                       message: _errorMessage!,
                       onRetry: _loadAlbumsAndPhotos,
                     )
                   : _albums.isEmpty
-                  ? const _EmptyAlbumView()
+                  ? const _BestCutEmptyAlbumView()
                   : _photos.isEmpty
-                  ? _EmptyPhotoView(albumName: _albumLabel(_selectedAlbum!))
+                  ? _BestCutEmptyPhotoView(
+                      albumName: _albumLabel(_selectedAlbum!),
+                    )
                   : CustomScrollView(
                       slivers: [
                         SliverToBoxAdapter(
@@ -262,26 +306,13 @@ class _GalleryScreenState extends State<GalleryScreen> {
                         SliverPadding(
                           padding: const EdgeInsets.fromLTRB(18, 0, 18, 24),
                           sliver: SliverGrid(
-                            delegate: SliverChildBuilderDelegate((
-                              context,
-                              index,
-                            ) {
+                            delegate: SliverChildBuilderDelegate((context, index) {
                               final asset = _photos[index];
                               return GestureDetector(
-                                onTap: () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => _PhotoDetailPage(
-                                      photos: _photos,
-                                      initialIndex: index,
-                                      onPhotoDeleted: _handlePhotoDeleted,
-                                      onOpenInEditor: widget.onOpenInEditor,
-                                    ),
-                                  ),
-                                ),
-                                child: Hero(
-                                  tag: 'photo_${asset.id}',
-                                  child: _GalleryThumb(future: _thumb(asset)),
+                                onTap: () => _toggleAssetSelection(asset),
+                                child: _BestCutGalleryThumb(
+                                  future: _thumb(asset),
+                                  selectedOrder: _selectionOrder(asset.id),
                                 ),
                               );
                             }, childCount: _photos.length),
@@ -297,6 +328,12 @@ class _GalleryScreenState extends State<GalleryScreen> {
                       ],
                     ),
             ),
+            if (_granted && _albums.isNotEmpty)
+              _BestCutSelectionActionBar(
+                selectedCount: _selectedAssetsById.length,
+                onClear: _selectedAssetsById.isEmpty ? null : _clearSelection,
+                onAnalyze: _openACutResultScreen,
+              ),
           ],
         ),
       ),
@@ -304,13 +341,13 @@ class _GalleryScreenState extends State<GalleryScreen> {
   }
 }
 
-class _AlbumChipRow extends StatelessWidget {
+class _BestCutAlbumChipRow extends StatelessWidget {
   final List<AssetPathEntity> albums;
   final AssetPathEntity? selectedAlbum;
   final ValueChanged<AssetPathEntity> onSelected;
   final String Function(AssetPathEntity) labelBuilder;
 
-  const _AlbumChipRow({
+  const _BestCutAlbumChipRow({
     required this.albums,
     required this.selectedAlbum,
     required this.onSelected,
@@ -324,7 +361,7 @@ class _AlbumChipRow extends StatelessWidget {
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: albums.length,
-        separatorBuilder: (context, i) => const SizedBox(width: 8),
+        separatorBuilder: (context, index) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
           final album = albums[index];
           final selected = selectedAlbum?.id == album.id;
@@ -359,10 +396,14 @@ class _AlbumChipRow extends StatelessWidget {
   }
 }
 
-class _GalleryThumb extends StatelessWidget {
+class _BestCutGalleryThumb extends StatelessWidget {
   final Future<Uint8List?> future;
+  final int? selectedOrder;
 
-  const _GalleryThumb({required this.future});
+  const _BestCutGalleryThumb({
+    required this.future,
+    required this.selectedOrder,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -378,8 +419,9 @@ class _GalleryThumb extends StatelessWidget {
           );
         }
 
+        Widget child;
         if (!snapshot.hasData || snapshot.data == null) {
-          return Container(
+          child = Container(
             decoration: BoxDecoration(
               color: const Color(0xFFEDEFF3),
               borderRadius: BorderRadius.circular(14),
@@ -392,19 +434,198 @@ class _GalleryThumb extends StatelessWidget {
               ),
             ),
           );
+        } else {
+          child = ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: Image.memory(snapshot.data!, fit: BoxFit.cover),
+          );
         }
 
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(14),
-          child: Image.memory(snapshot.data!, fit: BoxFit.cover),
+        if (selectedOrder == null) {
+          return child;
+        }
+
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            child,
+            Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppColors.primaryText, width: 2),
+                color: Colors.black.withValues(alpha: 0.22),
+              ),
+            ),
+            Positioned(
+              right: 8,
+              top: 8,
+              child: Container(
+                width: 22,
+                height: 22,
+                decoration: const BoxDecoration(
+                  color: AppColors.primaryText,
+                  shape: BoxShape.circle,
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  '$selectedOrder',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          ],
         );
       },
     );
   }
 }
 
-class _LoadingView extends StatelessWidget {
-  const _LoadingView();
+class _BestCutPhotoTypeSelector extends StatelessWidget {
+  final PhotoTypeMode selected;
+  final ValueChanged<PhotoTypeMode> onSelected;
+
+  const _BestCutPhotoTypeSelector({
+    required this.selected,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: PhotoTypeMode.values.map((mode) {
+        final isSelected = selected == mode;
+        return Expanded(
+          child: Padding(
+            padding: EdgeInsets.only(
+              right: mode == PhotoTypeMode.values.last ? 0 : 8,
+            ),
+            child: GestureDetector(
+              onTap: () => onSelected(mode),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                height: 38,
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? const Color(0xFF3A3A3A)
+                      : const Color(0xFFEFEFEF),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  mode.label,
+                  style: TextStyle(
+                    color: isSelected ? Colors.white : const Color(0xFF5A5A5A),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+}
+
+class _BestCutSelectionActionBar extends StatelessWidget {
+  final int selectedCount;
+  final VoidCallback? onClear;
+  final VoidCallback onAnalyze;
+
+  const _BestCutSelectionActionBar({
+    required this.selectedCount,
+    required this.onClear,
+    required this.onAnalyze,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final canAnalyze = selectedCount >= 2;
+    final title = switch (selectedCount) {
+      0 => '사진 선택',
+      1 => '한 장 더 선택하면 랭킹 분석 가능',
+      _ => '$selectedCount장 선택됨',
+    };
+    final subtitle = switch (selectedCount) {
+      0 => '비교할 사진을 탭으로 2장 이상 선택해 주세요.',
+      1 => '현재는 비교할 사진이 부족해요.',
+      _ => '선택한 사진들로 베스트 컷 분석을 시작할 수 있어요.',
+    };
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 10, 18, 18),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: AppColors.border)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.primaryText,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.secondaryText,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (onClear != null)
+                TextButton(onPressed: onClear, child: const Text('초기화')),
+            ],
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            height: 44,
+            child: ElevatedButton(
+              onPressed: canAnalyze ? onAnalyze : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.buttonDark,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor: AppColors.track,
+                disabledForegroundColor: AppColors.lightText,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text(
+                '베스트 컷 분석하기',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BestCutLoadingView extends StatelessWidget {
+  const _BestCutLoadingView();
 
   @override
   Widget build(BuildContext context) {
@@ -417,11 +638,14 @@ class _LoadingView extends StatelessWidget {
   }
 }
 
-class _PermissionView extends StatelessWidget {
+class _BestCutPermissionView extends StatelessWidget {
   final VoidCallback onRetry;
   final VoidCallback? onOpenSettings;
 
-  const _PermissionView({required this.onRetry, this.onOpenSettings});
+  const _BestCutPermissionView({
+    required this.onRetry,
+    this.onOpenSettings,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -455,7 +679,7 @@ class _PermissionView extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                '허용하면 휴대폰에 있는 사진과 앨범을\n앱에서 불러올 수 있습니다.',
+                '허용하면 여러 장 사진을 선택해서 베스트 컷 분석을 시작할 수 있습니다.',
                 style: AppTextStyles.body13,
                 textAlign: TextAlign.center,
               ),
@@ -473,7 +697,7 @@ class _PermissionView extends StatelessWidget {
                       borderRadius: BorderRadius.circular(14),
                     ),
                   ),
-                  child: Text(
+                  child: const Text(
                     '권한 허용 다시 시도',
                     style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
                   ),
@@ -493,7 +717,7 @@ class _PermissionView extends StatelessWidget {
                         borderRadius: BorderRadius.circular(14),
                       ),
                     ),
-                    child: Text(
+                    child: const Text(
                       'Open Settings',
                       style: TextStyle(
                         fontSize: 15,
@@ -511,11 +735,11 @@ class _PermissionView extends StatelessWidget {
   }
 }
 
-class _ErrorView extends StatelessWidget {
+class _BestCutErrorView extends StatelessWidget {
   final String message;
   final VoidCallback onRetry;
 
-  const _ErrorView({required this.message, required this.onRetry});
+  const _BestCutErrorView({required this.message, required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
@@ -575,8 +799,8 @@ class _ErrorView extends StatelessWidget {
   }
 }
 
-class _EmptyAlbumView extends StatelessWidget {
-  const _EmptyAlbumView();
+class _BestCutEmptyAlbumView extends StatelessWidget {
+  const _BestCutEmptyAlbumView();
 
   @override
   Widget build(BuildContext context) {
@@ -608,361 +832,10 @@ class _EmptyAlbumView extends StatelessWidget {
   }
 }
 
-class _PhotoDetailPage extends StatefulWidget {
-  final List<AssetEntity> photos;
-  final int initialIndex;
-  final void Function(String assetId)? onPhotoDeleted;
-  final void Function(Future<Uint8List?> future)? onOpenInEditor;
-
-  const _PhotoDetailPage({
-    required this.photos,
-    required this.initialIndex,
-    this.onPhotoDeleted,
-    this.onOpenInEditor,
-  });
-
-  @override
-  State<_PhotoDetailPage> createState() => _PhotoDetailPageState();
-}
-
-class _PhotoDetailPageState extends State<_PhotoDetailPage> {
-  late int _currentIndex;
-  late PageController _pageController;
-
-  // Cache futures so swiping re-uses already-started loads
-  final Map<int, Future<Uint8List?>> _imageCache = {};
-
-  @override
-  void initState() {
-    super.initState();
-    _currentIndex = widget.initialIndex;
-    _pageController = PageController(initialPage: widget.initialIndex);
-    _preloadPages(widget.initialIndex);
-  }
-
-  @override
-  void dispose() {
-    _pageController.dispose();
-    super.dispose();
-  }
-
-  Future<Uint8List?> _getImage(int index) {
-    return _imageCache.putIfAbsent(index, () => widget.photos[index].originBytes);
-  }
-
-  void _preloadPages(int index) {
-    final start = (index - 1).clamp(0, widget.photos.length - 1);
-    final end = (index + 1).clamp(0, widget.photos.length - 1);
-    for (int i = start; i <= end; i++) {
-      _getImage(i); // starts the future if not already cached
-    }
-  }
-
-  Future<void> _deleteCurrentPhoto() async {
-    final asset = widget.photos[_currentIndex];
-
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('사진 삭제'),
-        content: const Text('이 사진을 갤러리에서 삭제하시겠습니까?\n삭제 후에는 되돌릴 수 없습니다.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('취소'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('삭제', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm != true || !mounted) return;
-
-    final deleted = await PhotoManager.editor.deleteWithIds([asset.id]);
-    if (!mounted) return;
-
-    if (deleted.contains(asset.id)) {
-      widget.onPhotoDeleted?.call(asset.id);
-      Navigator.pop(context);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('사진 삭제에 실패했습니다.')),
-      );
-    }
-  }
-
-  Future<void> _showPhotoInfo() async {
-    final asset = widget.photos[_currentIndex];
-    int fileSize = 0;
-    try {
-      final file = await asset.file;
-      if (file != null) fileSize = await file.length();
-    } catch (_) {}
-
-    if (!mounted) return;
-
-    showDialog(
-      context: context,
-      builder: (ctx) => _PhotoInfoDialog(asset: asset, fileSize: fileSize),
-    );
-  }
-
-  void _openInEditor() {
-    if (!mounted) return;
-    widget.onOpenInEditor?.call(_getImage(_currentIndex));
-    Navigator.of(context).pop();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          PageView.builder(
-            controller: _pageController,
-            itemCount: widget.photos.length,
-            onPageChanged: (i) {
-              setState(() => _currentIndex = i);
-              _preloadPages(i);
-            },
-            itemBuilder: (context, index) {
-              final asset = widget.photos[index];
-              return InteractiveViewer(
-                minScale: 1.0,
-                maxScale: 4.0,
-                child: Center(
-                  child: Hero(
-                    tag: 'photo_${asset.id}',
-                    child: FutureBuilder<Uint8List?>(
-                      future: _getImage(index),
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState ==
-                            ConnectionState.waiting) {
-                          return const Center(
-                            child: CircularProgressIndicator(
-                              color: Colors.white54,
-                              strokeWidth: 2,
-                            ),
-                          );
-                        }
-                        if (snapshot.data == null) {
-                          return const Icon(
-                            Icons.broken_image_outlined,
-                            color: Colors.white38,
-                            size: 48,
-                          );
-                        }
-                        return Image.memory(
-                          snapshot.data!,
-                          fit: BoxFit.contain,
-                        );
-                      },
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-          // 상단 바
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Row(
-                children: [
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(
-                      Icons.arrow_back_ios_new_rounded,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    '${_currentIndex + 1} / ${widget.photos.length}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                ],
-              ),
-            ),
-          ),
-          // 하단 액션 바
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: SafeArea(
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 20,
-                ),
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.topCenter,
-                    colors: [Color(0xCC000000), Colors.transparent],
-                  ),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _ActionButton(
-                      icon: Icons.delete_outline_rounded,
-                      label: '삭제',
-                      onTap: _deleteCurrentPhoto,
-                    ),
-                    _ActionButton(
-                      icon: Icons.info_outline_rounded,
-                      label: '정보',
-                      onTap: _showPhotoInfo,
-                    ),
-                    _ActionButton(
-                      icon: Icons.edit_outlined,
-                      label: '편집',
-                      onTap: _openInEditor,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ActionButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  const _ActionButton({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: Colors.white, size: 28),
-            const SizedBox(height: 5),
-            Text(
-              label,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PhotoInfoDialog extends StatelessWidget {
-  final AssetEntity asset;
-  final int fileSize;
-
-  const _PhotoInfoDialog({required this.asset, required this.fileSize});
-
-  @override
-  Widget build(BuildContext context) {
-    final date = asset.createDateTime;
-    final dateStr =
-        '${date.year}년 ${date.month}월 ${date.day}일 '
-        '${date.hour.toString().padLeft(2, '0')}:'
-        '${date.minute.toString().padLeft(2, '0')}';
-
-    String sizeStr;
-    if (fileSize >= 1024 * 1024) {
-      sizeStr = '${(fileSize / (1024 * 1024)).toStringAsFixed(1)} MB';
-    } else if (fileSize >= 1024) {
-      sizeStr = '${(fileSize / 1024).toStringAsFixed(1)} KB';
-    } else {
-      sizeStr = '$fileSize B';
-    }
-
-    return AlertDialog(
-      backgroundColor: const Color(0xFF2A2A2A),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      title: const Text(
-        '사진 정보',
-        style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700),
-      ),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _InfoRow(label: '촬영 일시', value: dateStr),
-          _InfoRow(label: '해상도', value: '${asset.width} × ${asset.height}'),
-          if (fileSize > 0) _InfoRow(label: '파일 크기', value: sizeStr),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('닫기', style: TextStyle(color: Colors.white70)),
-        ),
-      ],
-    );
-  }
-}
-
-class _InfoRow extends StatelessWidget {
-  final String label;
-  final String value;
-
-  const _InfoRow({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 76,
-            child: Text(
-              label,
-              style: const TextStyle(color: Colors.white54, fontSize: 13),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(color: Colors.white, fontSize: 13),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _EmptyPhotoView extends StatelessWidget {
+class _BestCutEmptyPhotoView extends StatelessWidget {
   final String albumName;
 
-  const _EmptyPhotoView({required this.albumName});
+  const _BestCutEmptyPhotoView({required this.albumName});
 
   @override
   Widget build(BuildContext context) {

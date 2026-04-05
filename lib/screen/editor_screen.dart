@@ -22,8 +22,9 @@ import 'editor/editor_comparison.dart';
 class EditorScreen extends StatefulWidget {
   final ValueChanged<int> onMoveTab;
   final VoidCallback? onBack;
+  final Future<Uint8List?>? initialBytesFuture;
 
-  const EditorScreen({super.key, required this.onMoveTab, this.onBack});
+  const EditorScreen({super.key, required this.onMoveTab, this.onBack, this.initialBytesFuture});
 
   @override
   State<EditorScreen> createState() => _EditorScreenState();
@@ -61,6 +62,19 @@ class _EditorScreenState extends State<EditorScreen> {
 
   FilterPreset? _activePreset;
   final EditorHistoryManager _history = EditorHistoryManager();
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialBytesFuture != null) {
+      _selectedImagePath = 'gallery';
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        widget.initialBytesFuture!.then((bytes) {
+          if (bytes != null && mounted) _loadFromRawBytes(bytes);
+        });
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -147,9 +161,12 @@ class _EditorScreenState extends State<EditorScreen> {
     if (file == null) return;
 
     final rawBytes = await File(file.path).readAsBytes();
+    _selectedImagePath = file.path;
+    await _loadFromRawBytes(rawBytes);
+  }
 
+  Future<void> _loadFromRawBytes(Uint8List rawBytes) async {
     setState(() {
-      _selectedImagePath = file.path;
       _isPreparingImage = true;
       _isRenderingPreview = false;
       _sourceBytes = null;
@@ -481,6 +498,9 @@ class _EditorScreenState extends State<EditorScreen> {
                 AppTopBar(
                   title: '보정',
                   onBack: widget.onBack,
+                  leadingIcon: widget.onBack != null
+                      ? Icons.arrow_back_ios_new_rounded
+                      : Icons.menu_rounded,
                   trailingWidth: 120,
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,

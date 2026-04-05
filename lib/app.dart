@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'screen/main_shell.dart';
+import 'screen/splash_screen.dart';
 import 'theme/app_colors.dart';
 
 class PozyApp extends StatelessWidget {
@@ -21,7 +21,7 @@ class PozyApp extends StatelessWidget {
         highlightColor: Colors.transparent,
         useMaterial3: true,
       ),
-      home: const MainShell(),
+      home: const SplashScreen(),
     );
   }
 }

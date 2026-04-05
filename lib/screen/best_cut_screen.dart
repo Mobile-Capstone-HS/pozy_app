@@ -4,6 +4,7 @@ import '../theme/app_colors.dart';
 import '../theme/app_shadows.dart';
 import '../theme/app_text_styles.dart';
 import '../widget/app_top_bar.dart';
+import 'best_cut_gallery_screen.dart';
 
 class BestCutScreen extends StatelessWidget {
   final ValueChanged<int> onMoveTab;
@@ -61,7 +62,11 @@ class BestCutScreen extends StatelessWidget {
                     borderRadius: BorderRadius.circular(14),
                   ),
                 ),
-                onPressed: () => onMoveTab(1),
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const BestCutGalleryScreen(),
+                  ),
+                ),
                 icon: const Icon(Icons.photo_library_outlined),
                 label: const Text(
                   '갤러리에서 여러 장 랭킹하기',
