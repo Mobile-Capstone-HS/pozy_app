@@ -67,9 +67,20 @@ class PortraitAnalysisResult {
 
 class PortraitModeHandler {
   final PortraitCoachEngine _coachEngine = PortraitCoachEngine();
+  final LightingClassifier _lightingClassifier = LightingClassifier();
+  final FaceDetector _faceDetector = FaceDetector(
+    options: FaceDetectorOptions(
+      enableClassification: true,
+      enableTracking: true,
+      performanceMode: FaceDetectorMode.fast,
+    ),
+  );
 
   // ─── 분석 주기 (최적화: 기존 15/10 → 30/20으로 늘림) ────
   static const double _posePointAlpha = 0.38;
+  static const int _lightingEveryN = 30;
+  static const int _faceEveryN = 20;
+  static const double _lightingMinConf = 0.5;
 
   // ─── 메시지 안정화 ────────────────────────────────
   static const int _stabilityThreshold = 5;
