@@ -319,22 +319,28 @@ class PortraitModeHandler {
     final bboxRatio = mainBox.width * mainBox.height;
     final centerX = (mainBox.left + mainBox.right) / 2;
 
-    if (maxY > minY) {
-      final h = maxY - minY;
-      final hasKnee = lKnee != null || rKnee != null;
-      final hasAnkle = lAnkle != null || rAnkle != null;
+    final hasAnkle = lAnkle != null || rAnkle != null;
+    final hasKnee = lKnee != null || rKnee != null;
+    final hasHip = lHip != null || rHip != null;
+    final hasShoulder = lShoulder != null || rShoulder != null;
 
-      if (bboxRatio < 0.4 && hasAnkle) {
-        shot = ShotType.environmental;
-      } else if (lShoulder == null && rShoulder == null && h < 0.3) {
-        // 어깨 없고 얼굴만 큰 경우
-        shot = ShotType.extremeCloseUp;
-      } else if (hasAnkle && h > 0.7) {
+    if (bboxRatio < 0.35) {
+      shot = ShotType.environmental;
+    } else if (maxY > minY) {
+      final h = maxY - minY;
+
+      if (hasAnkle && h > 0.7) {
         shot = ShotType.fullBody;
       } else if (hasKnee && !hasAnkle) {
         shot = ShotType.kneeShot;
-      } else if (h > 0.5) {
+      } else if (hasHip && !hasKnee && h > 0.45) {
+        shot = ShotType.waistShot;
+      } else if (hasShoulder && !hasHip && h > 0.3) {
+        shot = ShotType.headShot;
+      } else if (hasShoulder && hasHip) {
         shot = ShotType.upperBody;
+      } else if (!hasShoulder && h < 0.3) {
+        shot = ShotType.extremeCloseUp;
       } else if (h > 0.25) {
         shot = ShotType.closeUp;
       } else {
@@ -344,35 +350,22 @@ class PortraitModeHandler {
       footSpace = 1.0 - maxY;
     }
 
-    // 환경 포트레이트 보정: 인물이 작으면 환경으로
-    if (bboxRatio < 0.35 && shot != ShotType.environmental) {
-      shot = ShotType.environmental;
-    }
-
     // 관절 크로핑 (샷 타입에 따라 체크 관절 구분)
-    // - 손목/팔꿈치: closeUp 이상에서만 (upperBody, kneeShot, fullBody)
+    // - 손목/팔꿈치: upperBody 이상에서만 (upperBody, kneeShot, fullBody)
     // - 무릎: kneeShot/fullBody 에서만
     // - 발목: fullBody 에서만
-    const em = 0.03;
-    bool cropped = false;
-    final _jointsToCheck = <Offset?>[];
+    final croppedList = <String>[];
     if (shot == ShotType.upperBody ||
         shot == ShotType.kneeShot ||
         shot == ShotType.fullBody) {
-      _jointsToCheck.addAll([lWrist, rWrist, lElbow, rElbow]);
+      if (_isAtEdge(lWrist) || _isAtEdge(rWrist)) croppedList.add('wrist');
+      if (_isAtEdge(lElbow) || _isAtEdge(rElbow)) croppedList.add('elbow');
     }
     if (shot == ShotType.kneeShot || shot == ShotType.fullBody) {
-      _jointsToCheck.addAll([lKnee, rKnee]);
+      if (_isAtEdge(lKnee) || _isAtEdge(rKnee)) croppedList.add('knee');
     }
     if (shot == ShotType.fullBody) {
-      _jointsToCheck.addAll([lAnkle, rAnkle]);
-    }
-    for (final p in _jointsToCheck) {
-      if (p != null &&
-          (p.dx < em || p.dx > 1 - em || p.dy < em || p.dy > 1 - em)) {
-        cropped = true;
-        break;
-      }
+      if (_isAtEdge(lAnkle) || _isAtEdge(rAnkle)) croppedList.add('ankle');
     }
 
     // SceneState
@@ -408,7 +401,7 @@ class PortraitModeHandler {
       leftArmBodyGap: lArmGap,
       rightArmBodyGap: rArmGap,
       eyeMidpoint: eyeMid,
-      isJointCropped: cropped,
+      croppedJoints: croppedList,
       headroomRatio: headroom,
       footSpaceRatio: footSpace,
       personCenterX: centerX,
@@ -422,6 +415,14 @@ class PortraitModeHandler {
       hasNose: nose != null,
       hasEyes: lEye != null && rEye != null,
       hasShoulders: lShoulder != null && rShoulder != null,
+      leftWristPosition: lWrist,
+      rightWristPosition: rWrist,
+      leftAnklePosition: lAnkle,
+      rightAnklePosition: rAnkle,
+      leftHipPosition: lHip,
+      rightHipPosition: rHip,
+      leftKneePosition: lKnee,
+      rightKneePosition: rKnee,
     );
 
     final coaching = _stabilize(_coachEngine.evaluate(state));
@@ -789,8 +790,12 @@ class PortraitModeHandler {
         return 0.38;
       case ShotType.closeUp:
         return 0.35;
+      case ShotType.headShot:
+        return 0.35;
       case ShotType.upperBody:
         return 0.33;
+      case ShotType.waistShot:
+        return 0.30;
       case ShotType.kneeShot:
         return 0.31;
       case ShotType.fullBody:
@@ -808,8 +813,12 @@ class PortraitModeHandler {
         return 0.06;
       case ShotType.closeUp:
         return 0.08;
+      case ShotType.headShot:
+        return 0.09;
       case ShotType.upperBody:
         return 0.10;
+      case ShotType.waistShot:
+        return 0.09;
       case ShotType.kneeShot:
         return 0.12;
       case ShotType.fullBody:
@@ -860,6 +869,7 @@ class PortraitModeHandler {
         message: c.message,
         priority: c.priority,
         confidence: c.confidence,
+        reason: c.reason,
       );
     }
     return _stableCoaching;
@@ -916,5 +926,10 @@ class PortraitModeHandler {
       case LightingCondition.unknown:
         return const Color(0xB3FFFFFF);
     }
+  }
+
+  bool _isAtEdge(Offset? p, {double margin = 0.03}) {
+    if (p == null) return false;
+    return p.dx < margin || p.dx > 1 - margin || p.dy < margin || p.dy > 1 - margin;
   }
 }

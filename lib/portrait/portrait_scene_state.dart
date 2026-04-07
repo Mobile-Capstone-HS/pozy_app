@@ -10,8 +10,10 @@ import 'dart:ui';
 
 enum ShotType {
   extremeCloseUp,  // 익스트림 클로즈업 (얼굴 일부만)
-  closeUp,         // 클로즈업 (얼굴 + 어깨)
-  upperBody,       // 상반신 (허리 위)
+  closeUp,         // 클로즈업 (얼굴+목, 어깨 안 보임)
+  headShot,        // 헤드샷 (머리+어깨 상단, 팔꿈치 안 보임)
+  upperBody,       // 상반신 (가슴~배꼽)
+  waistShot,       // 허리샷 (허리~엉덩이, 손 보이기 시작)
   kneeShot,        // 무릎샷
   fullBody,        // 전신
   environmental,   // 환경 포트레이트 (인물 + 풍경)
@@ -45,11 +47,13 @@ class CoachingResult {
   final String message;
   final CoachingPriority priority;
   final double confidence;
+  final String? reason;
 
   const CoachingResult({
     required this.message,
     required this.priority,
     required this.confidence,
+    this.reason,
   });
 }
 
@@ -76,7 +80,7 @@ class PortraitSceneState {
   final double? leftArmBodyGap;
   final double? rightArmBodyGap;
   final Offset? eyeMidpoint;
-  final bool isJointCropped;
+  final List<String> croppedJoints;
   final double headroomRatio;
   final double footSpaceRatio;
 
@@ -99,6 +103,16 @@ class PortraitSceneState {
   final LightingCondition lightingCondition;
   final double lightingConfidence;
 
+  // 추가 키포인트 위치
+  final Offset? leftWristPosition;
+  final Offset? rightWristPosition;
+  final Offset? leftAnklePosition;
+  final Offset? rightAnklePosition;
+  final Offset? leftHipPosition;
+  final Offset? rightHipPosition;
+  final Offset? leftKneePosition;
+  final Offset? rightKneePosition;
+
   const PortraitSceneState({
     this.personCount = 0,
     this.shotType = ShotType.unknown,
@@ -115,7 +129,7 @@ class PortraitSceneState {
     this.leftArmBodyGap,
     this.rightArmBodyGap,
     this.eyeMidpoint,
-    this.isJointCropped = false,
+    this.croppedJoints = const [],
     this.headroomRatio = 0.0,
     this.footSpaceRatio = 0.0,
     this.personCenterX = 0.5,
@@ -129,7 +143,17 @@ class PortraitSceneState {
     this.hasShoulders = false,
     this.lightingCondition = LightingCondition.unknown,
     this.lightingConfidence = 0.0,
+    this.leftWristPosition,
+    this.rightWristPosition,
+    this.leftAnklePosition,
+    this.rightAnklePosition,
+    this.leftHipPosition,
+    this.rightHipPosition,
+    this.leftKneePosition,
+    this.rightKneePosition,
   });
+
+  bool get isJointCropped => croppedJoints.isNotEmpty;
 
   bool get areEyesClosed =>
       leftEyeOpenProb != null &&
@@ -148,4 +172,25 @@ class PortraitSceneState {
 
   bool get hasFace => faceYaw != null;
   bool get hasPose => shoulderAngleDeg != null;
+
+  bool get hasVisibleHands =>
+      leftWristPosition != null || rightWristPosition != null;
+
+  bool get isHandNearWaist {
+    if (!hasVisibleHands) return false;
+    final hipY = leftHipPosition?.dy ?? rightHipPosition?.dy;
+    if (hipY == null) return false;
+    final lw = leftWristPosition?.dy;
+    final rw = rightWristPosition?.dy;
+    if (lw != null && (lw - hipY).abs() <= 0.06) return true;
+    if (rw != null && (rw - hipY).abs() <= 0.06) return true;
+    return false;
+  }
+
+  bool get hasContrapposto {
+    final lk = leftKneePosition?.dy;
+    final rk = rightKneePosition?.dy;
+    if (lk == null || rk == null) return false;
+    return (lk - rk).abs() >= 0.015;
+  }
 }

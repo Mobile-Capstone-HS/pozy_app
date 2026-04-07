@@ -197,7 +197,7 @@ class _PortraitCameraScreenState extends State<PortraitCameraScreen> {
       double? leftArmGap;
       double? rightArmGap;
       Offset? eyeMidpoint;
-      bool isJointCropped = false;
+      final croppedJointList = <String>{};
       double headroomRatio = 0.0;
       double footSpaceRatio = 0.0;
       double shoulderConf = 0.0;
@@ -318,33 +318,34 @@ class _PortraitCameraScreenState extends State<PortraitCameraScreen> {
 
         // 관절 크로핑 체크
         const edgeMargin = 0.03;
-        for (final entry in lm.entries) {
-          final type = entry.key;
-          if (type == PoseLandmarkType.leftWrist ||
-              type == PoseLandmarkType.rightWrist ||
-              type == PoseLandmarkType.leftElbow ||
-              type == PoseLandmarkType.rightElbow ||
-              type == PoseLandmarkType.leftKnee ||
-              type == PoseLandmarkType.rightKnee ||
-              type == PoseLandmarkType.leftAnkle ||
-              type == PoseLandmarkType.rightAnkle) {
-            if (entry.value.likelihood > 0.3) {
-              final pt = _transformLandmark(
-                entry.value.x,
-                entry.value.y,
-                rawW,
-                rawH,
-              );
-              if (pt != null &&
-                  (pt.dx < edgeMargin ||
-                      pt.dx > 1 - edgeMargin ||
-                      pt.dy < edgeMargin ||
-                      pt.dy > 1 - edgeMargin)) {
-                isJointCropped = true;
-                break;
-              }
-            }
-          }
+        bool ptAtEdge(Offset? pt) =>
+            pt != null &&
+            (pt.dx < edgeMargin ||
+                pt.dx > 1 - edgeMargin ||
+                pt.dy < edgeMargin ||
+                pt.dy > 1 - edgeMargin);
+
+        Offset? toSc(PoseLandmarkType t) {
+          final p = lm[t];
+          if (p == null || p.likelihood < 0.3) return null;
+          return _transformLandmark(p.x, p.y, rawW, rawH);
+        }
+
+        if (ptAtEdge(toSc(PoseLandmarkType.leftWrist)) ||
+            ptAtEdge(toSc(PoseLandmarkType.rightWrist))) {
+          croppedJointList.add('wrist');
+        }
+        if (ptAtEdge(toSc(PoseLandmarkType.leftElbow)) ||
+            ptAtEdge(toSc(PoseLandmarkType.rightElbow))) {
+          croppedJointList.add('elbow');
+        }
+        if (ptAtEdge(toSc(PoseLandmarkType.leftKnee)) ||
+            ptAtEdge(toSc(PoseLandmarkType.rightKnee))) {
+          croppedJointList.add('knee');
+        }
+        if (ptAtEdge(toSc(PoseLandmarkType.leftAnkle)) ||
+            ptAtEdge(toSc(PoseLandmarkType.rightAnkle))) {
+          croppedJointList.add('ankle');
         }
       }
 
@@ -401,7 +402,7 @@ class _PortraitCameraScreenState extends State<PortraitCameraScreen> {
         leftArmBodyGap: leftArmGap,
         rightArmBodyGap: rightArmGap,
         eyeMidpoint: eyeMidpoint,
-        isJointCropped: isJointCropped,
+        croppedJoints: croppedJointList.toList(),
         headroomRatio: headroomRatio,
         footSpaceRatio: footSpaceRatio,
         shoulderConfidence: shoulderConf,
@@ -819,8 +820,12 @@ class _PortraitCameraScreenState extends State<PortraitCameraScreen> {
     switch (_overlayData.shotType) {
       case ShotType.closeUp:
         return '클로즈업';
+      case ShotType.headShot:
+        return '헤드샷';
       case ShotType.upperBody:
         return '상반신';
+      case ShotType.waistShot:
+        return '허리샷';
       case ShotType.fullBody:
         return '전신';
       default:

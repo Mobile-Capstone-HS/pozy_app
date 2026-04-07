@@ -1128,8 +1128,12 @@ class _CameraScreenState extends State<CameraScreen> {
         return '\uC775\uC2A4\uD2B8\uB9BC \uD074\uB85C\uC988\uC5C5';
       case portrait.ShotType.closeUp:
         return '\uD074\uB85C\uC988\uC5C5';
+      case portrait.ShotType.headShot:
+        return '\uD5E4\uB4DC\uC0F7';
       case portrait.ShotType.upperBody:
         return '\uC0C1\uBC18\uC2E0';
+      case portrait.ShotType.waistShot:
+        return '\uD5C8\uB9AC\uC0F7';
       case portrait.ShotType.kneeShot:
         return '\uBB34\uB98E\uC0F7';
       case portrait.ShotType.fullBody:
