@@ -74,14 +74,6 @@ class YOLOResult {
   /// and ranges from 0.0 to 1.0.
   final List<double>? keypointConfidences;
 
-<<<<<<< HEAD
-  /// Lightweight appearance signature for distinguishing similar-sized objects.
-  ///
-  /// Values are normalized features extracted from the ROI on the native side.
-  final List<double>? appearanceSignature;
-
-=======
->>>>>>> origin/feat/#6
   YOLOResult({
     required this.classIndex,
     required this.className,
@@ -91,10 +83,6 @@ class YOLOResult {
     this.mask,
     this.keypoints,
     this.keypointConfidences,
-<<<<<<< HEAD
-    this.appearanceSignature,
-=======
->>>>>>> origin/feat/#6
   });
 
   /// Creates a [YOLOResult] from a map representation.
@@ -142,20 +130,6 @@ class YOLOResult {
       keypointConfidences = keypointResult.confidences;
     }
 
-<<<<<<< HEAD
-    List<double>? appearanceSignature;
-    if (map.containsKey('appearanceSignature') &&
-        map['appearanceSignature'] != null) {
-      final raw = map['appearanceSignature'];
-      if (raw is List) {
-        appearanceSignature = raw
-            .map((v) => v is num ? v.toDouble() : 0.0)
-            .toList();
-      }
-    }
-
-=======
->>>>>>> origin/feat/#6
     return YOLOResult(
       classIndex: classIndex,
       className: className,
@@ -165,10 +139,6 @@ class YOLOResult {
       mask: mask,
       keypoints: keypoints,
       keypointConfidences: keypointConfidences,
-<<<<<<< HEAD
-      appearanceSignature: appearanceSignature,
-=======
->>>>>>> origin/feat/#6
     );
   }
 
@@ -205,13 +175,6 @@ class YOLOResult {
       map['keypoints'] = keypointsData;
     }
 
-<<<<<<< HEAD
-    if (appearanceSignature != null) {
-      map['appearanceSignature'] = appearanceSignature;
-    }
-
-=======
->>>>>>> origin/feat/#6
     return map;
   }
 

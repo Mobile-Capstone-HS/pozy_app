@@ -136,16 +136,6 @@ class _YOLOViewState extends State<YOLOView> {
     try {
       final results = _parseDetectionResults(event);
 
-<<<<<<< HEAD
-      if (widget.showOverlays) {
-        setState(() {
-          _currentDetections = results;
-        });
-      } else if (_currentDetections.isNotEmpty) {
-        setState(() {
-          _currentDetections = [];
-        });
-=======
       if (widget.showOverlays && widget.onResult != null) {
         if (_currentDetections.isNotEmpty) {
           setState(() {
@@ -156,7 +146,6 @@ class _YOLOViewState extends State<YOLOView> {
         setState(() {
           _currentDetections = results;
         });
->>>>>>> origin/feat/#6
       }
 
       widget.onResult!(results);
@@ -263,10 +252,6 @@ class _YOLOViewState extends State<YOLOView> {
   @override
   void dispose() {
     _effectiveController.stop();
-<<<<<<< HEAD
-    _effectiveController.dispose();
-=======
->>>>>>> origin/feat/#6
     _resultSubscription?.cancel();
     _methodChannel.setMethodCallHandler(null);
 
@@ -286,15 +271,6 @@ class _YOLOViewState extends State<YOLOView> {
         _buildCameraView(),
 
         if (widget.showOverlays && _currentDetections.isNotEmpty)
-<<<<<<< HEAD
-          IgnorePointer(
-            child: YOLOOverlay(
-              detections: _currentDetections,
-              showConfidence: true,
-              showClassName: true,
-              theme: widget.overlayTheme,
-            ),
-=======
           YOLOOverlay(
             detections: _currentDetections,
             showConfidence: true,
@@ -303,7 +279,6 @@ class _YOLOViewState extends State<YOLOView> {
             onDetectionTap: (detection) {
               logInfo('YOLOView: Detection tapped: ${detection.className}');
             },
->>>>>>> origin/feat/#6
           ),
       ],
     );
@@ -384,11 +359,7 @@ class _YOLOViewState extends State<YOLOView> {
 
   void _onPlatformViewCreated(int id) {
     _platformViewId = id;
-<<<<<<< HEAD
-    _effectiveController.init(_methodChannel, id, _viewId);
-=======
     _effectiveController.init(_methodChannel, id);
->>>>>>> origin/feat/#6
     _methodChannel.setMethodCallHandler(_handleMethodCall);
     _methodChannel.invokeMethod('setShowUIControls', {
       'show': widget.showNativeUI,

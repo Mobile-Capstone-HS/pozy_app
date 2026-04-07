@@ -73,11 +73,7 @@ void main() {
     });
 
     test('platform methods work with initialized channel', () async {
-<<<<<<< HEAD
-      controller.init(mockChannel, 1, 'test_view');
-=======
       controller.init(mockChannel, 1);
->>>>>>> origin/feat/#6
 
       // Test threshold methods
       YOLOTestHelpers.validateThresholdBehavior(controller, log, mockChannel);
@@ -115,11 +111,7 @@ void main() {
     });
 
     test('error handling works correctly', () async {
-<<<<<<< HEAD
-      controller.init(mockChannel, 1, 'test_view');
-=======
       controller.init(mockChannel, 1);
->>>>>>> origin/feat/#6
 
       // Test that errors are handled gracefully
       await controller.setConfidenceThreshold(0.8);
@@ -208,11 +200,7 @@ void main() {
           home: YOLOView(
             modelPath: 'assets/yolo.tflite',
             task: YOLOTask.detect,
-<<<<<<< HEAD
-            controller: YOLOViewController()..init(mockChannel, 1, 'test_view'),
-=======
             controller: YOLOViewController()..init(mockChannel, 1),
->>>>>>> origin/feat/#6
             onResult: (results) {
               capturedResults.addAll(results);
             },
@@ -235,11 +223,7 @@ void main() {
       final mockChannel = YOLOTestHelpers.setupMockChannel(
         customResponses: {'setModel': (_) => Future.value(null)},
       );
-<<<<<<< HEAD
-      final controller = YOLOViewController()..init(mockChannel, 1, 'test_view');
-=======
       final controller = YOLOViewController()..init(mockChannel, 1);
->>>>>>> origin/feat/#6
 
       await tester.pumpWidget(
         MaterialApp(
@@ -276,11 +260,7 @@ void main() {
           'disposeInstance': (_) => Future.value(null),
         },
       );
-<<<<<<< HEAD
-      final controller = YOLOViewController()..init(mockChannel, 1, 'test_view');
-=======
       final controller = YOLOViewController()..init(mockChannel, 1);
->>>>>>> origin/feat/#6
 
       await tester.pumpWidget(
         MaterialApp(
@@ -328,11 +308,7 @@ void main() {
           home: YOLOView(
             modelPath: 'assets/yolo.tflite',
             task: YOLOTask.detect,
-<<<<<<< HEAD
-            controller: YOLOViewController()..init(mockChannel, 1, 'test_view'),
-=======
             controller: YOLOViewController()..init(mockChannel, 1),
->>>>>>> origin/feat/#6
             onStreamingData: (data) {
               capturedStreamData.add(data);
             },
