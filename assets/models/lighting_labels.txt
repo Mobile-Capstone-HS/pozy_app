@@ -1,0 +1,5 @@
+back_light
+front_light
+rim_light
+short_light
+side_light

@@ -22,8 +22,12 @@ class YOLOPlatformView(
     creationParams: Map<String?, Any?>?,
     private val streamHandler: CustomStreamHandler,
     private val methodChannel: MethodChannel?,
+<<<<<<< HEAD
     private val factory: YOLOPlatformViewFactory,
     private val metricsHandler: CustomStreamHandler? = null,
+=======
+    private val factory: YOLOPlatformViewFactory
+>>>>>>> origin/feat/#6
 ) : PlatformView, MethodChannel.MethodCallHandler {
 
     private val yoloView: YOLOView = YOLOView(context)
@@ -110,6 +114,7 @@ class YOLOPlatformView(
             
             Log.d(TAG, "Initializing with model: $modelPath, task: $task")
             
+<<<<<<< HEAD
             // Wire image metrics callback → metricsHandler EventChannel
             if (metricsHandler != null) {
                 yoloView.onImageMetrics = { metrics ->
@@ -117,6 +122,8 @@ class YOLOPlatformView(
                 }
             }
 
+=======
+>>>>>>> origin/feat/#6
             // Set up model loading callback
             yoloView.setOnModelLoadCallback { success ->
                 if (success) {
@@ -124,7 +131,11 @@ class YOLOPlatformView(
                     startStreaming()
                     val context = yoloView.context
                     val hasPermissions = android.Manifest.permission.CAMERA.let { permission ->
+<<<<<<< HEAD
                         android.content.pm.PackageManager.PERMISSION_GRANTED ==
+=======
+                        android.content.pm.PackageManager.PERMISSION_GRANTED == 
+>>>>>>> origin/feat/#6
                         ContextCompat.checkSelfPermission(context, permission)
                     }
                     if (hasPermissions) {
@@ -443,8 +454,14 @@ class YOLOPlatformView(
                     yoloView.startCamera()
                     result.success(null)
                 }
+<<<<<<< HEAD
                 "captureFrame" -> {
                     val imageData = yoloView.captureFrame()
+=======
+"captureFrame" -> {
+                    val maxWidth = call.argument<Int>("maxWidth") ?: 0
+                    val imageData = yoloView.captureFrame(maxWidth)
+>>>>>>> origin/feat/#6
                     if (imageData != null) {
                         Log.d(TAG, "Frame captured: ${imageData.size} bytes")
                         result.success(imageData)
@@ -452,6 +469,7 @@ class YOLOPlatformView(
                         result.error("capture_failed", "Failed to capture frame", null)
                     }
                 }
+<<<<<<< HEAD
                 "captureHighRes" -> {
                     yoloView.captureHighResPhoto { imageData ->
                         if (imageData != null) {
@@ -462,6 +480,8 @@ class YOLOPlatformView(
                         }
                     }
                 }
+=======
+>>>>>>> origin/feat/#6
                 "reconnectStream" -> {
                     // Handle reconnection request from Flutter
                     Log.d(TAG, "Received reconnect request from Flutter")
@@ -473,6 +493,7 @@ class YOLOPlatformView(
                     yoloView.setShowUIControls(show)
                     result.success(null)
                 }
+<<<<<<< HEAD
                 "setFocusPoint" -> {
                     val x = (call.argument<Double>("x") ?: 0.5).toFloat()
                     val y = (call.argument<Double>("y") ?: 0.5).toFloat()
@@ -495,6 +516,8 @@ class YOLOPlatformView(
                     yoloView.setLockedRoi(left, top, right, bottom)
                     result.success(null)
                 }
+=======
+>>>>>>> origin/feat/#6
                 else -> {
                     result.notImplemented()
                 }

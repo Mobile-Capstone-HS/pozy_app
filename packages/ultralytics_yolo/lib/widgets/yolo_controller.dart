@@ -1,8 +1,12 @@
 // Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 
+<<<<<<< HEAD
 import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:ultralytics_yolo/config/channel_config.dart';
+=======
+import 'package:flutter/services.dart';
+>>>>>>> origin/feat/#6
 import 'package:ultralytics_yolo/models/yolo_task.dart';
 import 'package:ultralytics_yolo/yolo_streaming_config.dart';
 import 'package:ultralytics_yolo/utils/logger.dart';
@@ -15,9 +19,12 @@ class YOLOViewController {
   double _iouThreshold = 0.45;
   int _numItemsThreshold = 30;
 
+<<<<<<< HEAD
   StreamSubscription<dynamic>? _metricsSubscription;
   void Function(Map<String, double>)? onImageMetrics;
 
+=======
+>>>>>>> origin/feat/#6
   double get confidenceThreshold => _confidenceThreshold;
   double get iouThreshold => _iouThreshold;
   int get numItemsThreshold => _numItemsThreshold;
@@ -25,6 +32,7 @@ class YOLOViewController {
 
   YOLOViewController();
 
+<<<<<<< HEAD
   void init(MethodChannel methodChannel, int viewId, String viewUniqueId) {
     _methodChannel = methodChannel;
     _viewId = viewId;
@@ -51,6 +59,12 @@ class YOLOViewController {
   void dispose() {
     _metricsSubscription?.cancel();
     _metricsSubscription = null;
+=======
+  void init(MethodChannel methodChannel, int viewId) {
+    _methodChannel = methodChannel;
+    _viewId = viewId;
+    _applyThresholds();
+>>>>>>> origin/feat/#6
   }
 
   Future<void> _applyThresholds() async {
@@ -248,6 +262,7 @@ class YOLOViewController {
     }
   }
 
+<<<<<<< HEAD
   Future<void> setFocusPoint(double x, double y) async {
     if (_methodChannel != null) {
       try {
@@ -268,6 +283,15 @@ class YOLOViewController {
     if (_methodChannel != null) {
       try {
         final result = await _methodChannel!.invokeMethod('captureFrame');
+=======
+  Future<Uint8List?> captureFrame({int maxWidth = 0}) async {
+    if (_methodChannel != null) {
+      try {
+        final result = await _methodChannel!.invokeMethod(
+          'captureFrame',
+          maxWidth > 0 ? {'maxWidth': maxWidth} : null,
+        );
+>>>>>>> origin/feat/#6
         return result is Uint8List ? result : null;
       } catch (e) {
         logInfo('Error capturing frame: $e');
@@ -276,6 +300,7 @@ class YOLOViewController {
     }
     return null;
   }
+<<<<<<< HEAD
 
   /// 실제 카메라가 지원하는 최소 줌 비율 반환.
   /// 초광각 렌즈 탑재 기기는 1.0 미만 (예: 0.5, 0.6).
@@ -326,4 +351,6 @@ class YOLOViewController {
     }
     return null;
   }
+=======
+>>>>>>> origin/feat/#6
 }

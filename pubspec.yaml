@@ -37,17 +37,28 @@ dependencies:
   camera: ^0.11.0
   image: ^4.2.0
   ultralytics_yolo:
+<<<<<<< HEAD
     path: packages/ultralytics_yolo
+=======
+    path: 'packages/ultralytics_yolo'
+>>>>>>> origin/feat/#6
   image_picker: ^0.8.7
   gal: ^2.3.2
   photo_manager: ^3.9.0
   permission_handler: any
+<<<<<<< HEAD
   sensors_plus: ^4.0.2
   flutter_litert: ^2.0.7
   flutter_litert_flex: ^0.0.5
   google_generative_ai: ^0.4.6
   http: ^1.2.0
   flutter_dotenv: ^5.2.1
+=======
+  google_mlkit_pose_detection: ^0.12.0
+  google_mlkit_face_detection: ^0.11.0
+  tflite_flutter: ^0.11.0
+
+>>>>>>> origin/feat/#6
 dev_dependencies:
   flutter_test:
     sdk: flutter

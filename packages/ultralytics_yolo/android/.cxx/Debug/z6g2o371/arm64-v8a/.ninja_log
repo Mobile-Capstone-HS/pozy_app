@@ -1,0 +1,9 @@
+# ninja log v5
+1	4088	7960662126182442	CMakeFiles/ultralytics.dir/native-lib.cpp.o	f9a1682e744e0ec5
+4107	4310	7960662128622585	C:/Users/cjsqhrdl/pozy_app/build/ultralytics_yolo/intermediates/cxx/Debug/z6g2o371/obj/arm64-v8a/libultralytics.so	d1ee0a7e09ab602b
+30	886	7964154018909721	C:/Users/cjsqhrdl/pozy_app/build/ultralytics_yolo/intermediates/cxx/Debug/z6g2o371/obj/arm64-v8a/libultralytics.so	d1ee0a7e09ab602b
+69	754	7964165032868975	C:/Users/cjsqhrdl/pozy_app/build/ultralytics_yolo/intermediates/cxx/Debug/z6g2o371/obj/arm64-v8a/libultralytics.so	d1ee0a7e09ab602b
+96	899	7964177389840891	C:/Users/cjsqhrdl/pozy_app/build/ultralytics_yolo/intermediates/cxx/Debug/z6g2o371/obj/arm64-v8a/libultralytics.so	d1ee0a7e09ab602b
+114	624	7969043934522067	C:/Users/cjsqhrdl/pozy_app/build/ultralytics_yolo/intermediates/cxx/Debug/z6g2o371/obj/arm64-v8a/libultralytics.so	d1ee0a7e09ab602b
+46	325	7969053102250022	C:/Users/cjsqhrdl/pozy_app/build/ultralytics_yolo/intermediates/cxx/Debug/z6g2o371/obj/arm64-v8a/libultralytics.so	d1ee0a7e09ab602b
+105	826	7969057095635565	C:/Users/cjsqhrdl/pozy_app/build/ultralytics_yolo/intermediates/cxx/Debug/z6g2o371/obj/arm64-v8a/libultralytics.so	d1ee0a7e09ab602b

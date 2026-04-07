@@ -1,0 +1,5 @@
+# ninja log v5
+3	2197	7969082800714690	CMakeFiles/ultralytics.dir/native-lib.cpp.o	1b35c3663c57b497
+2221	2548	7969082804014667	C:/Users/cjsqhrdl/pozy_app/build/ultralytics_yolo/intermediates/cxx/Debug/5e1p3o3o/obj/x86_64/libultralytics.so	77e1b50dd40dadf3
+28	429	7969267679719203	C:/Users/cjsqhrdl/pozy_app/build/ultralytics_yolo/intermediates/cxx/Debug/5e1p3o3o/obj/x86_64/libultralytics.so	77e1b50dd40dadf3
+30	489	7969294360703465	C:/Users/cjsqhrdl/pozy_app/build/ultralytics_yolo/intermediates/cxx/Debug/5e1p3o3o/obj/x86_64/libultralytics.so	77e1b50dd40dadf3

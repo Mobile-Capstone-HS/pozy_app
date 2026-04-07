@@ -13,10 +13,13 @@ import android.view.*
 import android.widget.FrameLayout
 import android.widget.Toast
 import android.view.ScaleGestureDetector
+<<<<<<< HEAD
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager as AndroidCameraManager
 import androidx.camera.camera2.interop.Camera2CameraInfo
 import androidx.camera.camera2.interop.ExperimentalCamera2Interop
+=======
+>>>>>>> origin/feat/#6
 import androidx.camera.core.*
 import androidx.camera.core.Camera
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -160,6 +163,7 @@ class YOLOView @JvmOverloads constructor(
     private var frameSkipCount: Int = 0 // Current frame skip counter
     private var targetSkipFrames: Int = 0 // Number of frames to skip between inferences
 
+<<<<<<< HEAD
     // Image metrics analysis — callback set by YOLOPlatformView
     var onImageMetrics: ((Map<String, Any>) -> Unit)? = null
     private var metricsFrameCount: Int = 0
@@ -174,6 +178,8 @@ class YOLOView @JvmOverloads constructor(
         else null
     }
 
+=======
+>>>>>>> origin/feat/#6
     /** Set the callback */
     fun setOnInferenceCallback(callback: (YOLOResult) -> Unit) {
         this.inferenceCallback = callback
@@ -226,7 +232,10 @@ class YOLOView @JvmOverloads constructor(
     // New fields for proper teardown:
     private var cameraExecutor: ExecutorService? = null
     private var imageAnalysisUseCase: ImageAnalysis? = null
+<<<<<<< HEAD
     private var imageCaptureUseCase: ImageCapture? = null
+=======
+>>>>>>> origin/feat/#6
     
     // Flag to track if the view is stopped/disposed to prevent race conditions
     @Volatile
@@ -239,10 +248,13 @@ class YOLOView @JvmOverloads constructor(
     private lateinit var scaleGestureDetector: ScaleGestureDetector
     var onZoomChanged: ((Float) -> Unit)? = null
 
+<<<<<<< HEAD
     // Ultrawide camera (Camera2 interop)
     private var ultrawideCameraId: String? = null
     private var isUsingUltrawide = false
 
+=======
+>>>>>>> origin/feat/#6
     // detection thresholds (can be changed externally via setters)
     private var confidenceThreshold = 0.25  // initial value
     private var iouThreshold = 0.45
@@ -405,6 +417,7 @@ class YOLOView @JvmOverloads constructor(
         confidenceLabel.visibility = visibility
     }
     
+<<<<<<< HEAD
     @OptIn(androidx.camera.camera2.interop.ExperimentalCamera2Interop::class)
     fun setZoomLevel(zoomLevel: Float) {
         val uwId = ultrawideCameraId
@@ -424,10 +437,22 @@ class YOLOView @JvmOverloads constructor(
             val clampedZoomRatio = zoomLevel.coerceIn(actualMin, actualMax)
             cam.cameraControl.setZoomRatio(clampedZoomRatio)
             currentZoomRatio = clampedZoomRatio
+=======
+    fun setZoomLevel(zoomLevel: Float) {
+        camera?.let { cam: Camera ->
+            // Clamp zoom level between min and max
+            val clampedZoomRatio = zoomLevel.coerceIn(minZoomRatio, cam.cameraInfo.zoomState.value?.maxZoomRatio ?: maxZoomRatio)
+            
+            cam.cameraControl.setZoomRatio(clampedZoomRatio)
+            currentZoomRatio = clampedZoomRatio
+            
+            // Notify zoom change
+>>>>>>> origin/feat/#6
             onZoomChanged?.invoke(currentZoomRatio)
         }
     }
 
+<<<<<<< HEAD
     /** 실제 카메라가 지원하는 최소 줌 비율 반환 (초광각 지원 기기는 0.5 반환) */
     fun getMinZoomRatio(): Float {
         if (ultrawideCameraId != null) return 0.5f
@@ -573,6 +598,8 @@ class YOLOView @JvmOverloads constructor(
         }
     }
 
+=======
+>>>>>>> origin/feat/#6
     // endregion
 
     // region Model / Task
@@ -703,6 +730,7 @@ class YOLOView @JvmOverloads constructor(
                     val cameraProvider = cameraProviderFuture.get()
                     Log.d(TAG, "Camera provider obtained")
 
+<<<<<<< HEAD
                     // RATIO_16_9: 세로형 폰 화면과 비율 일치 → 프리뷰 크롭 최소화
                     previewUseCase = Preview.Builder()
                         .setTargetAspectRatio(AspectRatio.RATIO_16_9)
@@ -719,6 +747,15 @@ class YOLOView @JvmOverloads constructor(
                         .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
                         .setTargetAspectRatio(AspectRatio.RATIO_16_9)
                         .setFlashMode(ImageCapture.FLASH_MODE_OFF)
+=======
+                    previewUseCase = Preview.Builder()
+                        .setTargetAspectRatio(AspectRatio.RATIO_4_3)
+                        .build()
+
+                    imageAnalysisUseCase = ImageAnalysis.Builder()
+                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                        .setTargetAspectRatio(AspectRatio.RATIO_4_3)
+>>>>>>> origin/feat/#6
                         .build()
 
                     cameraExecutor = Executors.newSingleThreadExecutor()
@@ -745,18 +782,29 @@ class YOLOView @JvmOverloads constructor(
                             owner,
                             cameraSelector,
                             previewUseCase,
+<<<<<<< HEAD
                             imageAnalysisUseCase,
                             imageCaptureUseCase!!
+=======
+                            imageAnalysisUseCase  // the field, not a local val
+>>>>>>> origin/feat/#6
                         )
                         
                         // Reset zoom to 1.0x when camera starts
                         currentZoomRatio = 1.0f
+<<<<<<< HEAD
                         isUsingUltrawide = false
+=======
+>>>>>>> origin/feat/#6
                         onZoomChanged?.invoke(currentZoomRatio)
 
                         Log.d(TAG, "Setting surface provider to previewView")
                         previewUseCase?.setSurfaceProvider(previewView.surfaceProvider)
+<<<<<<< HEAD
 
+=======
+                        
+>>>>>>> origin/feat/#6
                         // Initialize zoom
                         camera?.let { cam: Camera ->
                             val cameraInfo = cam.cameraInfo
@@ -765,10 +813,14 @@ class YOLOView @JvmOverloads constructor(
                             currentZoomRatio = cameraInfo.zoomState.value?.zoomRatio ?: 1.0f
                             Log.d(TAG, "Zoom initialized - min: $minZoomRatio, max: $maxZoomRatio, current: $currentZoomRatio")
                         }
+<<<<<<< HEAD
 
                         // 초광각 카메라 탐색 (Samsung A24 등 Camera2 접근 필요한 기기)
                         detectUltrawideCamera()
 
+=======
+                        
+>>>>>>> origin/feat/#6
                         Log.d(TAG, "Camera setup completed successfully")
                     } catch (e: Exception) {
                         Log.e(TAG, "Use case binding failed", e)
@@ -904,6 +956,7 @@ class YOLOView @JvmOverloads constructor(
                 
                 inferenceResult = resultWithOriginalImage
 
+<<<<<<< HEAD
                 // Image metrics analysis (every metricsFrameInterval frames)
                 onImageMetrics?.let { callback ->
                     metricsFrameCount++
@@ -947,6 +1000,10 @@ class YOLOView @JvmOverloads constructor(
 
                 // Log
 
+=======
+                // Log
+                
+>>>>>>> origin/feat/#6
                 // Callback
                 inferenceCallback?.invoke(resultWithOriginalImage)
                 
@@ -956,7 +1013,11 @@ class YOLOView @JvmOverloads constructor(
                         updateLastInferenceTime()
                         
                         // Convert to stream data and send
+<<<<<<< HEAD
                         val streamData = convertResultToStreamData(resultWithOriginalImage, bitmap)
+=======
+                        val streamData = convertResultToStreamData(resultWithOriginalImage)
+>>>>>>> origin/feat/#6
                         // Add timestamp and frame info
                         val enhancedStreamData = HashMap<String, Any>(streamData)
                         enhancedStreamData["timestamp"] = System.currentTimeMillis()
@@ -1763,10 +1824,14 @@ class YOLOView @JvmOverloads constructor(
      * Convert YOLOResult to a Map for streaming (ported from archived YOLOPlatformView)
      * Uses detection index correctly to avoid class index confusion
      */
+<<<<<<< HEAD
     private fun convertResultToStreamData(
         result: YOLOResult,
         sourceBitmap: Bitmap? = null,
     ): Map<String, Any> {
+=======
+    private fun convertResultToStreamData(result: YOLOResult): Map<String, Any> {
+>>>>>>> origin/feat/#6
         val map = HashMap<String, Any>()
         val config = streamConfig ?: return emptyMap()
         
@@ -1838,9 +1903,12 @@ class YOLOView @JvmOverloads constructor(
                 normalizedBox["right"] = box.xywhn.right.toDouble()
                 normalizedBox["bottom"] = box.xywhn.bottom.toDouble()
                 detection["normalizedBox"] = normalizedBox
+<<<<<<< HEAD
                 computeAppearanceSignature(sourceBitmap, box.xywhn)?.let { signature ->
                     detection["appearanceSignature"] = signature
                 }
+=======
+>>>>>>> origin/feat/#6
                 
                 // Add mask data for segmentation (if available and enabled)
                 if (config.includeMasks && result.masks != null && detectionIndex < result.masks!!.masks.size) {
@@ -1977,6 +2045,7 @@ class YOLOView @JvmOverloads constructor(
         
         return map
     }
+<<<<<<< HEAD
 
     private fun computeAppearanceSignature(
         bitmap: Bitmap?,
@@ -2062,6 +2131,8 @@ class YOLOView @JvmOverloads constructor(
 
         return signature
     }
+=======
+>>>>>>> origin/feat/#6
     
     // endregion
     
@@ -2069,6 +2140,7 @@ class YOLOView @JvmOverloads constructor(
      * Capture current camera frame with detection overlays
      * Returns the captured image as a ByteArray (JPEG format)
      */
+<<<<<<< HEAD
     fun setFocusPoint(x: Float, y: Float) {
         val factory = SurfaceOrientedMeteringPointFactory(1.0f, 1.0f)
         val point = factory.createPoint(x, y)
@@ -2177,13 +2249,78 @@ class YOLOView @JvmOverloads constructor(
             bitmap.recycle()
             
             Log.d(TAG, "Frame captured successfully: ${imageData.size} bytes, camera captured: $cameraFrameCaptured")
+=======
+/**
+     * Capture current camera frame
+     * @param maxWidth 0 = original resolution, >0 = resize to this width (keeping aspect ratio)
+     */
+   fun captureFrame(maxWidth: Int = 0): ByteArray? {
+        try {
+            val viewWidth = width
+            val viewHeight = height
+            if (viewWidth <= 0 || viewHeight <= 0) {
+                Log.e(TAG, "Invalid view dimensions for capture: ${viewWidth}x${viewHeight}")
+                return null
+            }
+
+            var cameraBmp: Bitmap? = null
+            previewView.bitmap?.let { src ->
+                cameraBmp = if (maxWidth > 0 && maxWidth < src.width) {
+                    val h = (src.height.toFloat() * maxWidth / src.width).toInt()
+                    Bitmap.createScaledBitmap(src, maxWidth, h, true)
+                } else {
+                    src
+                }
+            }
+
+            if (cameraBmp == null) {
+                Log.w(TAG, "PreviewView.bitmap is null, trying hardware capture")
+                isDrawingCacheEnabled = true
+                buildDrawingCache()
+                drawingCache?.let { cache ->
+                    cameraBmp = if (maxWidth > 0 && maxWidth < cache.width) {
+                        val h = (cache.height.toFloat() * maxWidth / cache.width).toInt()
+                        Bitmap.createScaledBitmap(cache, maxWidth, h, true)
+                    } else {
+                        cache.copy(cache.config ?: Bitmap.Config.ARGB_8888, false)
+                    }
+                }
+                isDrawingCacheEnabled = false
+            }
+
+            if (cameraBmp == null) {
+                Log.w(TAG, "Drawing cache failed, using draw method")
+                val targetW = if (maxWidth > 0) maxWidth else viewWidth
+                val targetH = if (maxWidth > 0) (viewHeight.toFloat() * maxWidth / viewWidth).toInt() else viewHeight
+                val bitmap = Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888)
+                val canvas = Canvas(bitmap)
+                if (maxWidth > 0) {
+                    val scale = targetW.toFloat() / viewWidth
+                    canvas.scale(scale, scale)
+                }
+                previewView.draw(canvas)
+                cameraBmp = bitmap
+            }
+
+            val quality = if (maxWidth > 0) 70 else 90
+            val outputStream = java.io.ByteArrayOutputStream()
+            cameraBmp!!.compress(Bitmap.CompressFormat.JPEG, quality, outputStream)
+            val imageData = outputStream.toByteArray()
+            outputStream.close()
+            cameraBmp!!.recycle()
+
+            Log.d(TAG, "Frame captured: ${imageData.size} bytes")
+>>>>>>> origin/feat/#6
             return imageData
         } catch (e: Exception) {
             Log.e(TAG, "Error capturing frame", e)
             return null
         }
     }
+<<<<<<< HEAD
 
+=======
+>>>>>>> origin/feat/#6
     /**
      * Stop camera and inference (can be restarted later)
      */
@@ -2206,8 +2343,11 @@ class YOLOView @JvmOverloads constructor(
             }
 
             imageAnalysisUseCase = null
+<<<<<<< HEAD
             imageCaptureUseCase = null
             isUsingUltrawide = false
+=======
+>>>>>>> origin/feat/#6
 
             previewUseCase?.setSurfaceProvider(null)
             previewUseCase = null

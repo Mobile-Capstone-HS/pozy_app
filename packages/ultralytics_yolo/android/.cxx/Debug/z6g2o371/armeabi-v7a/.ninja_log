@@ -1,0 +1,9 @@
+# ninja log v5
+3	3439	7960662205337646	CMakeFiles/ultralytics.dir/native-lib.cpp.o	a2707450cdabbd78
+3453	3677	7960662207737695	C:/Users/cjsqhrdl/pozy_app/build/ultralytics_yolo/intermediates/cxx/Debug/z6g2o371/obj/armeabi-v7a/libultralytics.so	1a697fe1ac678287
+31	602	7964154029319651	C:/Users/cjsqhrdl/pozy_app/build/ultralytics_yolo/intermediates/cxx/Debug/z6g2o371/obj/armeabi-v7a/libultralytics.so	1a697fe1ac678287
+21	413	7964165039878968	C:/Users/cjsqhrdl/pozy_app/build/ultralytics_yolo/intermediates/cxx/Debug/z6g2o371/obj/armeabi-v7a/libultralytics.so	1a697fe1ac678287
+30	525	7964177397710942	C:/Users/cjsqhrdl/pozy_app/build/ultralytics_yolo/intermediates/cxx/Debug/z6g2o371/obj/armeabi-v7a/libultralytics.so	1a697fe1ac678287
+16	417	7969043944087896	C:/Users/cjsqhrdl/pozy_app/build/ultralytics_yolo/intermediates/cxx/Debug/z6g2o371/obj/armeabi-v7a/libultralytics.so	1a697fe1ac678287
+11	254	7969053106749951	C:/Users/cjsqhrdl/pozy_app/build/ultralytics_yolo/intermediates/cxx/Debug/z6g2o371/obj/armeabi-v7a/libultralytics.so	1a697fe1ac678287
+59	899	7969057114464841	C:/Users/cjsqhrdl/pozy_app/build/ultralytics_yolo/intermediates/cxx/Debug/z6g2o371/obj/armeabi-v7a/libultralytics.so	1a697fe1ac678287

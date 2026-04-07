@@ -14,8 +14,11 @@ class ChannelConfig {
       'com.ultralytics.yolo/controlChannel_';
   static const String detectionResultsPrefix =
       'com.ultralytics.yolo/detectionResults_';
+<<<<<<< HEAD
   static const String imageMetricsPrefix =
       'com.ultralytics.yolo/imageMetrics_';
+=======
+>>>>>>> origin/feat/#6
 
   /// Creates a method channel with the standard YOLO naming convention.
   ///
@@ -54,10 +57,13 @@ class ChannelConfig {
     return EventChannel('$detectionResultsPrefix$viewId');
   }
 
+<<<<<<< HEAD
   static EventChannel createImageMetricsChannel(String viewId) {
     return EventChannel('$imageMetricsPrefix$viewId');
   }
 
+=======
+>>>>>>> origin/feat/#6
   /// Validates method call arguments for common patterns.
   ///
   /// [call] The method call to validate
