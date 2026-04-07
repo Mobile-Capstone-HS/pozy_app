@@ -159,6 +159,7 @@ class YOLOView @JvmOverloads constructor(
     private var inferenceFrameInterval: Long? = null // Target inference interval in nanoseconds
     private var frameSkipCount: Int = 0 // Current frame skip counter
     private var targetSkipFrames: Int = 0 // Number of frames to skip between inferences
+    private val portraitNativeAnalyzer = PortraitNativeAnalyzer(context)
 
     // Image metrics analysis — callback set by YOLOPlatformView
     var onImageMetrics: ((Map<String, Any>) -> Unit)? = null
@@ -921,6 +922,10 @@ class YOLOView @JvmOverloads constructor(
                             roiBottom = roi?.bottom,
                         )
                         val metrics = HashMap<String, Any>(baseMetrics)
+                        if (task == YOLOTask.POSE) {
+                            portraitNativeAnalyzer.schedule(imageProxy, bitmap)
+                            metrics.putAll(portraitNativeAnalyzer.latestMetrics())
+                        }
                         if (locked != null) {
                             metrics["subjectLocked"] = 1.0
                             // Check overlap of any detection with locked ROI (>= 20% of locked area)
@@ -1744,11 +1749,15 @@ class YOLOView @JvmOverloads constructor(
     /**
      * Flattens keypoints data into a single array format: [x1, y1, conf1, x2, y2, conf2, ...]
      */
-    private fun flattenKeypoints(keypoints: Keypoints): List<Double> {
+    private fun flattenKeypoints(
+        keypoints: Keypoints,
+        imageWidth: Float,
+        imageHeight: Float,
+    ): List<Double> {
         val flattened = mutableListOf<Double>()
         for (i in keypoints.xy.indices) {
-            flattened.add(keypoints.xy[i].first.toDouble())
-            flattened.add(keypoints.xy[i].second.toDouble())
+            flattened.add((keypoints.xy[i].first / imageWidth).toDouble())
+            flattened.add((keypoints.xy[i].second / imageHeight).toDouble())
             val confidence = if (i < keypoints.conf.size) {
                 keypoints.conf[i].toDouble()
             } else {
@@ -1808,7 +1817,11 @@ class YOLOView @JvmOverloads constructor(
                     normalizedBox["bottom"] = (maxY / result.origShape.height).toDouble()
                     detection["normalizedBox"] = normalizedBox
                     
-                    val keypointsFlat = flattenKeypoints(keypoints)
+                    val keypointsFlat = flattenKeypoints(
+                        keypoints,
+                        result.origShape.width.toFloat(),
+                        result.origShape.height.toFloat(),
+                    )
                     detection["keypoints"] = keypointsFlat
                     Log.d(TAG, "Added pose detection with ${keypoints.xy.size} keypoints")
                     
@@ -1857,7 +1870,11 @@ class YOLOView @JvmOverloads constructor(
                 if (config.includePoses && result.keypointsList.isNotEmpty()) {
                     if (detectionIndex < result.keypointsList.size) {
                         val keypoints = result.keypointsList[detectionIndex]
-                        val keypointsFlat = flattenKeypoints(keypoints)
+                        val keypointsFlat = flattenKeypoints(
+                            keypoints,
+                            result.origShape.width.toFloat(),
+                            result.origShape.height.toFloat(),
+                        )
                         detection["keypoints"] = keypointsFlat
                         Log.d(TAG, "Added keypoints data (${keypoints.xy.size} points) for detection $detectionIndex")
                     }
@@ -2248,6 +2265,10 @@ class YOLOView @JvmOverloads constructor(
         } catch (e: Exception) {
             Log.e(TAG, "Error during YOLOView stop", e)
         }
+    }
+
+    fun disposeNativeAnalyzers() {
+        portraitNativeAnalyzer.dispose()
     }
 
 }

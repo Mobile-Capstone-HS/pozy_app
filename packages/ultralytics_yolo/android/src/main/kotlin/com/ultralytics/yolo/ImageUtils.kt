@@ -22,6 +22,11 @@ object ImageUtils {
         return yuvImageToBitmap(yuvImage)
     }
 
+    @JvmStatic
+    fun toNv21(imageProxy: ImageProxy): ByteArray {
+        return yuv420888ToNv21(imageProxy)
+    }
+
     /**
      * Returns a transformation matrix from one reference frame into another. Handles cropping (if
      * maintaining aspect ratio is desired) and rotation.

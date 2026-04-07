@@ -38,6 +38,14 @@ class PortraitCoachEngine {
       );
     }
 
+    if (s.personCount >= 3) {
+      return const CoachingResult(
+        message: '인물을 한두 명으로 정리해보세요',
+        priority: CoachingPriority.critical,
+        confidence: 0.92,
+      );
+    }
+
     // ════════════════════════════════════════════════
     // P1: 치명적 문제
     // ════════════════════════════════════════════════
@@ -249,6 +257,24 @@ class PortraitCoachEngine {
       }
     }
 
+    if (s.hasFace &&
+        (s.shotType == ShotType.closeUp || s.shotType == ShotType.upperBody)) {
+      if (s.faceCenterX < 0.22 || s.faceCenterX > 0.78) {
+        return const CoachingResult(
+          message: '얼굴이 너무 옆으로 치우쳤어요',
+          priority: CoachingPriority.composition,
+          confidence: 0.72,
+        );
+      }
+      if (s.faceBoxRatio > 0.22 && s.shotType == ShotType.closeUp) {
+        return const CoachingResult(
+          message: '얼굴이 너무 크게 잡혀 있어요',
+          priority: CoachingPriority.composition,
+          confidence: 0.7,
+        );
+      }
+    }
+
     return null;
   }
 
@@ -414,6 +440,18 @@ class PortraitCoachEngine {
           confidence: 0.55,
         );
       }
+    }
+
+    if (s.smileProbability != null &&
+        !s.isSmiling &&
+        s.shotType != ShotType.environmental &&
+        s.faceYaw != null &&
+        s.faceYaw!.abs() < 20) {
+      return const CoachingResult(
+        message: '표정을 조금 더 부드럽게 풀어보세요',
+        priority: CoachingPriority.refinement,
+        confidence: 0.52,
+      );
     }
 
     return null;

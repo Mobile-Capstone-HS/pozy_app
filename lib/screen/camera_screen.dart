@@ -182,7 +182,12 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   void _onImageMetrics(Map<String, double> metrics) {
-    if (!mounted || _isPortraitMode) return;
+    if (!mounted) return;
+
+    if (_isPortraitMode) {
+      _portraitHandler.updateNativeMetrics(metrics);
+      return;
+    }
 
     final coaching = _decorateLockedSubjectCoachingSafe(
       _sceneCoach.applyImageMetrics(metrics),
@@ -633,10 +638,7 @@ class _CameraScreenState extends State<CameraScreen> {
     if (!mounted || !_isPortraitMode) return;
 
     _portraitHandler.isFrontCamera = _isFrontCamera;
-    final analysis = _portraitHandler.processResults(
-      results,
-      captureFrame: () => _cameraController.captureFrame(),
-    );
+    final analysis = _portraitHandler.processResults(results);
 
     setState(() {
       _portraitOverlayData = analysis.overlayData;

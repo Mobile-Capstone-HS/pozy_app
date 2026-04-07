@@ -67,6 +67,9 @@ class PortraitSceneState {
   final double? smileProbability;
   final double? leftEyeOpenProb;
   final double? rightEyeOpenProb;
+  final double faceCenterX;
+  final double faceCenterY;
+  final double faceBoxRatio;
 
   // 포즈 데이터 (YOLO Pose)
   final double? shoulderAngleDeg;
@@ -105,6 +108,9 @@ class PortraitSceneState {
     this.smileProbability,
     this.leftEyeOpenProb,
     this.rightEyeOpenProb,
+    this.faceCenterX = 0.5,
+    this.faceCenterY = 0.33,
+    this.faceBoxRatio = 0.0,
     this.shoulderAngleDeg,
     this.leftArmBodyGap,
     this.rightArmBodyGap,
@@ -130,6 +136,9 @@ class PortraitSceneState {
       rightEyeOpenProb != null &&
       leftEyeOpenProb! < 0.3 &&
       rightEyeOpenProb! < 0.3;
+
+  bool get isSmiling =>
+      smileProbability != null && smileProbability! >= 0.65;
 
   bool get hasFace => faceYaw != null;
   bool get hasPose => shoulderAngleDeg != null;

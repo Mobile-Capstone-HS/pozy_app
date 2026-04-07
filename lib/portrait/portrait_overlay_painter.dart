@@ -33,6 +33,9 @@ class OverlayData {
   final ShotType shotType;
   final double eyeConfidence;
   final double shoulderConfidence;
+  final Rect? faceGuideRect;
+  final double? targetEyeLineY;
+  final double? targetHeadroomTop;
 
   const OverlayData({
     this.leftEye,
@@ -50,6 +53,9 @@ class OverlayData {
     this.shotType = ShotType.unknown,
     this.eyeConfidence = 0.0,
     this.shoulderConfidence = 0.0,
+    this.faceGuideRect,
+    this.targetEyeLineY,
+    this.targetHeadroomTop,
   });
 }
 
@@ -77,6 +83,7 @@ class PortraitOverlayPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     _drawThirdsGrid(canvas, size);
+    _drawFaceGuide(canvas, size);
     _drawBodyOutline(canvas, size);
     _drawKeypoints(canvas, size);
     _drawShoulderLine(canvas, size);
@@ -250,6 +257,57 @@ class PortraitOverlayPainter extends CustomPainter {
     } else if (deviation < 0.25) {
       // 유도 화살표
       _drawGuideArrow(canvas, eyeMid, thirdLineY);
+    }
+  }
+
+  void _drawFaceGuide(Canvas canvas, Size size) {
+    final rect = data.faceGuideRect;
+    if (rect != null) {
+      final r = Rect.fromLTWH(
+        rect.left * size.width,
+        rect.top * size.height,
+        rect.width * size.width,
+        rect.height * size.height,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(r, const Radius.circular(12)),
+        Paint()
+          ..color = const Color(0x2238BDF8)
+          ..style = PaintingStyle.fill,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(r, const Radius.circular(12)),
+        Paint()
+          ..color = _Colors.cyanSoft
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.4,
+      );
+    }
+
+    final eyeLineY = data.targetEyeLineY;
+    if (eyeLineY != null) {
+      final y = eyeLineY * size.height;
+      canvas.drawLine(
+        Offset(size.width * 0.12, y),
+        Offset(size.width * 0.88, y),
+        Paint()
+          ..color = const Color(0x4438BDF8)
+          ..strokeWidth = 1.2
+          ..strokeCap = StrokeCap.round,
+      );
+    }
+
+    final headroomTop = data.targetHeadroomTop;
+    if (headroomTop != null) {
+      final y = headroomTop * size.height;
+      canvas.drawLine(
+        Offset(size.width * 0.2, y),
+        Offset(size.width * 0.8, y),
+        Paint()
+          ..color = const Color(0x33FFFFFF)
+          ..strokeWidth = 1.0
+          ..strokeCap = StrokeCap.round,
+      );
     }
   }
 

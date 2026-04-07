@@ -521,6 +521,7 @@ class YOLOPlatformView(
         
         try {
             yoloView.stop()
+            yoloView.disposeNativeAnalyzers()
             // Clear callbacks by setting them to empty implementations
             yoloView.setStreamCallback { }
             yoloView.setOnInferenceCallback { }

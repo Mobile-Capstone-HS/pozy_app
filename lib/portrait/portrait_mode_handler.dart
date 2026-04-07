@@ -105,6 +105,11 @@ class PortraitModeHandler {
   double? _leftEyeOpen;
   double? _rightEyeOpen;
   double? _smileProb;
+  Rect? _trackedMainBox;
+  Rect? _smoothedFaceRect;
+
+  static const double _faceMetricAlpha = 0.3;
+  static const double _faceRectAlpha = 0.35;
 
   // ─── 외부 설정 ────────────────────────────────────
   bool isFrontCamera = false;
@@ -135,18 +140,42 @@ class PortraitModeHandler {
     _leftEyeOpen = null;
     _rightEyeOpen = null;
     _smileProb = null;
+    _trackedMainBox = null;
+    _smoothedFaceRect = null;
     stableMessage = '카메라를 사람에게 향해주세요';
     _pendingMessage = '';
     _pendingCount = 0;
   }
 
+  void updateNativeMetrics(Map<String, double> metrics) {
+    _faceYaw = _smoothMetric(_faceYaw, metrics['portraitFaceYaw']);
+    _facePitch = _smoothMetric(_facePitch, metrics['portraitFacePitch']);
+    _faceRoll = _smoothMetric(_faceRoll, metrics['portraitFaceRoll']);
+    _leftEyeOpen = _smoothMetric(
+      _leftEyeOpen,
+      metrics['portraitLeftEyeOpen'],
+    );
+    _rightEyeOpen = _smoothMetric(
+      _rightEyeOpen,
+      metrics['portraitRightEyeOpen'],
+    );
+    _smileProb = _smoothMetric(
+      _smileProb,
+      metrics['portraitSmileProbability'],
+    );
+
+    final lightingCode = metrics['portraitLightingCode'];
+    lastLighting = _lightingFromCode(lightingCode);
+    lastLightingConf = _smoothMetric(
+          lastLightingConf == 0.0 ? null : lastLightingConf,
+          metrics['portraitLightingConfidence'],
+        ) ??
+        0.0;
+  }
+
   // ─── 메인 처리 ────────────────────────────────────
 
-  PortraitAnalysisResult processResults(
-    List<YOLOResult> results, {
-    required Future<Uint8List?> Function() captureFrame,
-  }) {
-    _frameCount++;
+  PortraitAnalysisResult processResults(List<YOLOResult> results) {
 
     final persons = results
         .where((r) => r.className.toLowerCase() == 'person')
@@ -182,11 +211,7 @@ class PortraitModeHandler {
       );
     }
 
-    final main = persons.reduce((a, b) {
-      final aa = a.normalizedBox.width * a.normalizedBox.height;
-      final ab = b.normalizedBox.width * b.normalizedBox.height;
-      return aa >= ab ? a : b;
-    });
+    final main = _selectMainPerson(persons);
 
     // 키포인트 추출
     final nose = _kp(main, PoseKeypointIndex.nose);
@@ -206,16 +231,6 @@ class PortraitModeHandler {
     final rAnkle = _kp(main, PoseKeypointIndex.rightAnkle, minConf: 0.3);
 
     // ─── 비동기 분석 (조명 + 얼굴, captureFrame 공유) ─────
-    _scheduleAnalysis(
-      captureFrame,
-      main,
-      nose,
-      lEye,
-      rEye,
-      lShoulder,
-      rShoulder,
-    );
-
     // 어깨 각도
     final sConf = math.min(
       _conf(main, PoseKeypointIndex.leftShoulder),
@@ -336,6 +351,22 @@ class PortraitModeHandler {
     }
 
     // SceneState
+    final rawFaceRect = _estimateFaceRect(
+      personBox: Rect.fromLTRB(
+        main.normalizedBox.left,
+        main.normalizedBox.top,
+        main.normalizedBox.right,
+        main.normalizedBox.bottom,
+      ),
+      nose: nose,
+      leftEye: lEye,
+      rightEye: rEye,
+      leftShoulder: lShoulder,
+      rightShoulder: rShoulder,
+    );
+    _smoothedFaceRect = _smoothRect(_smoothedFaceRect, rawFaceRect);
+    final faceRect = _smoothedFaceRect ?? rawFaceRect;
+
     final state = PortraitSceneState(
       personCount: persons.length,
       shotType: shot,
@@ -345,6 +376,9 @@ class PortraitModeHandler {
       smileProbability: _smileProb,
       leftEyeOpenProb: _leftEyeOpen,
       rightEyeOpenProb: _rightEyeOpen,
+      faceCenterX: faceRect.center.dx,
+      faceCenterY: faceRect.center.dy,
+      faceBoxRatio: faceRect.width * faceRect.height,
       shoulderAngleDeg: shoulderAngle,
       leftArmBodyGap: lArmGap,
       rightArmBodyGap: rArmGap,
@@ -384,6 +418,9 @@ class PortraitModeHandler {
       shotType: shot,
       eyeConfidence: eyeConf,
       shoulderConfidence: sConf,
+      faceGuideRect: faceRect,
+      targetEyeLineY: _targetEyeLineY(shot),
+      targetHeadroomTop: _targetHeadroomTop(shot),
     );
 
     return PortraitAnalysisResult(
@@ -668,6 +705,23 @@ class PortraitModeHandler {
   }
 
   // ─── 조명 라벨/색상 헬퍼 (UI에서 사용) ────────────────
+
+  LightingCondition _lightingFromCode(double? code) {
+    switch (code?.round()) {
+      case 0:
+        return LightingCondition.normal;
+      case 1:
+        return LightingCondition.short;
+      case 2:
+        return LightingCondition.side;
+      case 3:
+        return LightingCondition.rim;
+      case 4:
+        return LightingCondition.back;
+      default:
+        return LightingCondition.unknown;
+    }
+  }
 
   String lightingLabel(LightingCondition c) {
     switch (c) {
