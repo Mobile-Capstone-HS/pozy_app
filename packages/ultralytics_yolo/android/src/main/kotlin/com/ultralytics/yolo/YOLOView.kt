@@ -13,6 +13,10 @@ import android.view.*
 import android.widget.FrameLayout
 import android.widget.Toast
 import android.view.ScaleGestureDetector
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraManager as AndroidCameraManager
+import androidx.camera.camera2.interop.Camera2CameraInfo
+import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.*
 import androidx.camera.core.Camera
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -156,6 +160,20 @@ class YOLOView @JvmOverloads constructor(
     private var frameSkipCount: Int = 0 // Current frame skip counter
     private var targetSkipFrames: Int = 0 // Number of frames to skip between inferences
 
+    // Image metrics analysis — callback set by YOLOPlatformView
+    var onImageMetrics: ((Map<String, Any>) -> Unit)? = null
+    private var metricsFrameCount: Int = 0
+    private val metricsFrameInterval: Int = 2  // analyze every 2nd YOLO frame for faster coaching feedback
+
+    // Subject lock — normalized ROI [0,1] set by Flutter; null = auto from YOLO detections
+    @Volatile var lockedRoi: android.graphics.RectF? = null
+
+    fun setLockedRoi(left: Float?, top: Float?, right: Float?, bottom: Float?) {
+        lockedRoi = if (left != null && top != null && right != null && bottom != null)
+            android.graphics.RectF(left, top, right, bottom)
+        else null
+    }
+
     /** Set the callback */
     fun setOnInferenceCallback(callback: (YOLOResult) -> Unit) {
         this.inferenceCallback = callback
@@ -208,6 +226,7 @@ class YOLOView @JvmOverloads constructor(
     // New fields for proper teardown:
     private var cameraExecutor: ExecutorService? = null
     private var imageAnalysisUseCase: ImageAnalysis? = null
+    private var imageCaptureUseCase: ImageCapture? = null
     
     // Flag to track if the view is stopped/disposed to prevent race conditions
     @Volatile
@@ -219,6 +238,10 @@ class YOLOView @JvmOverloads constructor(
     private var maxZoomRatio = 10.0f
     private lateinit var scaleGestureDetector: ScaleGestureDetector
     var onZoomChanged: ((Float) -> Unit)? = null
+
+    // Ultrawide camera (Camera2 interop)
+    private var ultrawideCameraId: String? = null
+    private var isUsingUltrawide = false
 
     // detection thresholds (can be changed externally via setters)
     private var confidenceThreshold = 0.25  // initial value
@@ -382,16 +405,171 @@ class YOLOView @JvmOverloads constructor(
         confidenceLabel.visibility = visibility
     }
     
+    @OptIn(androidx.camera.camera2.interop.ExperimentalCamera2Interop::class)
     fun setZoomLevel(zoomLevel: Float) {
+        val uwId = ultrawideCameraId
+        if (uwId != null && zoomLevel < 1.0f && !isUsingUltrawide) {
+            // 초광각 카메라로 전환
+            switchToUltrawideCameraWithZoom(uwId, zoomLevel)
+            return
+        }
+        if (uwId != null && zoomLevel >= 1.0f && isUsingUltrawide) {
+            // 메인 카메라로 복귀
+            switchToMainCameraWithZoom(zoomLevel)
+            return
+        }
         camera?.let { cam: Camera ->
-            // Clamp zoom level between min and max
-            val clampedZoomRatio = zoomLevel.coerceIn(minZoomRatio, cam.cameraInfo.zoomState.value?.maxZoomRatio ?: maxZoomRatio)
-            
+            val actualMin = cam.cameraInfo.zoomState.value?.minZoomRatio ?: minZoomRatio
+            val actualMax = cam.cameraInfo.zoomState.value?.maxZoomRatio ?: maxZoomRatio
+            val clampedZoomRatio = zoomLevel.coerceIn(actualMin, actualMax)
             cam.cameraControl.setZoomRatio(clampedZoomRatio)
             currentZoomRatio = clampedZoomRatio
-            
-            // Notify zoom change
             onZoomChanged?.invoke(currentZoomRatio)
+        }
+    }
+
+    /** 실제 카메라가 지원하는 최소 줌 비율 반환 (초광각 지원 기기는 0.5 반환) */
+    fun getMinZoomRatio(): Float {
+        if (ultrawideCameraId != null) return 0.5f
+        return camera?.cameraInfo?.zoomState?.value?.minZoomRatio ?: minZoomRatio
+    }
+
+    @OptIn(androidx.camera.camera2.interop.ExperimentalCamera2Interop::class)
+    private fun switchToUltrawideCameraWithZoom(cameraId: String, zoomLevel: Float) {
+        val owner = lifecycleOwner ?: return
+        isUsingUltrawide = true
+        currentZoomRatio = zoomLevel
+        try {
+            val cameraProvider = cameraProviderFuture.get()
+            cameraProvider.unbindAll()
+
+            val uwSelector = CameraSelector.Builder()
+                .addCameraFilter { cameraInfoList ->
+                    cameraInfoList.filter { info ->
+                        Camera2CameraInfo.from(info).cameraId == cameraId
+                    }
+                }
+                .build()
+
+            // ImageCapture도 16:9
+            val newCapture = ImageCapture.Builder()
+                .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                .setTargetAspectRatio(AspectRatio.RATIO_16_9)
+                .setFlashMode(ImageCapture.FLASH_MODE_OFF)
+                .build()
+            imageCaptureUseCase = newCapture
+
+            val newPreview = Preview.Builder()
+                .setTargetAspectRatio(AspectRatio.RATIO_16_9)
+                .build()
+            previewUseCase = newPreview
+
+            // 기존 executor 종료
+            cameraExecutor?.shutdown()
+            val newExec = Executors.newSingleThreadExecutor()
+            cameraExecutor = newExec
+
+            val newAnalysis = ImageAnalysis.Builder()
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .setTargetAspectRatio(AspectRatio.RATIO_4_3)
+                .build()
+            newAnalysis.setAnalyzer(newExec) { imageProxy -> onFrame(imageProxy) }
+            imageAnalysisUseCase = newAnalysis
+
+            camera = cameraProvider.bindToLifecycle(
+                owner, uwSelector, newPreview, newAnalysis, newCapture
+            )
+            newPreview.setSurfaceProvider(previewView.surfaceProvider)
+            onZoomChanged?.invoke(currentZoomRatio)
+            Log.d(TAG, "Switched to ultrawide camera: $cameraId")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to switch to ultrawide camera", e)
+            isUsingUltrawide = false
+        }
+    }
+
+    private fun switchToMainCameraWithZoom(zoomLevel: Float) {
+        val owner = lifecycleOwner ?: return
+        isUsingUltrawide = false
+        currentZoomRatio = zoomLevel
+        try {
+            val cameraProvider = cameraProviderFuture.get()
+            cameraProvider.unbindAll()
+
+            val newCapture = ImageCapture.Builder()
+                .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                .setTargetAspectRatio(AspectRatio.RATIO_16_9)
+                .setFlashMode(ImageCapture.FLASH_MODE_OFF)
+                .build()
+            imageCaptureUseCase = newCapture
+
+            val newPreview = Preview.Builder()
+                .setTargetAspectRatio(AspectRatio.RATIO_16_9)
+                .build()
+            previewUseCase = newPreview
+
+            // 기존 executor 종료
+            cameraExecutor?.shutdown()
+            val newExec = Executors.newSingleThreadExecutor()
+            cameraExecutor = newExec
+
+            val newAnalysis = ImageAnalysis.Builder()
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .setTargetAspectRatio(AspectRatio.RATIO_4_3)
+                .build()
+            newAnalysis.setAnalyzer(newExec) { imageProxy -> onFrame(imageProxy) }
+            imageAnalysisUseCase = newAnalysis
+
+            val mainSelector = CameraSelector.Builder()
+                .requireLensFacing(lensFacing)
+                .build()
+
+            camera = cameraProvider.bindToLifecycle(
+                owner, mainSelector, newPreview, newAnalysis, newCapture
+            )
+            newPreview.setSurfaceProvider(previewView.surfaceProvider)
+
+            // 메인 카메라 줌 복원
+            camera?.cameraControl?.setZoomRatio(zoomLevel)
+            onZoomChanged?.invoke(currentZoomRatio)
+            Log.d(TAG, "Switched back to main camera with zoom: $zoomLevel")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to switch back to main camera", e)
+        }
+    }
+
+    /** 후면 카메라 중 가장 짧은 초점 거리(초광각)를 가진 카메라 ID를 탐색 */
+    private fun detectUltrawideCamera() {
+        try {
+            val camManager = context.getSystemService(Context.CAMERA_SERVICE) as AndroidCameraManager
+
+            // (minFocalLength, cameraId) 목록 수집
+            val backCameras = camManager.cameraIdList.mapNotNull { id ->
+                val chars = camManager.getCameraCharacteristics(id)
+                val facing = chars.get(CameraCharacteristics.LENS_FACING) ?: return@mapNotNull null
+                if (facing != CameraCharacteristics.LENS_FACING_BACK) return@mapNotNull null
+                val focalLengths = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS) ?: return@mapNotNull null
+                val minFocal = focalLengths.minOrNull() ?: return@mapNotNull null
+                Log.d(TAG, "Back camera $id: minFocalLength=$minFocal")
+                Pair(minFocal, id)
+            }.sortedBy { it.first }
+
+            if (backCameras.size >= 2) {
+                val shortest = backCameras[0]
+                val second  = backCameras[1]
+                // 초광각: 가장 짧은 초점 거리가 그 다음 카메라보다 25% 이상 짧을 때
+                if (shortest.first < second.first * 0.75f) {
+                    ultrawideCameraId = shortest.second
+                    Log.d(TAG, "Ultrawide camera detected: id=${shortest.second} focal=${shortest.first} (main focal=${second.first})")
+                    return
+                }
+            }
+
+            ultrawideCameraId = null
+            Log.d(TAG, "No distinct ultrawide camera found. cameras=${backCameras.map { "${it.second}:${it.first}" }}")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error detecting ultrawide camera", e)
+            ultrawideCameraId = null
         }
     }
 
@@ -525,13 +703,22 @@ class YOLOView @JvmOverloads constructor(
                     val cameraProvider = cameraProviderFuture.get()
                     Log.d(TAG, "Camera provider obtained")
 
+                    // RATIO_16_9: 세로형 폰 화면과 비율 일치 → 프리뷰 크롭 최소화
                     previewUseCase = Preview.Builder()
-                        .setTargetAspectRatio(AspectRatio.RATIO_4_3)
+                        .setTargetAspectRatio(AspectRatio.RATIO_16_9)
                         .build()
 
+                    // ImageAnalysis는 YOLO 추론용 — 비율 무관, 성능 우선
                     imageAnalysisUseCase = ImageAnalysis.Builder()
                         .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                         .setTargetAspectRatio(AspectRatio.RATIO_4_3)
+                        .build()
+
+                    // ImageCapture도 16:9로 통일 → 프리뷰와 배율 일치
+                    imageCaptureUseCase = ImageCapture.Builder()
+                        .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                        .setTargetAspectRatio(AspectRatio.RATIO_16_9)
+                        .setFlashMode(ImageCapture.FLASH_MODE_OFF)
                         .build()
 
                     cameraExecutor = Executors.newSingleThreadExecutor()
@@ -558,16 +745,18 @@ class YOLOView @JvmOverloads constructor(
                             owner,
                             cameraSelector,
                             previewUseCase,
-                            imageAnalysisUseCase  // the field, not a local val
+                            imageAnalysisUseCase,
+                            imageCaptureUseCase!!
                         )
                         
                         // Reset zoom to 1.0x when camera starts
                         currentZoomRatio = 1.0f
+                        isUsingUltrawide = false
                         onZoomChanged?.invoke(currentZoomRatio)
 
                         Log.d(TAG, "Setting surface provider to previewView")
                         previewUseCase?.setSurfaceProvider(previewView.surfaceProvider)
-                        
+
                         // Initialize zoom
                         camera?.let { cam: Camera ->
                             val cameraInfo = cam.cameraInfo
@@ -576,7 +765,10 @@ class YOLOView @JvmOverloads constructor(
                             currentZoomRatio = cameraInfo.zoomState.value?.zoomRatio ?: 1.0f
                             Log.d(TAG, "Zoom initialized - min: $minZoomRatio, max: $maxZoomRatio, current: $currentZoomRatio")
                         }
-                        
+
+                        // 초광각 카메라 탐색 (Samsung A24 등 Camera2 접근 필요한 기기)
+                        detectUltrawideCamera()
+
                         Log.d(TAG, "Camera setup completed successfully")
                     } catch (e: Exception) {
                         Log.e(TAG, "Use case binding failed", e)
@@ -712,8 +904,49 @@ class YOLOView @JvmOverloads constructor(
                 
                 inferenceResult = resultWithOriginalImage
 
+                // Image metrics analysis (every metricsFrameInterval frames)
+                onImageMetrics?.let { callback ->
+                    metricsFrameCount++
+                    if (metricsFrameCount >= metricsFrameInterval) {
+                        metricsFrameCount = 0
+                        val locked = lockedRoi
+                        val detectionRoi = result.boxes.firstOrNull()?.xywhn
+                        // Prefer user-locked ROI; fall back to YOLO detection ROI
+                        val roi = locked ?: detectionRoi
+                        val baseMetrics = ImageMetricsAnalyzer.analyze(
+                            bitmap,
+                            roiLeft   = roi?.left,
+                            roiTop    = roi?.top,
+                            roiRight  = roi?.right,
+                            roiBottom = roi?.bottom,
+                        )
+                        val metrics = HashMap<String, Any>(baseMetrics)
+                        if (locked != null) {
+                            metrics["subjectLocked"] = 1.0
+                            // Check overlap of any detection with locked ROI (>= 20% of locked area)
+                            val visible = result.boxes.any { box ->
+                                val b = box.xywhn
+                                val il = maxOf(locked.left, b.left)
+                                val it = maxOf(locked.top, b.top)
+                                val ir = minOf(locked.right, b.right)
+                                val ib = minOf(locked.bottom, b.bottom)
+                                if (ir > il && ib > it) {
+                                    val inter = (ir - il) * (ib - it)
+                                    val area = (locked.right - locked.left) * (locked.bottom - locked.top)
+                                    area > 0f && inter / area >= 0.2f
+                                } else false
+                            }
+                            metrics["subjectInFrame"] = if (visible) 1.0 else 0.0
+                        } else {
+                            metrics["subjectLocked"] = 0.0
+                            metrics["subjectInFrame"] = 1.0
+                        }
+                        callback.invoke(metrics)
+                    }
+                }
+
                 // Log
-                
+
                 // Callback
                 inferenceCallback?.invoke(resultWithOriginalImage)
                 
@@ -723,7 +956,7 @@ class YOLOView @JvmOverloads constructor(
                         updateLastInferenceTime()
                         
                         // Convert to stream data and send
-                        val streamData = convertResultToStreamData(resultWithOriginalImage)
+                        val streamData = convertResultToStreamData(resultWithOriginalImage, bitmap)
                         // Add timestamp and frame info
                         val enhancedStreamData = HashMap<String, Any>(streamData)
                         enhancedStreamData["timestamp"] = System.currentTimeMillis()
@@ -1530,7 +1763,10 @@ class YOLOView @JvmOverloads constructor(
      * Convert YOLOResult to a Map for streaming (ported from archived YOLOPlatformView)
      * Uses detection index correctly to avoid class index confusion
      */
-    private fun convertResultToStreamData(result: YOLOResult): Map<String, Any> {
+    private fun convertResultToStreamData(
+        result: YOLOResult,
+        sourceBitmap: Bitmap? = null,
+    ): Map<String, Any> {
         val map = HashMap<String, Any>()
         val config = streamConfig ?: return emptyMap()
         
@@ -1602,6 +1838,9 @@ class YOLOView @JvmOverloads constructor(
                 normalizedBox["right"] = box.xywhn.right.toDouble()
                 normalizedBox["bottom"] = box.xywhn.bottom.toDouble()
                 detection["normalizedBox"] = normalizedBox
+                computeAppearanceSignature(sourceBitmap, box.xywhn)?.let { signature ->
+                    detection["appearanceSignature"] = signature
+                }
                 
                 // Add mask data for segmentation (if available and enabled)
                 if (config.includeMasks && result.masks != null && detectionIndex < result.masks!!.masks.size) {
@@ -1738,6 +1977,91 @@ class YOLOView @JvmOverloads constructor(
         
         return map
     }
+
+    private fun computeAppearanceSignature(
+        bitmap: Bitmap?,
+        roi: RectF,
+    ): List<Double>? {
+        if (bitmap == null) return null
+
+        val left = (roi.left * bitmap.width).toInt().coerceIn(0, bitmap.width - 1)
+        val top = (roi.top * bitmap.height).toInt().coerceIn(0, bitmap.height - 1)
+        val right = (roi.right * bitmap.width).toInt().coerceIn(left + 1, bitmap.width)
+        val bottom = (roi.bottom * bitmap.height).toInt().coerceIn(top + 1, bitmap.height)
+        if (right <= left || bottom <= top) return null
+
+        val width = right - left
+        val height = bottom - top
+        val stepX = max(1, width / 12)
+        val stepY = max(1, height / 12)
+        val gridCols = 3
+        val gridRows = 3
+        val gridSize = gridCols * gridRows
+
+        var sumR = 0.0
+        var sumG = 0.0
+        var sumB = 0.0
+        var sumLuma = 0.0
+        var sumSat = 0.0
+        var sumLumaSq = 0.0
+        val gridLuma = DoubleArray(gridSize)
+        val gridSat = DoubleArray(gridSize)
+        val gridCount = IntArray(gridSize)
+        var count = 0
+
+        var y = top
+        while (y < bottom) {
+            var x = left
+            while (x < right) {
+                val pixel = bitmap.getPixel(x, y)
+                val r = ((pixel shr 16) and 0xFF) / 255.0
+                val g = ((pixel shr 8) and 0xFF) / 255.0
+                val b = (pixel and 0xFF) / 255.0
+                val maxC = max(r, max(g, b))
+                val minC = min(r, min(g, b))
+                val sat = if (maxC <= 0.0001) 0.0 else (maxC - minC) / maxC
+                val luma = 0.299 * r + 0.587 * g + 0.114 * b
+
+                sumR += r
+                sumG += g
+                sumB += b
+                sumSat += sat
+                sumLuma += luma
+                sumLumaSq += luma * luma
+                val cellX = (((x - left).toDouble() / width) * gridCols).toInt().coerceIn(0, gridCols - 1)
+                val cellY = (((y - top).toDouble() / height) * gridRows).toInt().coerceIn(0, gridRows - 1)
+                val cellIndex = cellY * gridCols + cellX
+                gridLuma[cellIndex] += luma
+                gridSat[cellIndex] += sat
+                gridCount[cellIndex] += 1
+                count++
+                x += stepX
+            }
+            y += stepY
+        }
+
+        if (count == 0) return null
+        val meanLuma = sumLuma / count
+        val lumaStd = kotlin.math.sqrt(max(0.0, (sumLumaSq / count) - meanLuma * meanLuma))
+        val signature = mutableListOf<Double>()
+        signature += sumR / count
+        signature += sumG / count
+        signature += sumB / count
+        signature += meanLuma
+        signature += sumSat / count
+        signature += lumaStd
+
+        for (cellIndex in 0 until gridSize) {
+            val cellSamples = gridCount[cellIndex]
+            signature += if (cellSamples > 0) gridLuma[cellIndex] / cellSamples else meanLuma
+        }
+        for (cellIndex in 0 until gridSize) {
+            val cellSamples = gridCount[cellIndex]
+            signature += if (cellSamples > 0) gridSat[cellIndex] / cellSamples else (sumSat / count)
+        }
+
+        return signature
+    }
     
     // endregion
     
@@ -1745,72 +2069,121 @@ class YOLOView @JvmOverloads constructor(
      * Capture current camera frame with detection overlays
      * Returns the captured image as a ByteArray (JPEG format)
      */
-/**
-     * Capture current camera frame
-     * @param maxWidth 0 = original resolution, >0 = resize to this width (keeping aspect ratio)
-     */
-   fun captureFrame(maxWidth: Int = 0): ByteArray? {
-        try {
-            val viewWidth = width
-            val viewHeight = height
-            if (viewWidth <= 0 || viewHeight <= 0) {
-                Log.e(TAG, "Invalid view dimensions for capture: ${viewWidth}x${viewHeight}")
-                return null
-            }
+    fun setFocusPoint(x: Float, y: Float) {
+        val factory = SurfaceOrientedMeteringPointFactory(1.0f, 1.0f)
+        val point = factory.createPoint(x, y)
+        val action = FocusMeteringAction.Builder(point)
+            .setAutoCancelDuration(3, TimeUnit.SECONDS)
+            .build()
+        camera?.cameraControl?.startFocusAndMetering(action)
+    }
 
-            var cameraBmp: Bitmap? = null
-            previewView.bitmap?.let { src ->
-                cameraBmp = if (maxWidth > 0 && maxWidth < src.width) {
-                    val h = (src.height.toFloat() * maxWidth / src.width).toInt()
-                    Bitmap.createScaledBitmap(src, maxWidth, h, true)
-                } else {
-                    src
+    fun setTorchMode(enabled: Boolean) {
+        camera?.cameraControl?.enableTorch(enabled)
+    }
+
+    /**
+     * ImageCapture use case로 풀해상도 JPEG 촬영.
+     * captureFrame()과 달리 카메라 센서 원본 품질로 저장됨.
+     */
+    fun captureHighResPhoto(callback: (ByteArray?) -> Unit) {
+        val imageCapture = imageCaptureUseCase
+        if (imageCapture == null) {
+            Log.e(TAG, "captureHighResPhoto: ImageCapture not initialized")
+            callback(null)
+            return
+        }
+        val callbackExecutor = cameraExecutor ?: ContextCompat.getMainExecutor(context)
+        imageCapture.takePicture(
+            callbackExecutor,
+            object : ImageCapture.OnImageCapturedCallback() {
+                override fun onCaptureSuccess(image: ImageProxy) {
+                    try {
+                        val buffer = image.planes[0].buffer
+                        val bytes = ByteArray(buffer.remaining())
+                        buffer.get(bytes)
+                        Log.d(TAG, "captureHighResPhoto success: ${bytes.size} bytes")
+                        callback(bytes)
+                    } finally {
+                        image.close()
+                    }
+                }
+                override fun onError(exception: ImageCaptureException) {
+                    Log.e(TAG, "captureHighResPhoto error: ${exception.message}")
+                    callback(null)
                 }
             }
+        )
+    }
 
-            if (cameraBmp == null) {
+    fun captureFrame(): ByteArray? {
+        try {
+            // Create bitmap to hold the captured frame
+            val width = width
+            val height = height
+            if (width <= 0 || height <= 0) {
+                Log.e(TAG, "Invalid view dimensions for capture: ${width}x${height}")
+                return null
+            }
+            
+            // Create bitmap and canvas
+            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            
+            // Method 1: Try to get bitmap from PreviewView directly
+            var cameraFrameCaptured = false
+            previewView.bitmap?.let { cameraBitmap ->
+                Log.d(TAG, "Got camera bitmap from PreviewView: ${cameraBitmap.width}x${cameraBitmap.height}")
+                // Draw the camera bitmap scaled to fit
+                val matrix = Matrix()
+                val scaleX = width.toFloat() / cameraBitmap.width
+                val scaleY = height.toFloat() / cameraBitmap.height
+                matrix.setScale(scaleX, scaleY)
+                canvas.drawBitmap(cameraBitmap, matrix, null)
+                cameraFrameCaptured = true
+            }
+            
+            if (!cameraFrameCaptured) {
+                // Method 2: Use hardware acceleration to capture the view
                 Log.w(TAG, "PreviewView.bitmap is null, trying hardware capture")
+                
+                // Enable drawing cache temporarily
                 isDrawingCacheEnabled = true
                 buildDrawingCache()
                 drawingCache?.let { cache ->
-                    cameraBmp = if (maxWidth > 0 && maxWidth < cache.width) {
-                        val h = (cache.height.toFloat() * maxWidth / cache.width).toInt()
-                        Bitmap.createScaledBitmap(cache, maxWidth, h, true)
-                    } else {
-                        cache.copy(cache.config ?: Bitmap.Config.ARGB_8888, false)
-                    }
+                    canvas.drawBitmap(cache, 0f, 0f, null)
+                    cameraFrameCaptured = true
                 }
                 isDrawingCacheEnabled = false
-            }
-
-            if (cameraBmp == null) {
-                Log.w(TAG, "Drawing cache failed, using draw method")
-                val targetW = if (maxWidth > 0) maxWidth else viewWidth
-                val targetH = if (maxWidth > 0) (viewHeight.toFloat() * maxWidth / viewWidth).toInt() else viewHeight
-                val bitmap = Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888)
-                val canvas = Canvas(bitmap)
-                if (maxWidth > 0) {
-                    val scale = targetW.toFloat() / viewWidth
-                    canvas.scale(scale, scale)
+                
+                if (!cameraFrameCaptured) {
+                    // Method 3: Last resort - draw the entire view hierarchy
+                    Log.w(TAG, "Drawing cache failed, using draw method")
+                    // Draw PreviewView first
+                    previewView.draw(canvas)
                 }
-                previewView.draw(canvas)
-                cameraBmp = bitmap
             }
-
-            val quality = if (maxWidth > 0) 70 else 90
+            
+            // Always draw the overlay on top
+            overlayView.draw(canvas)
+            
+            // Convert bitmap to JPEG byte array
             val outputStream = java.io.ByteArrayOutputStream()
-            cameraBmp!!.compress(Bitmap.CompressFormat.JPEG, quality, outputStream)
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream)
             val imageData = outputStream.toByteArray()
+            
+            // Clean up
             outputStream.close()
-            cameraBmp!!.recycle()
-
-            Log.d(TAG, "Frame captured: ${imageData.size} bytes")
+            bitmap.recycle()
+            
+            Log.d(TAG, "Frame captured successfully: ${imageData.size} bytes, camera captured: $cameraFrameCaptured")
             return imageData
         } catch (e: Exception) {
             Log.e(TAG, "Error capturing frame", e)
             return null
         }
     }
+
     /**
      * Stop camera and inference (can be restarted later)
      */
@@ -1833,6 +2206,8 @@ class YOLOView @JvmOverloads constructor(
             }
 
             imageAnalysisUseCase = null
+            imageCaptureUseCase = null
+            isUsingUltrawide = false
 
             previewUseCase?.setSurfaceProvider(null)
             previewUseCase = null

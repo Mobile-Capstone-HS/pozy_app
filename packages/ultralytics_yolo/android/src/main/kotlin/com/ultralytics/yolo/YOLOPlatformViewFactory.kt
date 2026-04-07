@@ -168,22 +168,29 @@ class YOLOPlatformViewFactory(
         // Create event channel for detection results
         val resultChannelName = "com.ultralytics.yolo/detectionResults_$viewUniqueId"
         val controlChannelName = "com.ultralytics.yolo/controlChannel_$viewUniqueId"
-        
-        Log.d(TAG, "Final channel names - Result: $resultChannelName, Control: $controlChannelName")
-        
+        val metricsChannelName = "com.ultralytics.yolo/imageMetrics_$viewUniqueId"
+
+        Log.d(TAG, "Final channel names - Result: $resultChannelName, Control: $controlChannelName, Metrics: $metricsChannelName")
+
         // Event channel for streaming detection results
         val eventChannel = EventChannel(messenger, resultChannelName)
         // Method channel for controlling the view
         val methodChannel = MethodChannel(messenger, controlChannelName)
-        
+        // Event channel for image metrics (brightness, blur, exposure)
+        val metricsChannel = EventChannel(messenger, metricsChannelName)
+
         // Create stream handler for detection results
         val eventHandler = CustomStreamHandler(viewId)
         Log.d(TAG, "Created CustomStreamHandler for view $viewId")
-        
+
+        // Create stream handler for image metrics
+        val metricsHandler = CustomStreamHandler(viewId + 100000)
+
         // Set event handler and store it
         eventChannel.setStreamHandler(eventHandler)
+        metricsChannel.setStreamHandler(metricsHandler)
         eventChannelHandlers[viewId] = eventHandler
-        
+
         // Create the platform view with stream handler, not just the sink
         val platformView = YOLOPlatformView(
             effectiveContext,
@@ -191,7 +198,8 @@ class YOLOPlatformViewFactory(
             creationParams,
             eventHandler, // Pass the entire StreamHandler now
             methodChannel,
-            this // Pass the factory itself for disposal callback
+            this, // Pass the factory itself for disposal callback
+            metricsHandler,
         )
         
         // Set up method channel handler for the control channel

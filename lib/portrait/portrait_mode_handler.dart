@@ -170,6 +170,18 @@ class PortraitModeHandler {
     }
 
     // 가장 큰 person
+    if (persons.isEmpty) {
+      final c = _coachEngine.evaluate(const PortraitSceneState(personCount: 0));
+      _stabilize(c);
+      return PortraitAnalysisResult(
+        coaching: c,
+        overlayData: OverlayData(coaching: c, shotType: ShotType.unknown),
+        shotType: ShotType.unknown,
+        personCount: 0,
+        hasPersonStable: false,
+      );
+    }
+
     final main = persons.reduce((a, b) {
       final aa = a.normalizedBox.width * a.normalizedBox.height;
       final ab = b.normalizedBox.width * b.normalizedBox.height;

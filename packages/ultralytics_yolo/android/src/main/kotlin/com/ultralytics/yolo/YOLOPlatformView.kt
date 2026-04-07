@@ -3,6 +3,8 @@
 package com.ultralytics.yolo
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.View
 import androidx.core.content.ContextCompat
@@ -22,10 +24,12 @@ class YOLOPlatformView(
     creationParams: Map<String?, Any?>?,
     private val streamHandler: CustomStreamHandler,
     private val methodChannel: MethodChannel?,
-    private val factory: YOLOPlatformViewFactory
+    private val factory: YOLOPlatformViewFactory,
+    private val metricsHandler: CustomStreamHandler? = null,
 ) : PlatformView, MethodChannel.MethodCallHandler {
 
     private val yoloView: YOLOView = YOLOView(context)
+    private val mainHandler = Handler(Looper.getMainLooper())
     
     // Getter for external access to yoloView
     val yoloViewInstance: YOLOView
@@ -109,6 +113,15 @@ class YOLOPlatformView(
             
             Log.d(TAG, "Initializing with model: $modelPath, task: $task")
             
+            // Wire image metrics callback → metricsHandler EventChannel
+            if (metricsHandler != null) {
+                yoloView.onImageMetrics = { metrics ->
+                    mainHandler.post {
+                        metricsHandler.sink?.success(metrics)
+                    }
+                }
+            }
+
             // Set up model loading callback
             yoloView.setOnModelLoadCallback { success ->
                 if (success) {
@@ -116,7 +129,7 @@ class YOLOPlatformView(
                     startStreaming()
                     val context = yoloView.context
                     val hasPermissions = android.Manifest.permission.CAMERA.let { permission ->
-                        android.content.pm.PackageManager.PERMISSION_GRANTED == 
+                        android.content.pm.PackageManager.PERMISSION_GRANTED ==
                         ContextCompat.checkSelfPermission(context, permission)
                     }
                     if (hasPermissions) {
@@ -435,14 +448,23 @@ class YOLOPlatformView(
                     yoloView.startCamera()
                     result.success(null)
                 }
-"captureFrame" -> {
-                    val maxWidth = call.argument<Int>("maxWidth") ?: 0
-                    val imageData = yoloView.captureFrame(maxWidth)
+                "captureFrame" -> {
+                    val imageData = yoloView.captureFrame()
                     if (imageData != null) {
                         Log.d(TAG, "Frame captured: ${imageData.size} bytes")
                         result.success(imageData)
                     } else {
                         result.error("capture_failed", "Failed to capture frame", null)
+                    }
+                }
+                "captureHighRes" -> {
+                    yoloView.captureHighResPhoto { imageData ->
+                        if (imageData != null) {
+                            Log.d(TAG, "High-res captured: ${imageData.size} bytes")
+                            result.success(imageData)
+                        } else {
+                            result.error("capture_failed", "High-res capture failed", null)
+                        }
                     }
                 }
                 "reconnectStream" -> {
@@ -454,6 +476,28 @@ class YOLOPlatformView(
                 "setShowUIControls" -> {
                     val show = call.argument<Boolean>("show") ?: false
                     yoloView.setShowUIControls(show)
+                    result.success(null)
+                }
+                "setFocusPoint" -> {
+                    val x = (call.argument<Double>("x") ?: 0.5).toFloat()
+                    val y = (call.argument<Double>("y") ?: 0.5).toFloat()
+                    yoloView.setFocusPoint(x, y)
+                    result.success(null)
+                }
+                "setTorchMode" -> {
+                    val enabled = call.argument<Boolean>("enabled") ?: false
+                    yoloView.setTorchMode(enabled)
+                    result.success(null)
+                }
+                "getMinZoomLevel" -> {
+                    result.success(yoloView.getMinZoomRatio().toDouble())
+                }
+                "setLockedRoi" -> {
+                    val left = call.argument<Double>("left")?.toFloat()
+                    val top = call.argument<Double>("top")?.toFloat()
+                    val right = call.argument<Double>("right")?.toFloat()
+                    val bottom = call.argument<Double>("bottom")?.toFloat()
+                    yoloView.setLockedRoi(left, top, right, bottom)
                     result.success(null)
                 }
                 else -> {

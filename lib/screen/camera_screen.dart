@@ -75,6 +75,8 @@ class _CameraScreenState extends State<CameraScreen> {
   Rect? _lockedRoiCamera;
   int? _lockedClassIndex;
   Rect? _lockedAnchorRoiCamera;
+  List<double>? _lockedAppearanceSignature;
+  List<double>? _lockedRecentAppearanceSignature;
   YOLOResult? _lockedTrackingDetection;
   int _lockedLostFrames = 0;
   static const int _lockLostFrameTolerance = 10;
@@ -122,6 +124,7 @@ class _CameraScreenState extends State<CameraScreen> {
     });
 
     _startTiltMonitoring();
+    _cameraController.onImageMetrics = _onImageMetrics;
   }
 
   void _startTiltMonitoring() {
@@ -140,8 +143,26 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<void> _configureZoomPresets() async {
-    if (!mounted) return;
-    setState(() => _zoomPresets = [1.0, 2.0]);
+    double minZoom = 1.0;
+
+    for (int i = 0; i < 3; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 800));
+      if (!mounted) return;
+
+      minZoom = await _cameraController.getMinZoomLevel();
+      if (minZoom < 1.0) break;
+    }
+
+    final next = minZoom < 1.0 ? [minZoom, 1.0, 2.0] : [1.0, 2.0];
+
+    if (next.length == _zoomPresets.length &&
+        next.indexed.every(
+          (e) => (e.$2 - _zoomPresets[e.$1]).abs() < 0.001,
+        )) {
+      return;
+    }
+
+    setState(() => _zoomPresets = next);
   }
 
   void _resetPortraitState() {
@@ -158,6 +179,23 @@ class _CameraScreenState extends State<CameraScreen> {
         confidence: 0.0,
       ),
     );
+  }
+
+  void _onImageMetrics(Map<String, double> metrics) {
+    if (!mounted || _isPortraitMode) return;
+
+    final coaching = _decorateLockedSubjectCoachingSafe(
+      _sceneCoach.applyImageMetrics(metrics),
+    );
+    if (coaching.guidance != _guidance ||
+        coaching.subGuidance != _subGuidance ||
+        coaching.level != _coachingLevel) {
+      setState(() {
+        _guidance = coaching.guidance;
+        _subGuidance = coaching.subGuidance;
+        _coachingLevel = coaching.level;
+      });
+    }
   }
 
   List<YOLOResult> _filterResultsForMode(List<YOLOResult> results) {
@@ -270,12 +308,37 @@ class _CameraScreenState extends State<CameraScreen> {
     final targetDistance = _centerDistance(previous, box);
     final anchorDistance = _centerDistance(anchor, box);
 
-    if (iouNow < 0.01 &&
-        overlapNow < 0.05 &&
-        iouAnchor < 0.01 &&
-        overlapAnchor < 0.05 &&
-        targetDistance > 0.45) {
-      return double.negativeInfinity;
+    final anchorSignature = _lockedAppearanceSignature;
+    final recentSignature =
+        _lockedRecentAppearanceSignature ?? _lockedAppearanceSignature;
+    final candidateSignature = det.appearanceSignature;
+    final hasAnchorAppearance =
+        anchorSignature != null && candidateSignature != null;
+    final hasRecentAppearance =
+        recentSignature != null && candidateSignature != null;
+    final anchorAppearance = hasAnchorAppearance
+        ? _appearanceDistance(anchorSignature, candidateSignature)
+        : double.infinity;
+    final recentAppearance = hasRecentAppearance
+        ? _appearanceDistance(recentSignature, candidateSignature)
+        : double.infinity;
+
+    if (hasAnchorAppearance || hasRecentAppearance) {
+      final maxAnchorAppearance = _lockedLostFrames == 0 ? 0.18 : 0.24;
+      final maxRecentAppearance = _lockedLostFrames == 0 ? 0.20 : 0.26;
+      final appearanceMatched = anchorAppearance <= maxAnchorAppearance ||
+          recentAppearance <= maxRecentAppearance;
+      if (!appearanceMatched) {
+        return double.negativeInfinity;
+      }
+    } else {
+      if (iouNow < 0.01 &&
+          overlapNow < 0.05 &&
+          iouAnchor < 0.01 &&
+          overlapAnchor < 0.05 &&
+          targetDistance > 0.45) {
+        return double.negativeInfinity;
+      }
     }
 
     if (_lockedLostFrames > 0 &&
@@ -286,6 +349,13 @@ class _CameraScreenState extends State<CameraScreen> {
         anchorDistance > 0.60) {
       return double.negativeInfinity;
     }
+
+    final appearanceScore = () {
+      final bestAppearance = math.min(anchorAppearance, recentAppearance);
+      if (!bestAppearance.isFinite) return 0.0;
+      final scale = _lockedLostFrames == 0 ? 0.18 : 0.24;
+      return (1.0 - (bestAppearance / scale)).clamp(0.0, 1.0);
+    }();
 
     final distanceScore =
         (1.0 - (targetDistance / (_lockedLostFrames == 0 ? 0.32 : 0.50)))
@@ -306,6 +376,7 @@ class _CameraScreenState extends State<CameraScreen> {
         overlapNow * 2.8 +
         iouAnchor * 1.2 +
         overlapAnchor * 1.4 +
+        appearanceScore * 3.0 +
         distanceScore * 1.2 +
         anchorDistanceScore * 0.8 +
         areaSimilarityNow * 0.8 +
@@ -394,6 +465,12 @@ class _CameraScreenState extends State<CameraScreen> {
     final cameraRoi = _normalizedRect(detection);
     final screenRoi = _cameraToScreen(cameraRoi);
 
+    _cameraController.setLockedRoi(
+      left: cameraRoi.left,
+      top: cameraRoi.top,
+      right: cameraRoi.right,
+      bottom: cameraRoi.bottom,
+    );
     _sceneCoach.reset();
 
     setState(() {
@@ -401,6 +478,8 @@ class _CameraScreenState extends State<CameraScreen> {
       _lockedRoiCamera = cameraRoi;
       _lockedClassIndex = detection.classIndex;
       _lockedAnchorRoiCamera = cameraRoi;
+      _lockedAppearanceSignature = detection.appearanceSignature;
+      _lockedRecentAppearanceSignature = detection.appearanceSignature;
       _lockedTrackingDetection = detection;
       _lockedLostFrames = 0;
       _isDrawingRoi = false;
@@ -478,7 +557,18 @@ class _CameraScreenState extends State<CameraScreen> {
         updatedScreenRoi = _cameraToScreen(rawBox);
         _lockedRoiCamera = rawBox;
         _lockedClassIndex = bestMatch.classIndex;
+        _lockedAppearanceSignature ??= bestMatch.appearanceSignature;
+        _lockedRecentAppearanceSignature = _blendAppearanceSignature(
+          _lockedRecentAppearanceSignature,
+          bestMatch.appearanceSignature,
+        );
         _lockedTrackingDetection = bestMatch;
+        _cameraController.setLockedRoi(
+          left: rawBox.left,
+          top: rawBox.top,
+          right: rawBox.right,
+          bottom: rawBox.bottom,
+        );
       } else {
         _lockedLostFrames++;
         final holdTrack = _lockedLostFrames < _lockLostFrameTolerance &&
@@ -490,6 +580,7 @@ class _CameraScreenState extends State<CameraScreen> {
         } else {
           _lockedTrackingDetection = null;
           subjectInFrameForCoaching = false;
+          _cameraController.setLockedRoi();
           forCoaching = [];
         }
       }
@@ -584,6 +675,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
   void _onModeChanged(ShootingMode mode) {
     _sceneCoach.reset();
+    _cameraController.setLockedRoi();
     _resetPortraitState();
 
     setState(() {
@@ -600,6 +692,8 @@ class _CameraScreenState extends State<CameraScreen> {
       _lockedRoiCamera = null;
       _lockedClassIndex = null;
       _lockedAnchorRoiCamera = null;
+      _lockedAppearanceSignature = null;
+      _lockedRecentAppearanceSignature = null;
       _lockedTrackingDetection = null;
       _lockedLostFrames = 0;
     });
@@ -616,6 +710,8 @@ class _CameraScreenState extends State<CameraScreen> {
 
     final nx = (localPosition.dx / _previewSize.width).clamp(0.0, 1.0);
     final ny = (localPosition.dy / _previewSize.height).clamp(0.0, 1.0);
+
+    _cameraController.setFocusPoint(nx, ny);
 
     setState(() {
       _focusPoint = localPosition;
@@ -640,12 +736,15 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   void _clearLockedRoi() {
+    _cameraController.setLockedRoi();
     _sceneCoach.reset();
     setState(() {
       _lockedRoi = null;
       _lockedRoiCamera = null;
       _lockedClassIndex = null;
       _lockedAnchorRoiCamera = null;
+      _lockedAppearanceSignature = null;
+      _lockedRecentAppearanceSignature = null;
       _lockedTrackingDetection = null;
       _lockedLostFrames = 0;
       _isDrawingRoi = false;
@@ -797,7 +896,16 @@ class _CameraScreenState extends State<CameraScreen> {
     setState(() => _isSaving = true);
 
     try {
-      final bytes = await _cameraController.captureFrame();
+      if (_torchOn && !_isFrontCamera) {
+        await _cameraController.setTorchMode(true);
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+      }
+
+      final bytes = await _cameraController.captureHighRes();
+
+      if (_torchOn && !_isFrontCamera) {
+        await _cameraController.setTorchMode(false);
+      }
 
       if (bytes == null || bytes.isEmpty) {
         throw Exception('Failed to capture camera frame.');
@@ -1177,7 +1285,7 @@ class _CameraScreenState extends State<CameraScreen> {
                   : _TopCameraBar(
                       onBack: widget.onBack,
                       torchOn: _torchOn,
-                      onToggleTorch: null,
+                      onToggleTorch: _isFrontCamera ? null : _toggleTorch,
                       timerSeconds: _timerSeconds,
                       onCycleTimer: _cycleTimer,
                       isDrawingRoi: _isDrawingRoi,
