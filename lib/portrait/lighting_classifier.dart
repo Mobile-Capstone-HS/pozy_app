@@ -6,11 +6,10 @@
 library;
 
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:tflite_flutter/tflite_flutter.dart';
+import 'package:flutter_litert/flutter_litert.dart';
 
 import 'portrait_scene_state.dart';
 
@@ -54,15 +53,15 @@ class LightingClassifier {
 
     try {
       // 입력: [1, 224, 224, 3]
-      final input = facePixels.buffer.asFloat32List().reshape([1, 224, 224, 3]);
+      final inputBytes = facePixels.buffer.asUint8List();
 
       // 출력: [1, 3]
-      final output = List.generate(1, (_) => List.filled(_labels.length, 0.0));
+      final outputBytes = Uint8List(_labels.length * 4);
 
-      _interpreter!.run(input, output);
+      _interpreter!.run(inputBytes, outputBytes.buffer);
 
       // 가장 높은 확률의 클래스 찾기
-      final probabilities = output[0];
+      final probabilities = outputBytes.buffer.asFloat32List();
       int maxIndex = 0;
       double maxProb = 0;
       for (int i = 0; i < probabilities.length; i++) {

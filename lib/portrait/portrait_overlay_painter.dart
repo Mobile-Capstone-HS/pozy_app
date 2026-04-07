@@ -11,7 +11,6 @@
 library;
 
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'portrait_scene_state.dart';
 

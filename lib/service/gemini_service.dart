@@ -2,10 +2,15 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 
 class GeminiService {
-  static const String _apiKey = String.fromEnvironment('GEMINI_API_KEY');
+  static String get _apiKey {
+    final runtimeKey = dotenv.env['GEMINI_API_KEY'] ?? '';
+    if (runtimeKey.isNotEmpty) return runtimeKey;
+    return const String.fromEnvironment('GEMINI_API_KEY');
+  }
   static const _model = 'gemini-3-pro-image-preview';
   static const _baseUrl =
       'https://generativelanguage.googleapis.com/v1beta/models/$_model:generateContent';

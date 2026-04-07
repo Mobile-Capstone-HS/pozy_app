@@ -67,25 +67,20 @@ class PortraitAnalysisResult {
 
 class PortraitModeHandler {
   final PortraitCoachEngine _coachEngine = PortraitCoachEngine();
-  final LightingClassifier _lightingClassifier = LightingClassifier();
-  final FaceDetector _faceDetector = FaceDetector(
-    options: FaceDetectorOptions(
-      enableClassification: true,
-      enableTracking: false,
-      performanceMode: FaceDetectorMode.fast,
-    ),
-  );
 
   // ─── 분석 주기 (최적화: 기존 15/10 → 30/20으로 늘림) ────
-  static const int _lightingEveryN = 30;
-  static const int _faceEveryN = 20;
-  static const double _lightingMinConf = 0.55;
+  static const double _posePointAlpha = 0.38;
 
   // ─── 메시지 안정화 ────────────────────────────────
   static const int _stabilityThreshold = 5;
   String stableMessage = '카메라를 사람에게 향해주세요';
   String _pendingMessage = '';
   int _pendingCount = 0;
+  CoachingResult _stableCoaching = const CoachingResult(
+    message: '카메라를 사람에게 향해주세요',
+    priority: CoachingPriority.critical,
+    confidence: 1.0,
+  );
 
   // ─── 사람 감지 안정화 ──────────────────────────────
   int _personStreak = 0;
@@ -107,6 +102,7 @@ class PortraitModeHandler {
   double? _smileProb;
   Rect? _trackedMainBox;
   Rect? _smoothedFaceRect;
+  final Map<int, Offset> _smoothedPosePoints = <int, Offset>{};
 
   static const double _faceMetricAlpha = 0.3;
   static const double _faceRectAlpha = 0.35;
@@ -142,9 +138,15 @@ class PortraitModeHandler {
     _smileProb = null;
     _trackedMainBox = null;
     _smoothedFaceRect = null;
+    _smoothedPosePoints.clear();
     stableMessage = '카메라를 사람에게 향해주세요';
     _pendingMessage = '';
     _pendingCount = 0;
+    _stableCoaching = const CoachingResult(
+      message: '카메라를 사람에게 향해주세요',
+      priority: CoachingPriority.critical,
+      confidence: 1.0,
+    );
   }
 
   void updateNativeMetrics(Map<String, double> metrics) {
@@ -188,10 +190,13 @@ class PortraitModeHandler {
 
     if (!stable) {
       final c = _coachEngine.evaluate(const PortraitSceneState(personCount: 0));
-      _stabilize(c);
+      final stableCoaching = _stabilize(c);
       return PortraitAnalysisResult(
-        coaching: c,
-        overlayData: OverlayData(coaching: c, shotType: ShotType.unknown),
+        coaching: stableCoaching,
+        overlayData: OverlayData(
+          coaching: stableCoaching,
+          shotType: ShotType.unknown,
+        ),
         shotType: ShotType.unknown,
         personCount: 0,
         hasPersonStable: false,
@@ -201,10 +206,13 @@ class PortraitModeHandler {
     // 가장 큰 person
     if (persons.isEmpty) {
       final c = _coachEngine.evaluate(const PortraitSceneState(personCount: 0));
-      _stabilize(c);
+      final stableCoaching = _stabilize(c);
       return PortraitAnalysisResult(
-        coaching: c,
-        overlayData: OverlayData(coaching: c, shotType: ShotType.unknown),
+        coaching: stableCoaching,
+        overlayData: OverlayData(
+          coaching: stableCoaching,
+          shotType: ShotType.unknown,
+        ),
         shotType: ShotType.unknown,
         personCount: 0,
         hasPersonStable: false,
@@ -214,21 +222,21 @@ class PortraitModeHandler {
     final main = _selectMainPerson(persons);
 
     // 키포인트 추출
-    final nose = _kp(main, PoseKeypointIndex.nose);
-    final lEye = _kp(main, PoseKeypointIndex.leftEye);
-    final rEye = _kp(main, PoseKeypointIndex.rightEye);
-    final lShoulder = _kp(main, PoseKeypointIndex.leftShoulder);
-    final rShoulder = _kp(main, PoseKeypointIndex.rightShoulder);
-    final lElbow = _kp(main, PoseKeypointIndex.leftElbow);
-    final rElbow = _kp(main, PoseKeypointIndex.rightElbow);
-    final lWrist = _kp(main, PoseKeypointIndex.leftWrist);
-    final rWrist = _kp(main, PoseKeypointIndex.rightWrist);
-    final lHip = _kp(main, PoseKeypointIndex.leftHip);
-    final rHip = _kp(main, PoseKeypointIndex.rightHip);
-    final lKnee = _kp(main, PoseKeypointIndex.leftKnee, minConf: 0.3);
-    final rKnee = _kp(main, PoseKeypointIndex.rightKnee, minConf: 0.3);
-    final lAnkle = _kp(main, PoseKeypointIndex.leftAnkle, minConf: 0.3);
-    final rAnkle = _kp(main, PoseKeypointIndex.rightAnkle, minConf: 0.3);
+    final nose = _smoothedKp(main, PoseKeypointIndex.nose);
+    final lEye = _smoothedKp(main, PoseKeypointIndex.leftEye);
+    final rEye = _smoothedKp(main, PoseKeypointIndex.rightEye);
+    final lShoulder = _smoothedKp(main, PoseKeypointIndex.leftShoulder);
+    final rShoulder = _smoothedKp(main, PoseKeypointIndex.rightShoulder);
+    final lElbow = _smoothedKp(main, PoseKeypointIndex.leftElbow);
+    final rElbow = _smoothedKp(main, PoseKeypointIndex.rightElbow);
+    final lWrist = _smoothedKp(main, PoseKeypointIndex.leftWrist);
+    final rWrist = _smoothedKp(main, PoseKeypointIndex.rightWrist);
+    final lHip = _smoothedKp(main, PoseKeypointIndex.leftHip);
+    final rHip = _smoothedKp(main, PoseKeypointIndex.rightHip);
+    final lKnee = _smoothedKp(main, PoseKeypointIndex.leftKnee, minConf: 0.3);
+    final rKnee = _smoothedKp(main, PoseKeypointIndex.rightKnee, minConf: 0.3);
+    final lAnkle = _smoothedKp(main, PoseKeypointIndex.leftAnkle, minConf: 0.3);
+    final rAnkle = _smoothedKp(main, PoseKeypointIndex.rightAnkle, minConf: 0.3);
 
     // ─── 비동기 분석 (조명 + 얼굴, captureFrame 공유) ─────
     // 어깨 각도
@@ -399,8 +407,7 @@ class PortraitModeHandler {
       hasShoulders: lShoulder != null && rShoulder != null,
     );
 
-    final coaching = _coachEngine.evaluate(state);
-    _stabilize(coaching);
+    final coaching = _stabilize(_coachEngine.evaluate(state));
 
     final overlay = OverlayData(
       leftEye: lEye,
@@ -636,6 +643,26 @@ class PortraitModeHandler {
     return isFrontCamera ? Offset(1.0 - nx, ny) : Offset(nx, ny);
   }
 
+  Offset? _smoothedKp(YOLOResult r, int idx, {double minConf = 0.01}) {
+    final next = _kp(r, idx, minConf: minConf);
+    final previous = _smoothedPosePoints[idx];
+
+    if (next == null) {
+      return previous;
+    }
+    if (previous == null) {
+      _smoothedPosePoints[idx] = next;
+      return next;
+    }
+
+    final smoothed = Offset(
+      previous.dx + (next.dx - previous.dx) * _posePointAlpha,
+      previous.dy + (next.dy - previous.dy) * _posePointAlpha,
+    );
+    _smoothedPosePoints[idx] = smoothed;
+    return smoothed;
+  }
+
   double _conf(YOLOResult r, int idx) {
     final dynamic confs = r.keypointConfidences;
     if (confs == null) return 0.0;
@@ -676,6 +703,103 @@ class PortraitModeHandler {
 
   // ─── 유틸리티 ─────────────────────────────────────
 
+  YOLOResult _selectMainPerson(List<YOLOResult> persons) {
+    if (persons.length == 1) {
+      _trackedMainBox = persons.first.normalizedBox;
+      return persons.first;
+    }
+
+    final previousBox = _trackedMainBox;
+    final targetCenter = previousBox?.center ?? const Offset(0.5, 0.45);
+    YOLOResult selected = persons.first;
+    double bestScore = double.negativeInfinity;
+
+    for (final person in persons) {
+      final box = person.normalizedBox;
+      final area = box.width * box.height;
+      final overlap = previousBox == null
+          ? 0.0
+          : _intersectionOverUnion(previousBox, box);
+      final centerDistance = (box.center - targetCenter).distance;
+      final score = area * 1.2 + overlap * 1.6 - centerDistance * 0.35;
+
+      if (score > bestScore) {
+        bestScore = score;
+        selected = person;
+      }
+    }
+
+    _trackedMainBox = selected.normalizedBox;
+    return selected;
+  }
+
+  double _intersectionOverUnion(Rect a, Rect b) {
+    final intersection = a.intersect(b);
+    if (intersection.isEmpty) return 0.0;
+
+    final intersectionArea = intersection.width * intersection.height;
+    final unionArea =
+        (a.width * a.height) + (b.width * b.height) - intersectionArea;
+    if (unionArea <= 0) return 0.0;
+    return intersectionArea / unionArea;
+  }
+
+  double? _smoothMetric(double? previous, double? next) {
+    if (next == null || next.isNaN) return previous;
+    if (previous == null || previous.isNaN) return next;
+    return previous + (next - previous) * _faceMetricAlpha;
+  }
+
+  Rect? _smoothRect(Rect? previous, Rect? next) {
+    if (next == null) return previous;
+    if (previous == null) return next;
+
+    return Rect.fromLTRB(
+      previous.left + (next.left - previous.left) * _faceRectAlpha,
+      previous.top + (next.top - previous.top) * _faceRectAlpha,
+      previous.right + (next.right - previous.right) * _faceRectAlpha,
+      previous.bottom + (next.bottom - previous.bottom) * _faceRectAlpha,
+    );
+  }
+
+  double? _targetEyeLineY(ShotType shot) {
+    switch (shot) {
+      case ShotType.extremeCloseUp:
+        return 0.38;
+      case ShotType.closeUp:
+        return 0.35;
+      case ShotType.upperBody:
+        return 0.33;
+      case ShotType.kneeShot:
+        return 0.31;
+      case ShotType.fullBody:
+        return 0.29;
+      case ShotType.environmental:
+        return 0.30;
+      case ShotType.unknown:
+        return null;
+    }
+  }
+
+  double? _targetHeadroomTop(ShotType shot) {
+    switch (shot) {
+      case ShotType.extremeCloseUp:
+        return 0.06;
+      case ShotType.closeUp:
+        return 0.08;
+      case ShotType.upperBody:
+        return 0.10;
+      case ShotType.kneeShot:
+        return 0.12;
+      case ShotType.fullBody:
+        return 0.08;
+      case ShotType.environmental:
+        return 0.10;
+      case ShotType.unknown:
+        return null;
+    }
+  }
+
   Uint8List _toLuminance(img.Image image) {
     final out = Uint8List(image.width * image.height);
     var i = 0;
@@ -691,17 +815,33 @@ class PortraitModeHandler {
     return out;
   }
 
-  void _stabilize(CoachingResult c) {
+  CoachingResult _stabilize(CoachingResult c) {
+    if (c.priority == CoachingPriority.critical) {
+      stableMessage = c.message;
+      _pendingMessage = c.message;
+      _pendingCount = 0;
+      _stableCoaching = c;
+      return c;
+    }
+
     if (c.message == _pendingMessage) {
       _pendingCount++;
     } else {
       _pendingMessage = c.message;
       _pendingCount = 1;
     }
-    final t = stableMessage.contains('좋은 구도')
-        ? _stabilityThreshold * 2
+    final threshold = _stableCoaching.priority == CoachingPriority.perfect
+        ? _stabilityThreshold + 2
         : _stabilityThreshold;
-    if (_pendingCount >= t) stableMessage = _pendingMessage;
+    if (_pendingCount >= threshold) {
+      stableMessage = _pendingMessage;
+      _stableCoaching = CoachingResult(
+        message: c.message,
+        priority: c.priority,
+        confidence: c.confidence,
+      );
+    }
+    return _stableCoaching;
   }
 
   // ─── 조명 라벨/색상 헬퍼 (UI에서 사용) ────────────────

@@ -18,7 +18,7 @@ import '../subject_detection.dart'
     show detectModelPath, detectionConfidenceThreshold;
 
 const String poseModelPath = 'yolov8n-pose_float16.tflite';
-const double poseConfidenceThreshold = 0.2;
+const double poseConfidenceThreshold = 0.15;
 
 enum ShootingMode {
   person('\uC778\uBB3C'),
@@ -32,11 +32,13 @@ enum ShootingMode {
 class CameraScreen extends StatefulWidget {
   final ValueChanged<int> onMoveTab;
   final VoidCallback onBack;
+  final ShootingMode initialMode;
 
   const CameraScreen({
     super.key,
     required this.onMoveTab,
     required this.onBack,
+    this.initialMode = ShootingMode.object,
   });
 
   @override
@@ -57,7 +59,7 @@ class _CameraScreenState extends State<CameraScreen> {
   String? _subGuidance;
   CoachingLevel _coachingLevel = CoachingLevel.caution;
 
-  ShootingMode _shootingMode = ShootingMode.object;
+  late ShootingMode _shootingMode;
   Offset? _focusPoint;
   bool _showFocusIndicator = false;
 
@@ -102,6 +104,8 @@ class _CameraScreenState extends State<CameraScreen> {
       confidence: 0.0,
     ),
   );
+  int _portraitLostFrames = 0;
+  static const int _portraitLostFrameTolerance = 8;
 
   Timer? _countdownTimer;
   StreamSubscription<AccelerometerEvent>? _accelerometerSub;
@@ -111,6 +115,7 @@ class _CameraScreenState extends State<CameraScreen> {
   @override
   void initState() {
     super.initState();
+    _shootingMode = widget.initialMode;
 
     unawaited(_portraitHandler.init());
 
@@ -167,6 +172,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
   void _resetPortraitState() {
     _portraitHandler.reset();
+    _portraitLostFrames = 0;
     _portraitCoaching = const portrait.CoachingResult(
       message: '\uCE74\uBA54\uB77C\uB97C \uC5EC\uC720\uB86D\uAC8C \uB9DE\uCDB0\uC8FC\uC138\uC694.',
       priority: portrait.CoachingPriority.critical,
@@ -639,6 +645,15 @@ class _CameraScreenState extends State<CameraScreen> {
 
     _portraitHandler.isFrontCamera = _isFrontCamera;
     final analysis = _portraitHandler.processResults(results);
+
+    if (!analysis.hasPersonStable) {
+      _portraitLostFrames++;
+      if (_portraitLostFrames <= _portraitLostFrameTolerance) {
+        return;
+      }
+    } else {
+      _portraitLostFrames = 0;
+    }
 
     setState(() {
       _portraitOverlayData = analysis.overlayData;

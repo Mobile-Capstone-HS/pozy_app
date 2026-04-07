@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
+import 'camera_screen.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 import '../widget/app_top_bar.dart';
 import '../widget/home_feature_card.dart';
-import '../portrait/portrait_camera_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   final ValueChanged<int> onMoveTab;
@@ -28,7 +28,14 @@ class HomeScreen extends StatelessWidget {
               onTap: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => const PortraitCameraScreen(),
+                    builder: (_) => CameraScreen(
+                      onMoveTab: (index) {
+                        Navigator.of(context).pop();
+                        onMoveTab(index);
+                      },
+                      onBack: () => Navigator.of(context).pop(),
+                      initialMode: ShootingMode.person,
+                    ),
                   ),
                 );
               },

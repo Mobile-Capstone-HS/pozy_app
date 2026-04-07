@@ -149,6 +149,8 @@ class YOLOView @JvmOverloads constructor(
     
     // Frame counter for streaming
     private var frameNumberCounter: Long = 0
+    private var lastStablePoseDetections: List<Map<String, Any>> = emptyList()
+    private var consecutiveEmptyPoseFrames: Int = 0
     
     // Throttling variables for performance control
     private var lastInferenceTime: Long = 0
@@ -160,6 +162,7 @@ class YOLOView @JvmOverloads constructor(
     private var frameSkipCount: Int = 0 // Current frame skip counter
     private var targetSkipFrames: Int = 0 // Number of frames to skip between inferences
     private val portraitNativeAnalyzer = PortraitNativeAnalyzer(context)
+    private val poseDetectionHoldFrames = 3
 
     // Image metrics analysis — callback set by YOLOPlatformView
     var onImageMetrics: ((Map<String, Any>) -> Unit)? = null
@@ -185,6 +188,7 @@ class YOLOView @JvmOverloads constructor(
         Log.d(TAG, "🔄 Setting new streaming config")
         Log.d(TAG, "📋 Previous config: $streamConfig")
         this.streamConfig = config
+        resetPoseStreamStability()
         setupThrottlingFromConfig()
         Log.d(TAG, "✅ New streaming config set: $config")
         Log.d(TAG, "🎯 Key settings - includeMasks: ${config?.includeMasks}, includeProcessingTimeMs: ${config?.includeProcessingTimeMs}, inferenceFrequency: ${config?.inferenceFrequency}")
@@ -598,6 +602,7 @@ class YOLOView @JvmOverloads constructor(
 
                 post {
                     this.task = task
+                    resetPoseStreamStability()
                     this.predictor = newPredictor
                     this.modelName = modelPath.substringAfterLast("/")
                     modelLoadCallback?.invoke(true)
@@ -845,6 +850,7 @@ class YOLOView @JvmOverloads constructor(
         
         val w = imageProxy.width
         val h = imageProxy.height
+        val rotationDegrees = imageProxy.imageInfo.rotationDegrees
         val orientation = context.resources.configuration.orientation
         val isLandscapeDevice = orientation == Configuration.ORIENTATION_LANDSCAPE
 
@@ -886,14 +892,33 @@ class YOLOView @JvmOverloads constructor(
                 
                 // Set camera facing information in predictor
                 (p as? BasePredictor)?.isFrontCamera = isFrontCamera
-                
-                // For camera feed, we typically rotate the bitmap
-                // In landscape mode, we don't rotate, so width/height should match actual bitmap dimensions
-                val result = if (isLandscape) {
+
+                val shouldNormalizePoseRotation = task == YOLOTask.POSE
+                val inferenceBitmap = if (shouldNormalizePoseRotation) {
+                    ImageUtils.rotateBitmap(bitmap, rotationDegrees)
+                } else {
+                    bitmap
+                }
+                val rotatedFrameSwapsAxes = rotationDegrees == 90 || rotationDegrees == 270
+
+                val result = if (shouldNormalizePoseRotation) {
+                    p.predict(
+                        inferenceBitmap,
+                        inferenceBitmap.width,
+                        inferenceBitmap.height,
+                        rotateForCamera = false,
+                        isLandscape = inferenceBitmap.width > inferenceBitmap.height,
+                    )
+                } else if (isLandscape) {
                     p.predict(bitmap, w, h, rotateForCamera = true, isLandscape = isLandscape)
                 } else {
-                    // In portrait mode, keep the original behavior (h, w)
-                    p.predict(bitmap, h, w, rotateForCamera = true, isLandscape = isLandscape)
+                    p.predict(
+                        bitmap,
+                        if (rotatedFrameSwapsAxes) h else w,
+                        if (rotatedFrameSwapsAxes) w else h,
+                        rotateForCamera = true,
+                        isLandscape = isLandscape,
+                    )
                 }
                 
                 // Apply originalImage if streaming config requires it
@@ -1965,6 +1990,7 @@ class YOLOView @JvmOverloads constructor(
                 detections.add(detection)
             }
             
+            applyPoseDetectionStability(detections)
             map["detections"] = detections
             Log.d(TAG, "✅ Total detections in stream: ${detections.size} (boxes: ${result.boxes.size}, obb: ${result.obb.size})")
         }
@@ -1993,6 +2019,39 @@ class YOLOView @JvmOverloads constructor(
         }
         
         return map
+    }
+
+    private fun applyPoseDetectionStability(detections: ArrayList<Map<String, Any>>) {
+        if (task != YOLOTask.POSE) {
+            resetPoseStreamStability()
+            return
+        }
+
+        if (detections.isNotEmpty()) {
+            lastStablePoseDetections = detections.map { HashMap(it) }
+            consecutiveEmptyPoseFrames = 0
+            return
+        }
+
+        if (lastStablePoseDetections.isEmpty()) {
+            return
+        }
+
+        consecutiveEmptyPoseFrames += 1
+        if (consecutiveEmptyPoseFrames <= poseDetectionHoldFrames) {
+            detections.addAll(lastStablePoseDetections.map { HashMap(it) })
+            Log.d(
+                TAG,
+                "Holding previous pose detections for transient empty frame ($consecutiveEmptyPoseFrames/$poseDetectionHoldFrames)"
+            )
+        } else {
+            resetPoseStreamStability()
+        }
+    }
+
+    private fun resetPoseStreamStability() {
+        lastStablePoseDetections = emptyList()
+        consecutiveEmptyPoseFrames = 0
     }
 
     private fun computeAppearanceSignature(
