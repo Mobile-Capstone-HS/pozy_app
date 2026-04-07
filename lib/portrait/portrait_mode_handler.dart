@@ -238,12 +238,12 @@ class PortraitModeHandler {
     final rEye = _smoothedKp(main, PoseKeypointIndex.rightEye);
     final lShoulder = _smoothedKp(main, PoseKeypointIndex.leftShoulder);
     final rShoulder = _smoothedKp(main, PoseKeypointIndex.rightShoulder);
-    final lElbow = _smoothedKp(main, PoseKeypointIndex.leftElbow);
-    final rElbow = _smoothedKp(main, PoseKeypointIndex.rightElbow);
-    final lWrist = _smoothedKp(main, PoseKeypointIndex.leftWrist);
-    final rWrist = _smoothedKp(main, PoseKeypointIndex.rightWrist);
-    final lHip = _smoothedKp(main, PoseKeypointIndex.leftHip);
-    final rHip = _smoothedKp(main, PoseKeypointIndex.rightHip);
+    final lElbow = _smoothedKp(main, PoseKeypointIndex.leftElbow, minConf: 0.3);
+    final rElbow = _smoothedKp(main, PoseKeypointIndex.rightElbow, minConf: 0.3);
+    final lWrist = _smoothedKp(main, PoseKeypointIndex.leftWrist, minConf: 0.3);
+    final rWrist = _smoothedKp(main, PoseKeypointIndex.rightWrist, minConf: 0.3);
+    final lHip = _smoothedKp(main, PoseKeypointIndex.leftHip, minConf: 0.3);
+    final rHip = _smoothedKp(main, PoseKeypointIndex.rightHip, minConf: 0.3);
     final lKnee = _smoothedKp(main, PoseKeypointIndex.leftKnee, minConf: 0.3);
     final rKnee = _smoothedKp(main, PoseKeypointIndex.rightKnee, minConf: 0.3);
     final lAnkle = _smoothedKp(main, PoseKeypointIndex.leftAnkle, minConf: 0.3);
@@ -349,19 +349,25 @@ class PortraitModeHandler {
       shot = ShotType.environmental;
     }
 
-    // 관절 크로핑
+    // 관절 크로핑 (샷 타입에 따라 체크 관절 구분)
+    // - 손목/팔꿈치: closeUp 이상에서만 (upperBody, kneeShot, fullBody)
+    // - 무릎: kneeShot/fullBody 에서만
+    // - 발목: fullBody 에서만
     const em = 0.03;
     bool cropped = false;
-    for (final p in <Offset?>[
-      lWrist,
-      rWrist,
-      lElbow,
-      rElbow,
-      lKnee,
-      rKnee,
-      lAnkle,
-      rAnkle,
-    ]) {
+    final _jointsToCheck = <Offset?>[];
+    if (shot == ShotType.upperBody ||
+        shot == ShotType.kneeShot ||
+        shot == ShotType.fullBody) {
+      _jointsToCheck.addAll([lWrist, rWrist, lElbow, rElbow]);
+    }
+    if (shot == ShotType.kneeShot || shot == ShotType.fullBody) {
+      _jointsToCheck.addAll([lKnee, rKnee]);
+    }
+    if (shot == ShotType.fullBody) {
+      _jointsToCheck.addAll([lAnkle, rAnkle]);
+    }
+    for (final p in _jointsToCheck) {
       if (p != null &&
           (p.dx < em || p.dx > 1 - em || p.dy < em || p.dy > 1 - em)) {
         cropped = true;
@@ -656,11 +662,15 @@ class PortraitModeHandler {
 
   Offset? _smoothedKp(YOLOResult r, int idx, {double minConf = 0.01}) {
     final next = _kp(r, idx, minConf: minConf);
-    final previous = _smoothedPosePoints[idx];
 
     if (next == null) {
-      return previous;
+      // 신뢰도 부족 → 캐시 제거하고 null 반환
+      // (스테일 위치를 그대로 표시하면 화면 모서리로 몰리는 버그 발생)
+      _smoothedPosePoints.remove(idx);
+      return null;
     }
+
+    final previous = _smoothedPosePoints[idx];
     if (previous == null) {
       _smoothedPosePoints[idx] = next;
       return next;

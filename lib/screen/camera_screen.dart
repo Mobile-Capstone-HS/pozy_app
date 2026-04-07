@@ -1164,7 +1164,9 @@ class _CameraScreenState extends State<CameraScreen> {
                 _previewSize = Size(constraints.maxWidth, constraints.maxHeight);
 
                 return YOLOView(
-                  key: ValueKey('yolo_${_isPortraitMode ? 'pose' : 'detect'}'),
+                  key: ValueKey(
+                    'yolo_${_isPortraitMode ? 'pose' : 'detect'}_${_isFrontCamera ? 'front' : 'back'}',
+                  ),
                   controller: _cameraController,
                   modelPath: _isPortraitMode ? poseModelPath : detectModelPath,
                   task: _isPortraitMode ? YOLOTask.pose : YOLOTask.detect,
@@ -1177,7 +1179,8 @@ class _CameraScreenState extends State<CameraScreen> {
                   streamingConfig: _isPortraitMode
                       ? const YOLOStreamingConfig.withPoses()
                       : const YOLOStreamingConfig.minimal(),
-                  lensFacing: LensFacing.back,
+                  lensFacing:
+                      _isFrontCamera ? LensFacing.front : LensFacing.back,
                   onResult:
                       _isPortraitMode ? _handlePoseDetections : _handleDetections,
                   onZoomChanged: (zoomLevel) {

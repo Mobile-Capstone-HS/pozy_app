@@ -137,6 +137,12 @@ class PortraitSceneState {
       leftEyeOpenProb! < 0.3 &&
       rightEyeOpenProb! < 0.3;
 
+  bool get isOneEyeClosed =>
+      leftEyeOpenProb != null &&
+      rightEyeOpenProb != null &&
+      !areEyesClosed &&
+      (leftEyeOpenProb! < 0.3 || rightEyeOpenProb! < 0.3);
+
   bool get isSmiling =>
       smileProbability != null && smileProbability! >= 0.65;
 
