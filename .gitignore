@@ -46,3 +46,6 @@ app.*.map.json
 ai_env/
 __pycache__/
 *.pyc
+.env
+.claude/
+docs/code_snapshots/

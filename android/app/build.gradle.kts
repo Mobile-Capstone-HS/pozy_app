@@ -1,8 +1,14 @@
-plugins {
+﻿plugins {
     id("com.android.application")
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+configurations.all {
+    exclude(group = "org.tensorflow", module = "tensorflow-lite")
+    exclude(group = "org.tensorflow", module = "tensorflow-lite-api")
+    exclude(group = "org.tensorflow", module = "tensorflow-lite-gpu")
 }
 
 android {
@@ -24,7 +30,7 @@ android {
         applicationId = "com.example.pose_camera_app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = 24
+        minSdk = 26
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -41,8 +47,26 @@ android {
     androidResources {
         noCompress.add("tflite")
     }
+
+    packaging {
+        jniLibs {
+            pickFirsts += "lib/**/libc++_shared.so"
+        }
+    }
 }
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    implementation("com.google.ai.edge.litert:litert:1.4.0")
+
+    // Guava (Android variant) ??provides com.google.common.util.concurrent.ListenableFuture.
+    // listenablefuture:1.0 is a stub that Gradle often upgrades to the empty
+    // "9999.0-empty-to-avoid-conflict-with-guava" artifact when full guava is
+    // present in the dependency graph (e.g. via litert). Declaring the full
+    // guava here ensures the class is actually on the compile classpath.
+    implementation("com.google.guava:guava:32.1.3-android")
+
 }
