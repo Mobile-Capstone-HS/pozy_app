@@ -10,6 +10,8 @@ import 'package:ultralytics_yolo/yolo_streaming_config.dart';
 import 'package:ultralytics_yolo/yolo_view.dart';
 
 import 'package:pose_camera_app/coaching/coaching_result.dart' hide ShootingMode;
+import 'package:pose_camera_app/widget/coaching_interface.dart';
+import 'package:pose_camera_app/widget/horizon_level_indicator.dart';
 import 'package:pose_camera_app/coaching/object_coach.dart';
 import 'package:pose_camera_app/coaching/portrait/portrait_mode_handler.dart';
 import 'package:pose_camera_app/coaching/portrait/portrait_overlay_painter.dart';
@@ -135,14 +137,15 @@ class _CameraScreenState extends State<CameraScreen> {
   void _startTiltMonitoring() {
     try {
       _accelerometerSub = accelerometerEventStream(
-        samplingPeriod: SensorInterval.normalInterval,
+        samplingPeriod: SensorInterval.uiInterval,
       ).listen((event) {
-        _gravX = (_gravX * 0.95) + (event.x * 0.05);
-        _gravY = (_gravY * 0.95) + (event.y * 0.05);
+        _gravX = (_gravX * 0.7) + (event.x * 0.3);
+        _gravY = (_gravY * 0.7) + (event.y * 0.3);
 
         final rollDeg = math.atan2(_gravX, _gravY) * 180.0 / math.pi;
         _tiltX = rollDeg;
         _sceneCoach.updateTilt(_tiltX);
+        setState(() {});
       });
     } catch (_) {}
   }
@@ -957,122 +960,6 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
-  Widget _buildPortraitOverlay() {
-    final isPerfect =
-        _portraitCoaching.priority == portrait.CoachingPriority.perfect;
-    final isCritical =
-        _portraitCoaching.priority == portrait.CoachingPriority.critical;
-    final isComposition =
-        _portraitCoaching.priority == portrait.CoachingPriority.composition;
-
-    final bgGradient = isPerfect
-        ? const LinearGradient(colors: [Color(0xCC16A34A), Color(0xCC22C55E)])
-        : isCritical
-            ? const LinearGradient(
-                colors: [Color(0xCCDC2626), Color(0xCCEF4444)],
-              )
-            : isComposition
-                ? const LinearGradient(
-                    colors: [Color(0xCCD97706), Color(0xCCF59E0B)],
-                  )
-                : const LinearGradient(
-                    colors: [Color(0xCC2563EB), Color(0xCC3B82F6)],
-                  );
-
-    final icon = isPerfect
-        ? Icons.check_circle_rounded
-        : isCritical
-            ? Icons.error_rounded
-            : isComposition
-                ? Icons.tune_rounded
-                : Icons.lightbulb_outline_rounded;
-
-    final lighting = _portraitHandler.lastLighting;
-    final lightConf = _portraitHandler.lastLightingConf;
-
-    return Positioned(
-      top: 72,
-      left: 12,
-      right: 12,
-      child: IgnorePointer(
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 220),
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            gradient: bgGradient,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.28),
-                blurRadius: 20,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(icon, color: Colors.white, size: 22),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      _portraitCoaching.message,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.2,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              if (lighting != portrait.LightingCondition.unknown &&
-                  lightConf > 0) ...[
-                const SizedBox(height: 8),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.45),
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(
-                      color: _portraitHandler
-                          .lightingBadgeColor(lighting)
-                          .withValues(alpha: 0.45),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.wb_sunny_rounded,
-                        color: _portraitHandler.lightingBadgeColor(lighting),
-                        size: 13,
-                      ),
-                      const SizedBox(width: 5),
-                      Text(
-                        '${_portraitHandler.lightingLabel(lighting)} (${(lightConf * 100).toStringAsFixed(0)}%)',
-                        style: TextStyle(
-                          color: _portraitHandler.lightingBadgeColor(lighting),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildPortraitTopBar() {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1116,6 +1003,23 @@ class _CameraScreenState extends State<CameraScreen> {
         ),
       ],
     );
+  }
+
+  CoachingLevel _portraitCoachingLevel() {
+    return switch (_portraitCoaching.priority) {
+      portrait.CoachingPriority.perfect => CoachingLevel.good,
+      portrait.CoachingPriority.critical => CoachingLevel.warning,
+      _ => CoachingLevel.caution,
+    };
+  }
+
+  String? _portraitSubGuidance() {
+    final lighting = _portraitHandler.lastLighting;
+    final lightConf = _portraitHandler.lastLightingConf;
+    if (lighting != portrait.LightingCondition.unknown && lightConf > 0) {
+      return '조명: ${_portraitHandler.lightingLabel(lighting)}';
+    }
+    return _portraitCoaching.reason;
   }
 
   String _shotTypeLabel() {
@@ -1286,20 +1190,23 @@ class _CameraScreenState extends State<CameraScreen> {
                   ),
                 ),
               ),
-            if (_isPortraitMode)
-              _buildPortraitOverlay()
-            else
-              Positioned(
-                top: 64,
-                right: 12,
-                child: IgnorePointer(
-                  child: _CoachingSpeechBubble(
-                    guidance: _guidance,
-                    subGuidance: _subGuidance,
-                    level: _coachingLevel,
-                  ),
+            Positioned(
+              top: 64,
+              right: 12,
+              child: IgnorePointer(
+                child: CoachingSpeechBubble(
+                  guidance: _isPortraitMode
+                      ? _portraitCoaching.message
+                      : _guidance,
+                  subGuidance: _isPortraitMode
+                      ? _portraitSubGuidance()
+                      : _subGuidance,
+                  level: _isPortraitMode
+                      ? _portraitCoachingLevel()
+                      : _coachingLevel,
                 ),
               ),
+            ),
             Positioned(
               top: 8,
               left: 16,
@@ -1336,6 +1243,17 @@ class _CameraScreenState extends State<CameraScreen> {
                 onCapture: _captureAndSavePhoto,
                 onFlipCamera: _switchCamera,
                 onModeChanged: _onModeChanged,
+              ),
+            ),
+            // 수평 지시선 — 항상 화면 중앙에 표시
+            Center(
+              child: IgnorePointer(
+                child: HorizonLevelIndicator(
+                  tiltDeg: _tiltX,
+                  isLevel: _gravX.abs() > _gravY.abs()
+                      ? (_tiltX.abs() - 90.0).abs() < 2.0
+                      : _tiltX.abs() < 2.0,
+                ),
               ),
             ),
             if (_countdown > 0)
@@ -1523,79 +1441,6 @@ class _BottomCameraControls extends StatelessWidget {
         ),
         const SizedBox(height: 8),
       ],
-    );
-  }
-}
-
-class _CoachingSpeechBubble extends StatelessWidget {
-  final String guidance;
-  final String? subGuidance;
-  final CoachingLevel level;
-
-  const _CoachingSpeechBubble({
-    required this.guidance,
-    required this.subGuidance,
-    required this.level,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final color = switch (level) {
-      CoachingLevel.good => const Color(0xFF4ADE80),
-      CoachingLevel.warning => const Color(0xFFFBBF24),
-      CoachingLevel.caution => Colors.white,
-    };
-
-    return Container(
-      constraints: const BoxConstraints(maxWidth: 220),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.72),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: level == CoachingLevel.good
-              ? color
-              : color.withValues(alpha: 0.35),
-          width: level == CoachingLevel.good ? 2.0 : 1.5,
-        ),
-        boxShadow: level == CoachingLevel.good
-            ? [
-                BoxShadow(
-                  color: color.withValues(alpha: 0.4),
-                  blurRadius: 8,
-                  spreadRadius: 1,
-                ),
-              ]
-            : null,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Text(
-            guidance,
-            textAlign: TextAlign.right,
-            style: TextStyle(
-              color: color,
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              height: 1.3,
-            ),
-          ),
-          if (subGuidance != null) ...[
-            const SizedBox(height: 4),
-            Text(
-              subGuidance!,
-              textAlign: TextAlign.right,
-              style: TextStyle(
-                color: color.withValues(alpha: 0.7),
-                fontSize: 11,
-                height: 1.3,
-              ),
-            ),
-          ],
-        ],
-      ),
     );
   }
 }

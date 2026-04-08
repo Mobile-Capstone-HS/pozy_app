@@ -418,14 +418,6 @@ class _CoachingEngine {
       );
     }
 
-    if (_acc.tiltStrong >= 0.45) {
-      return const CoachingResult(
-        guidance: '화면이 많이 기울어져 있어요',
-        subGuidance: '휴대폰을 수평에 가깝게 맞춰보세요',
-        level: CoachingLevel.warning,
-      );
-    }
-
     if (_acc.tooClose >= 0.48) {
       return const CoachingResult(
         guidance: '고정한 피사체가 너무 가까워요',
@@ -466,14 +458,6 @@ class _CoachingEngine {
       );
     }
 
-    if (_acc.tiltMild >= 0.50) {
-      return const CoachingResult(
-        guidance: '화면이 약간 기울어져 있어요',
-        subGuidance: '수평을 조금만 더 맞춰보세요',
-        level: CoachingLevel.caution,
-      );
-    }
-
     if (_acc.smallSubject >= 0.56) {
       return const CoachingResult(
         guidance: '조금 더 가까이 담아도 좋아요',
@@ -509,8 +493,7 @@ class _CoachingEngine {
         _acc.over >= 0.35 ||
         _acc.backlight >= 0.35 ||
         _acc.clippedSubject >= 0.35 ||
-        _acc.tooClose >= 0.35 ||
-        _acc.tiltStrong >= 0.35;
+        _acc.tooClose >= 0.35;
 
     if (!hasCriticalIssue) {
       final score = _computeGoodScore(
@@ -555,9 +538,6 @@ class _CoachingEngine {
       return _lerp(dist, 0.0, maxDist, 30.0, 0.0);
     }();
 
-    // 기울기 (15점) — 0~4.5도 만점, 4.5~12도 선형 감소
-    final tiltScore = _lerp(tiltDeg.abs(), 0.0, 12.0, 15.0, 0.0);
-
     // 구도 (12점) — areaRatio 적정 범위 + marginMin 여백
     final framingScore = () {
       final areaOk = subjectLocked
@@ -574,7 +554,7 @@ class _CoachingEngine {
     final balanceScore =
         _lerp((s.sceneCenterX - 0.5).abs(), 0.0, balanceThreshold, 8.0, 0.0);
 
-    return blurScore + brightnessScore + tiltScore + framingScore + balanceScore;
+    return blurScore + brightnessScore + framingScore + balanceScore;
   }
 
   static double _lerp(
