@@ -1,0 +1,38 @@
+{
+  "buildFiles": [
+    "C:\\Users\\cjsqhrdl\\pozy_app\\packages\\ultralytics_yolo\\android\\src\\main\\cpp\\CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "C:\\Users\\cjsqhrdl\\AppData\\Local\\Android\\Sdk\\cmake\\3.22.1\\bin\\ninja.exe",
+      "-C",
+      "C:\\Users\\cjsqhrdl\\pozy_app\\packages\\ultralytics_yolo\\android\\.cxx\\Debug\\5e1p3o3o\\x86",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "C:\\Users\\cjsqhrdl\\AppData\\Local\\Android\\Sdk\\cmake\\3.22.1\\bin\\ninja.exe",
+    "-C",
+    "C:\\Users\\cjsqhrdl\\pozy_app\\packages\\ultralytics_yolo\\android\\.cxx\\Debug\\5e1p3o3o\\x86",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "ultralytics::@6890427a1f51a3e7e1df": {
+      "toolchain": "toolchain",
+      "abi": "x86",
+      "artifactName": "ultralytics",
+      "output": "C:\\Users\\cjsqhrdl\\pozy_app\\build\\ultralytics_yolo\\intermediates\\cxx\\Debug\\5e1p3o3o\\obj\\x86\\libultralytics.so",
+      "runtimeFiles": []
+    }
+  },
+  "toolchains": {
+    "toolchain": {
+      "cCompilerExecutable": "C:\\Users\\cjsqhrdl\\AppData\\Local\\Android\\Sdk\\ndk\\28.2.13676358\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\clang.exe",
+      "cppCompilerExecutable": "C:\\Users\\cjsqhrdl\\AppData\\Local\\Android\\Sdk\\ndk\\28.2.13676358\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\clang++.exe"
+    }
+  },
+  "cFileExtensions": [],
+  "cppFileExtensions": [
+    "cpp"
+  ]
+}

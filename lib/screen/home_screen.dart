@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'camera_screen.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 import '../widget/app_top_bar.dart';
@@ -24,7 +25,20 @@ class HomeScreen extends StatelessWidget {
               title: 'Quick Shoot',
               description: 'Pozy의 실시간 코칭을 통해 완벽한 촬영을 경험해보세요.',
               buttonText: 'Launch',
-              onTap: () => onMoveTab(2),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => CameraScreen(
+                      onMoveTab: (index) {
+                        Navigator.of(context).pop();
+                        onMoveTab(index);
+                      },
+                      onBack: () => Navigator.of(context).pop(),
+                      initialMode: ShootingMode.person,
+                    ),
+                  ),
+                );
+              },
               visual: const _VisualBox(
                 child: Icon(
                   Icons.camera_alt_outlined,

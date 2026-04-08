@@ -3,6 +3,8 @@
 package com.ultralytics.yolo
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.View
 import androidx.core.content.ContextCompat
@@ -27,6 +29,7 @@ class YOLOPlatformView(
 ) : PlatformView, MethodChannel.MethodCallHandler {
 
     private val yoloView: YOLOView = YOLOView(context)
+    private val mainHandler = Handler(Looper.getMainLooper())
     
     // Getter for external access to yoloView
     val yoloViewInstance: YOLOView
@@ -113,7 +116,9 @@ class YOLOPlatformView(
             // Wire image metrics callback → metricsHandler EventChannel
             if (metricsHandler != null) {
                 yoloView.onImageMetrics = { metrics ->
-                    metricsHandler.sink?.success(metrics)
+                    mainHandler.post {
+                        metricsHandler.sink?.success(metrics)
+                    }
                 }
             }
 
@@ -516,6 +521,7 @@ class YOLOPlatformView(
         
         try {
             yoloView.stop()
+            yoloView.disposeNativeAnalyzers()
             // Clear callbacks by setting them to empty implementations
             yoloView.setStreamCallback { }
             yoloView.setOnInferenceCallback { }

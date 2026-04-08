@@ -1,0 +1,3 @@
+C:/Users/cjsqhrdl/AppData/Local/Pub/Cache/hosted/pub.dev/ultralytics_yolo-0.1.46/android/.cxx/Debug/z6g2o371/x86_64/CMakeFiles/ultralytics.dir
+C:/Users/cjsqhrdl/AppData/Local/Pub/Cache/hosted/pub.dev/ultralytics_yolo-0.1.46/android/.cxx/Debug/z6g2o371/x86_64/CMakeFiles/edit_cache.dir
+C:/Users/cjsqhrdl/AppData/Local/Pub/Cache/hosted/pub.dev/ultralytics_yolo-0.1.46/android/.cxx/Debug/z6g2o371/x86_64/CMakeFiles/rebuild_cache.dir

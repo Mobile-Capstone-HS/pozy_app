@@ -8,7 +8,7 @@ import 'package:gal/gal.dart';
 import 'package:image_picker/image_picker.dart';
 
 
-import '../service/gemini_service.dart';
+import 'package:pose_camera_app/services/gemini_service.dart';
 import 'crop_screen.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';

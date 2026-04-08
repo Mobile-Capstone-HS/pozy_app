@@ -12,6 +12,26 @@ import kotlin.math.max
 
 object ImageUtils {
 
+    @JvmStatic
+    fun rotateBitmap(bitmap: Bitmap, rotationDegrees: Int): Bitmap {
+        val normalizedRotation = ((rotationDegrees % 360) + 360) % 360
+        if (normalizedRotation == 0) return bitmap
+
+        val matrix = Matrix().apply {
+            postRotate(normalizedRotation.toFloat())
+        }
+
+        return Bitmap.createBitmap(
+            bitmap,
+            0,
+            0,
+            bitmap.width,
+            bitmap.height,
+            matrix,
+            true
+        )
+    }
+
     /**
      * Sample to convert ImageProxy to NV21 (BYTE array), then [YuvImage] -> [Bitmap]
      */
@@ -20,6 +40,11 @@ object ImageUtils {
         val nv21 = yuv420888ToNv21(imageProxy)
         val yuvImage = YuvImage(nv21, ImageFormat.NV21, imageProxy.width, imageProxy.height, null)
         return yuvImageToBitmap(yuvImage)
+    }
+
+    @JvmStatic
+    fun toNv21(imageProxy: ImageProxy): ByteArray {
+        return yuv420888ToNv21(imageProxy)
     }
 
     /**

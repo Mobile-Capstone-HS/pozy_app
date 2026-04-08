@@ -73,7 +73,7 @@ void main() {
     });
 
     test('platform methods work with initialized channel', () async {
-      controller.init(mockChannel, 1, 'test_view');
+      controller.init(mockChannel, 1);
 
       // Test threshold methods
       YOLOTestHelpers.validateThresholdBehavior(controller, log, mockChannel);
@@ -111,7 +111,7 @@ void main() {
     });
 
     test('error handling works correctly', () async {
-      controller.init(mockChannel, 1, 'test_view');
+      controller.init(mockChannel, 1);
 
       // Test that errors are handled gracefully
       await controller.setConfidenceThreshold(0.8);
@@ -200,7 +200,7 @@ void main() {
           home: YOLOView(
             modelPath: 'assets/yolo.tflite',
             task: YOLOTask.detect,
-            controller: YOLOViewController()..init(mockChannel, 1, 'test_view'),
+            controller: YOLOViewController()..init(mockChannel, 1),
             onResult: (results) {
               capturedResults.addAll(results);
             },
@@ -223,7 +223,7 @@ void main() {
       final mockChannel = YOLOTestHelpers.setupMockChannel(
         customResponses: {'setModel': (_) => Future.value(null)},
       );
-      final controller = YOLOViewController()..init(mockChannel, 1, 'test_view');
+      final controller = YOLOViewController()..init(mockChannel, 1);
 
       await tester.pumpWidget(
         MaterialApp(
@@ -260,7 +260,7 @@ void main() {
           'disposeInstance': (_) => Future.value(null),
         },
       );
-      final controller = YOLOViewController()..init(mockChannel, 1, 'test_view');
+      final controller = YOLOViewController()..init(mockChannel, 1);
 
       await tester.pumpWidget(
         MaterialApp(
@@ -308,7 +308,7 @@ void main() {
           home: YOLOView(
             modelPath: 'assets/yolo.tflite',
             task: YOLOTask.detect,
-            controller: YOLOViewController()..init(mockChannel, 1, 'test_view'),
+            controller: YOLOViewController()..init(mockChannel, 1),
             onStreamingData: (data) {
               capturedStreamData.add(data);
             },

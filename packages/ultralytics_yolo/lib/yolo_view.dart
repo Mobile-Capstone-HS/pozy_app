@@ -146,7 +146,11 @@ class _YOLOViewState extends State<YOLOView> {
         });
       }
 
-      widget.onResult!(results);
+      try {
+        widget.onResult!(results);
+      } catch (e) {
+        logInfo('YOLOView: Error in onResult callback: $e');
+      }
     } catch (e) {
       logInfo('YOLOView: Error parsing detection results: $e');
     }

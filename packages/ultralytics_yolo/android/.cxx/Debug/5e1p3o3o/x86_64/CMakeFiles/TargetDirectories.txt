@@ -1,0 +1,3 @@
+C:/Users/cjsqhrdl/pozy_app/packages/ultralytics_yolo/android/.cxx/Debug/5e1p3o3o/x86_64/CMakeFiles/ultralytics.dir
+C:/Users/cjsqhrdl/pozy_app/packages/ultralytics_yolo/android/.cxx/Debug/5e1p3o3o/x86_64/CMakeFiles/edit_cache.dir
+C:/Users/cjsqhrdl/pozy_app/packages/ultralytics_yolo/android/.cxx/Debug/5e1p3o3o/x86_64/CMakeFiles/rebuild_cache.dir
