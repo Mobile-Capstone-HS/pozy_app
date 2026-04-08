@@ -1,0 +1,1 @@
+C:\Users\cjsqhrdl\pozy_app\packages\ultralytics_yolo\android\src\main\cpp\CMakeLists.txt

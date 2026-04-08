@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 import 'camera_screen.dart';
 import 'landscape_camera_screen.dart';
@@ -28,7 +28,7 @@ class _CameraModeScreenState extends State<CameraModeScreen> {
     if (_mode == mode || _switching) return;
     setState(() {
       _switching = true;
-      _activeMode = null; // unmount current camera view first
+      _activeMode = null;
     });
     await Future<void>.delayed(const Duration(milliseconds: 160));
     if (!mounted) return;
@@ -51,16 +51,16 @@ class _CameraModeScreenState extends State<CameraModeScreen> {
           _activeMode == null
               ? const SizedBox.expand()
               : (_activeMode == _CameraModeTab.portrait
-                ? CameraScreen(
-                    key: const ValueKey<String>('portrait_camera'),
-                    onMoveTab: widget.onMoveTab,
-                    onBack: widget.onBack,
-                  )
-                : LandscapeCameraScreen(
-                    key: const ValueKey<String>('landscape_camera'),
-                    onMoveTab: widget.onMoveTab,
-                    onBack: widget.onBack,
-                  )),
+                    ? CameraScreen(
+                        key: const ValueKey<String>('portrait_camera'),
+                        onMoveTab: widget.onMoveTab,
+                        onBack: widget.onBack,
+                      )
+                    : LandscapeCameraScreen(
+                        key: const ValueKey<String>('landscape_camera'),
+                        onMoveTab: widget.onMoveTab,
+                        onBack: widget.onBack,
+                      )),
           Positioned(
             left: 0,
             right: 0,
@@ -100,13 +100,13 @@ class _ModeSwitcher extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           _ModeChip(
-            label: '인물',
+            label: '\uAE30\uBCF8',
             selected: selected == _CameraModeTab.portrait,
             onTap: () => onChanged(_CameraModeTab.portrait),
           ),
           const SizedBox(width: 4),
           _ModeChip(
-            label: '풍경',
+            label: '\uD48D\uACBD',
             selected: selected == _CameraModeTab.landscape,
             onTap: () => onChanged(_CameraModeTab.landscape),
           ),

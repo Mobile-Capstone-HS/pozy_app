@@ -1,4 +1,6 @@
-﻿import 'package:flutter/material.dart';
+import 'dart:typed_data';
+
+import 'package:flutter/material.dart';
 
 import '../widget/app_bottom_nav.dart';
 import 'best_cut_screen.dart';
@@ -6,7 +8,6 @@ import 'camera_mode_screen.dart';
 import 'editor_screen.dart';
 import 'gallery_screen.dart';
 import 'home_screen.dart';
-import 'landscape_image_test_screen.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -17,10 +18,12 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   int _currentIndex = 0;
+  Future<Uint8List?>? _pendingEditorFuture;
+  int _editorKey = 0;
 
   void goToTab(int index) {
     if (index == 2) {
-      _openCameraModeSelector();
+      _openCameraModeScreen();
       return;
     }
 
@@ -30,38 +33,12 @@ class _MainShellState extends State<MainShell> {
     });
   }
 
-  Future<void> _openCameraModeSelector() async {
-    final mode = await showModalBottomSheet<String>(
-      context: context,
-      builder: (context) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.camera_alt_outlined),
-                title: const Text('카메라 모드'),
-                subtitle: const Text('인물 / 풍경 모드 전환'),
-                onTap: () => Navigator.of(context).pop('camera_mode'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.image_search_outlined),
-                title: const Text('테스트 모드'),
-                subtitle: const Text('assets/images/image.png'),
-                onTap: () => Navigator.of(context).pop('test_mode'),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-
-    if (!mounted || mode == null) return;
-    if (mode == 'test_mode') {
-      await _openLandscapeImageTestScreen();
-      return;
-    }
-    await _openCameraModeScreen();
+  void openImageInEditor(Future<Uint8List?> future) {
+    setState(() {
+      _pendingEditorFuture = future;
+      _editorKey++;
+      _currentIndex = 4;
+    });
   }
 
   Future<void> _openCameraModeScreen() async {
@@ -80,28 +57,33 @@ class _MainShellState extends State<MainShell> {
     );
   }
 
-  Future<void> _openLandscapeImageTestScreen() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => LandscapeImageTestScreen(
-          onBack: () => Navigator.of(context).pop(),
-        ),
-      ),
-    );
-  }
-
   Widget _buildPage(int index) {
     switch (index) {
       case 0:
         return HomeScreen(onMoveTab: goToTab);
       case 1:
-        return GalleryScreen(onMoveTab: goToTab);
+        return GalleryScreen(
+          onMoveTab: goToTab,
+          onOpenInEditor: openImageInEditor,
+        );
       case 2:
         return HomeScreen(onMoveTab: goToTab);
       case 3:
         return BestCutScreen(onMoveTab: goToTab);
       case 4:
-        return EditorScreen(onMoveTab: goToTab);
+        final future = _pendingEditorFuture;
+        if (future != null) {
+          Future.microtask(() {
+            if (mounted) {
+              setState(() => _pendingEditorFuture = null);
+            }
+          });
+        }
+        return EditorScreen(
+          key: ValueKey(_editorKey),
+          onMoveTab: goToTab,
+          initialBytesFuture: future,
+        );
       default:
         return HomeScreen(onMoveTab: goToTab);
     }

@@ -1,12 +1,17 @@
 import 'dart:async';
+import 'dart:typed_data';
 
-import 'package:camera/camera.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:ultralytics_yolo/widgets/yolo_controller.dart';
+import 'package:ultralytics_yolo/yolo.dart';
+import 'package:ultralytics_yolo/yolo_streaming_config.dart';
+import 'package:ultralytics_yolo/yolo_view.dart';
 
 import 'fastscnn_pipeline.dart';
 import 'fastscnn_segmentor.dart';
+
+const String _cameraOnlyModelPath = 'assets/models/__camera_only__.tflite';
 
 class FastScnnFrame {
   final SegmentationResult result;
@@ -69,23 +74,33 @@ class FastScnnView extends StatefulWidget {
 
 class _FastScnnViewState extends State<FastScnnView> {
   final FastScnnPipeline _pipeline = FastScnnPipeline();
-  final List<CameraDescription> _cameras = [];
+  final YOLOViewController _cameraController = YOLOViewController();
 
-  CameraController? _camera;
   StreamSubscription<Map<String, dynamic>>? _eventSub;
-  int _cameraIndex = 0;
-  int _frameCount = 0;
-  bool _isInitialized = false;
+  bool _isPipelineReady = false;
   bool _isProcessingFrame = false;
-  DateTime _lastInferenceAt = DateTime.fromMillisecondsSinceEpoch(0);
+  bool _isFrontCamera = false;
   double _zoom = 1.0;
-  double _minZoom = 1.0;
-  double _maxZoom = 2.0;
+  DateTime _lastInferenceAt = DateTime.fromMillisecondsSinceEpoch(0);
   FastScnnFrame? _latestFrame;
+
+  YOLOStreamingConfig get _streamingConfig => YOLOStreamingConfig.custom(
+    includeDetections: false,
+    includeClassifications: false,
+    includeProcessingTimeMs: false,
+    includeFps: false,
+    includeMasks: false,
+    includePoses: false,
+    includeOBB: false,
+    includeOriginalImage: true,
+    throttleInterval: Duration(milliseconds: widget.inferenceIntervalMs),
+    skipFrames: widget.frameSkipLevel,
+  );
 
   @override
   void initState() {
     super.initState();
+    _isFrontCamera = !widget.startWithBackCamera;
     widget.controller?._attach(this);
     _initialize();
   }
@@ -93,66 +108,17 @@ class _FastScnnViewState extends State<FastScnnView> {
   Future<void> _initialize() async {
     await _pipeline.initialize();
     _eventSub = _pipeline.events.listen(widget.onEvent?.call);
-    await _initCamera();
     if (!mounted) return;
     setState(() {
-      _isInitialized = _camera?.value.isInitialized == true;
+      _isPipelineReady = _pipeline.isInitialized;
     });
   }
 
-  Future<void> _initCamera() async {
-    final cams = await availableCameras();
-    if (cams.isEmpty) return;
-    _cameras
-      ..clear()
-      ..addAll(cams);
+  Future<void> _handleStreamingData(Map<String, dynamic> data) async {
+    if (!mounted || !_isPipelineReady || _isProcessingFrame) return;
 
-    int index = 0;
-    if (widget.startWithBackCamera) {
-      final back = _cameras.indexWhere(
-        (camera) => camera.lensDirection == CameraLensDirection.back,
-      );
-      if (back != -1) index = back;
-    }
-    await _startCamera(index);
-  }
-
-  Future<void> _startCamera(int index) async {
-    final old = _camera;
-    if (old != null) {
-      if (old.value.isStreamingImages) {
-        await old.stopImageStream();
-      }
-      await old.dispose();
-    }
-
-    final controller = CameraController(
-      _cameras[index],
-      ResolutionPreset.max,
-      enableAudio: false,
-      imageFormatGroup: ImageFormatGroup.yuv420,
-    );
-    await controller.initialize();
-    _minZoom = await controller.getMinZoomLevel();
-    _maxZoom = await controller.getMaxZoomLevel();
-    _zoom = _zoom.clamp(_minZoom, _maxZoom);
-    await controller.setZoomLevel(_zoom);
-    await controller.startImageStream(_onImage);
-    if (!mounted) {
-      await controller.dispose();
-      return;
-    }
-
-    _cameraIndex = index;
-    _camera = controller;
-    widget.onZoomChanged?.call(_zoom);
-  }
-
-  Future<void> _onImage(CameraImage image) async {
-    if (!mounted || _isProcessingFrame || !_pipeline.isInitialized) return;
-
-    _frameCount++;
-    if (_frameCount % (widget.frameSkipLevel + 1) != 0) return;
+    final originalImage = data['originalImage'];
+    if (originalImage is! Uint8List || originalImage.isEmpty) return;
 
     final now = DateTime.now();
     if (now.difference(_lastInferenceAt).inMilliseconds <
@@ -161,29 +127,15 @@ class _FastScnnViewState extends State<FastScnnView> {
     }
     _lastInferenceAt = now;
 
-    final camera = _camera;
-    if (camera == null || !camera.value.isInitialized) return;
-
     _isProcessingFrame = true;
     try {
-      final orientation =
-          camera.value.previewPauseOrientation ??
-          camera.value.lockedCaptureOrientation ??
-          camera.value.deviceOrientation;
-      final inferenceTurns = _orientationToInferenceQuarterTurns(orientation);
-      final isFront =
-          _cameras[_cameraIndex].lensDirection == CameraLensDirection.front;
-      final result = await _pipeline.segmentCameraImage(
-        image,
-        rotationQuarterTurns: inferenceTurns,
-        mirrorX: isFront,
-      );
+      final result = await _pipeline.segment(originalImage);
       if (result == null || !mounted) return;
 
       final frame = FastScnnFrame(
         result: result,
-        isFrontCamera: isFront,
-        orientation: orientation,
+        isFrontCamera: _isFrontCamera,
+        orientation: DeviceOrientation.portraitUp,
         zoomLevel: _zoom,
       );
       _latestFrame = frame;
@@ -194,63 +146,28 @@ class _FastScnnViewState extends State<FastScnnView> {
     }
   }
 
-  int _orientationToPreviewQuarterTurns(DeviceOrientation orientation) {
-    if (orientation == DeviceOrientation.landscapeRight) return 1;
-    if (orientation == DeviceOrientation.portraitDown) return 2;
-    if (orientation == DeviceOrientation.landscapeLeft) return 3;
-    return 0;
-  }
-
-  int _orientationToInferenceQuarterTurns(DeviceOrientation orientation) {
-    if (orientation == DeviceOrientation.portraitUp) return 3;
-    if (orientation == DeviceOrientation.landscapeRight) return 0;
-    if (orientation == DeviceOrientation.portraitDown) return 1;
-    if (orientation == DeviceOrientation.landscapeLeft) return 2;
-    return 0;
-  }
-
   Future<void> _switchCamera() async {
-    if (_cameras.length < 2) return;
-    final next = (_cameraIndex + 1) % _cameras.length;
-    await _startCamera(next);
-    if (mounted) setState(() {});
+    await _cameraController.switchCamera();
+    if (!mounted) return;
+    setState(() {
+      _isFrontCamera = !_isFrontCamera;
+    });
   }
 
   Future<void> _setZoom(double zoom) async {
-    final camera = _camera;
-    if (camera == null || !camera.value.isInitialized) return;
-    final clamped = zoom.clamp(_minZoom, _maxZoom);
-    await camera.setZoomLevel(clamped);
-    _zoom = clamped;
-    widget.onZoomChanged?.call(clamped);
-    if (mounted) setState(() {});
+    await _cameraController.setZoomLevel(zoom);
+    if (!mounted) return;
+    setState(() {
+      _zoom = zoom;
+    });
   }
 
   Future<Uint8List?> _captureFrameBytes() async {
-    final camera = _camera;
-    if (camera == null || !camera.value.isInitialized) return null;
-    if (camera.value.isStreamingImages) {
-      await camera.stopImageStream();
-    }
-    try {
-      final file = await camera.takePicture();
-      return await file.readAsBytes();
-    } finally {
-      if (!camera.value.isStreamingImages) {
-        await camera.startImageStream(_onImage);
-      }
-    }
+    return _cameraController.captureFrame();
   }
 
   Future<void> _stop() async {
-    final camera = _camera;
-    if (camera != null) {
-      if (camera.value.isStreamingImages) {
-        await camera.stopImageStream();
-      }
-      await camera.dispose();
-      _camera = null;
-    }
+    await _cameraController.stop();
   }
 
   @override
@@ -273,57 +190,43 @@ class _FastScnnViewState extends State<FastScnnView> {
 
   @override
   Widget build(BuildContext context) {
-    final camera = _camera;
-    if (!_isInitialized || camera == null || !camera.value.isInitialized) {
-      return const ColoredBox(
-        color: Colors.black,
-        child: Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    final orientation =
-        camera.value.previewPauseOrientation ??
-        camera.value.lockedCaptureOrientation ??
-        camera.value.deviceOrientation;
-    final quarterTurns = _orientationToPreviewQuarterTurns(orientation);
-    final isLandscape =
-        orientation == DeviceOrientation.landscapeLeft ||
-        orientation == DeviceOrientation.landscapeRight;
-    final previewAspectRatio = isLandscape
-        ? camera.value.aspectRatio
-        : (1 / camera.value.aspectRatio);
-
-    Widget previewLayer = camera.buildPreview();
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-      previewLayer = RotatedBox(
-        quarterTurns: quarterTurns,
-        child: previewLayer,
-      );
-    }
-    Widget overlayLayer =
+    final overlay =
         widget.overlayBuilder?.call(context, _latestFrame) ??
         const SizedBox.shrink();
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-      overlayLayer = RotatedBox(
-        quarterTurns: quarterTurns,
-        child: overlayLayer,
-      );
-    }
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return FittedBox(
-          fit: BoxFit.cover,
-          child: SizedBox(
-            width: constraints.maxWidth,
-            height: constraints.maxWidth / previewAspectRatio,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [previewLayer, overlayLayer],
-            ),
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        YOLOView(
+          key: ValueKey<String>(
+            'fastscnn_camera_${_isFrontCamera ? 'front' : 'back'}',
           ),
-        );
-      },
+          controller: _cameraController,
+          modelPath: _cameraOnlyModelPath,
+          task: YOLOTask.detect,
+          useGpu: true,
+          showNativeUI: false,
+          showOverlays: false,
+          streamingConfig: _streamingConfig,
+          lensFacing: _isFrontCamera ? LensFacing.front : LensFacing.back,
+          onStreamingData: (data) {
+            unawaited(_handleStreamingData(data));
+          },
+          onZoomChanged: (zoomLevel) {
+            if (!mounted) return;
+            setState(() {
+              _zoom = zoomLevel;
+            });
+            widget.onZoomChanged?.call(zoomLevel);
+          },
+        ),
+        overlay,
+        if (!_isPipelineReady)
+          const ColoredBox(
+            color: Color(0x44000000),
+            child: Center(child: CircularProgressIndicator()),
+          ),
+      ],
     );
   }
 }

@@ -1,0 +1,60 @@
+{
+	"configurations" : 
+	[
+		{
+			"directories" : 
+			[
+				{
+					"build" : ".",
+					"jsonFile" : "directory-.-Debug-d0094a50bb2071803777.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.10.0"
+					},
+					"projectIndex" : 0,
+					"source" : ".",
+					"targetIndexes" : 
+					[
+						0
+					]
+				}
+			],
+			"name" : "Debug",
+			"projects" : 
+			[
+				{
+					"directoryIndexes" : 
+					[
+						0
+					],
+					"name" : "ultralytics",
+					"targetIndexes" : 
+					[
+						0
+					]
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 0,
+					"id" : "ultralytics::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-ultralytics-Debug-3ca9aa376d86698f7ffb.json",
+					"name" : "ultralytics",
+					"projectIndex" : 0
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "C:/Users/cjsqhrdl/AppData/Local/Pub/Cache/hosted/pub.dev/ultralytics_yolo-0.1.46/android/.cxx/Debug/z6g2o371/x86",
+		"source" : "C:/Users/cjsqhrdl/AppData/Local/Pub/Cache/hosted/pub.dev/ultralytics_yolo-0.1.46/android/src/main/cpp"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 3
+	}
+}

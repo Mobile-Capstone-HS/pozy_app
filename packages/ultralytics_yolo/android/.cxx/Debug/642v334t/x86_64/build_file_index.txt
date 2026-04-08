@@ -1,0 +1,1 @@
+C:\Users\cjsqhrdl\AppData\Local\Pub\Cache\hosted\pub.dev\ultralytics_yolo-0.1.46\android\src\main\cpp\CMakeLists.txt

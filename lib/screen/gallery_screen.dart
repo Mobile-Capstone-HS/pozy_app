@@ -8,8 +8,9 @@ import '../widget/app_top_bar.dart';
 
 class GalleryScreen extends StatefulWidget {
   final ValueChanged<int> onMoveTab;
+  final void Function(Future<Uint8List?> future)? onOpenInEditor;
 
-  const GalleryScreen({super.key, required this.onMoveTab});
+  const GalleryScreen({super.key, required this.onMoveTab, this.onOpenInEditor});
 
   @override
   State<GalleryScreen> createState() => _GalleryScreenState();
@@ -176,6 +177,12 @@ class _GalleryScreenState extends State<GalleryScreen> {
     await PhotoManager.openSetting();
   }
 
+  void _handlePhotoDeleted(String assetId) {
+    setState(() {
+      _photos.removeWhere((a) => a.id == assetId);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return SafeArea(
@@ -260,7 +267,23 @@ class _GalleryScreenState extends State<GalleryScreen> {
                               index,
                             ) {
                               final asset = _photos[index];
-                              return _GalleryThumb(future: _thumb(asset));
+                              return GestureDetector(
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => _PhotoDetailPage(
+                                      photos: _photos,
+                                      initialIndex: index,
+                                      onPhotoDeleted: _handlePhotoDeleted,
+                                      onOpenInEditor: widget.onOpenInEditor,
+                                    ),
+                                  ),
+                                ),
+                                child: Hero(
+                                  tag: 'photo_${asset.id}',
+                                  child: _GalleryThumb(future: _thumb(asset)),
+                                ),
+                              );
                             }, childCount: _photos.length),
                             gridDelegate:
                                 const SliverGridDelegateWithFixedCrossAxisCount(
@@ -301,7 +324,7 @@ class _AlbumChipRow extends StatelessWidget {
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: albums.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        separatorBuilder: (context, i) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
           final album = albums[index];
           final selected = selectedAlbum?.id == album.id;
@@ -580,6 +603,357 @@ class _EmptyAlbumView extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _PhotoDetailPage extends StatefulWidget {
+  final List<AssetEntity> photos;
+  final int initialIndex;
+  final void Function(String assetId)? onPhotoDeleted;
+  final void Function(Future<Uint8List?> future)? onOpenInEditor;
+
+  const _PhotoDetailPage({
+    required this.photos,
+    required this.initialIndex,
+    this.onPhotoDeleted,
+    this.onOpenInEditor,
+  });
+
+  @override
+  State<_PhotoDetailPage> createState() => _PhotoDetailPageState();
+}
+
+class _PhotoDetailPageState extends State<_PhotoDetailPage> {
+  late int _currentIndex;
+  late PageController _pageController;
+
+  // Cache futures so swiping re-uses already-started loads
+  final Map<int, Future<Uint8List?>> _imageCache = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex;
+    _pageController = PageController(initialPage: widget.initialIndex);
+    _preloadPages(widget.initialIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  Future<Uint8List?> _getImage(int index) {
+    return _imageCache.putIfAbsent(index, () => widget.photos[index].originBytes);
+  }
+
+  void _preloadPages(int index) {
+    final start = (index - 1).clamp(0, widget.photos.length - 1);
+    final end = (index + 1).clamp(0, widget.photos.length - 1);
+    for (int i = start; i <= end; i++) {
+      _getImage(i); // starts the future if not already cached
+    }
+  }
+
+  Future<void> _deleteCurrentPhoto() async {
+    final asset = widget.photos[_currentIndex];
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('사진 삭제'),
+        content: const Text('이 사진을 갤러리에서 삭제하시겠습니까?\n삭제 후에는 되돌릴 수 없습니다.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('취소'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('삭제', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true || !mounted) return;
+
+    final deleted = await PhotoManager.editor.deleteWithIds([asset.id]);
+    if (!mounted) return;
+
+    if (deleted.contains(asset.id)) {
+      widget.onPhotoDeleted?.call(asset.id);
+      Navigator.pop(context);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('사진 삭제에 실패했습니다.')),
+      );
+    }
+  }
+
+  Future<void> _showPhotoInfo() async {
+    final asset = widget.photos[_currentIndex];
+    int fileSize = 0;
+    try {
+      final file = await asset.file;
+      if (file != null) fileSize = await file.length();
+    } catch (_) {}
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => _PhotoInfoDialog(asset: asset, fileSize: fileSize),
+    );
+  }
+
+  void _openInEditor() {
+    if (!mounted) return;
+    widget.onOpenInEditor?.call(_getImage(_currentIndex));
+    Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          PageView.builder(
+            controller: _pageController,
+            itemCount: widget.photos.length,
+            onPageChanged: (i) {
+              setState(() => _currentIndex = i);
+              _preloadPages(i);
+            },
+            itemBuilder: (context, index) {
+              final asset = widget.photos[index];
+              return InteractiveViewer(
+                minScale: 1.0,
+                maxScale: 4.0,
+                child: Center(
+                  child: Hero(
+                    tag: 'photo_${asset.id}',
+                    child: FutureBuilder<Uint8List?>(
+                      future: _getImage(index),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          return const Center(
+                            child: CircularProgressIndicator(
+                              color: Colors.white54,
+                              strokeWidth: 2,
+                            ),
+                          );
+                        }
+                        if (snapshot.data == null) {
+                          return const Icon(
+                            Icons.broken_image_outlined,
+                            color: Colors.white38,
+                            size: 48,
+                          );
+                        }
+                        return Image.memory(
+                          snapshot.data!,
+                          fit: BoxFit.contain,
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+          // 상단 바
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                children: [
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(
+                      Icons.arrow_back_ios_new_rounded,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    '${_currentIndex + 1} / ${widget.photos.length}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                ],
+              ),
+            ),
+          ),
+          // 하단 액션 바
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: SafeArea(
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 20,
+                ),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [Color(0xCC000000), Colors.transparent],
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _ActionButton(
+                      icon: Icons.delete_outline_rounded,
+                      label: '삭제',
+                      onTap: _deleteCurrentPhoto,
+                    ),
+                    _ActionButton(
+                      icon: Icons.info_outline_rounded,
+                      label: '정보',
+                      onTap: _showPhotoInfo,
+                    ),
+                    _ActionButton(
+                      icon: Icons.edit_outlined,
+                      label: '편집',
+                      onTap: _openInEditor,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ActionButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _ActionButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: Colors.white, size: 28),
+            const SizedBox(height: 5),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PhotoInfoDialog extends StatelessWidget {
+  final AssetEntity asset;
+  final int fileSize;
+
+  const _PhotoInfoDialog({required this.asset, required this.fileSize});
+
+  @override
+  Widget build(BuildContext context) {
+    final date = asset.createDateTime;
+    final dateStr =
+        '${date.year}년 ${date.month}월 ${date.day}일 '
+        '${date.hour.toString().padLeft(2, '0')}:'
+        '${date.minute.toString().padLeft(2, '0')}';
+
+    String sizeStr;
+    if (fileSize >= 1024 * 1024) {
+      sizeStr = '${(fileSize / (1024 * 1024)).toStringAsFixed(1)} MB';
+    } else if (fileSize >= 1024) {
+      sizeStr = '${(fileSize / 1024).toStringAsFixed(1)} KB';
+    } else {
+      sizeStr = '$fileSize B';
+    }
+
+    return AlertDialog(
+      backgroundColor: const Color(0xFF2A2A2A),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      title: const Text(
+        '사진 정보',
+        style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700),
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _InfoRow(label: '촬영 일시', value: dateStr),
+          _InfoRow(label: '해상도', value: '${asset.width} × ${asset.height}'),
+          if (fileSize > 0) _InfoRow(label: '파일 크기', value: sizeStr),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('닫기', style: TextStyle(color: Colors.white70)),
+        ),
+      ],
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _InfoRow({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 76,
+            child: Text(
+              label,
+              style: const TextStyle(color: Colors.white54, fontSize: 13),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(color: Colors.white, fontSize: 13),
+            ),
+          ),
+        ],
       ),
     );
   }
