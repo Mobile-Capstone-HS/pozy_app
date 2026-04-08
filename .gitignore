@@ -57,3 +57,4 @@ pozy_app_junwon/
 packages/ultralytics_yolo/android/.cxx/
 packages/ultralytics_yolo/example/android/.gradle/
 packages/ultralytics_yolo/example/android/local.properties
+/.gradle-user/

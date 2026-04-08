@@ -9,12 +9,12 @@ import 'package:ultralytics_yolo/yolo.dart';
 import 'package:ultralytics_yolo/yolo_streaming_config.dart';
 import 'package:ultralytics_yolo/yolo_view.dart';
 
-import '../coaching/coaching_result.dart' hide ShootingMode;
-import '../coaching/object_coach.dart';
-import '../portrait/portrait_mode_handler.dart';
-import '../portrait/portrait_overlay_painter.dart';
-import '../portrait/portrait_scene_state.dart' as portrait;
-import '../subject_detection.dart'
+import 'package:pose_camera_app/coaching/coaching_result.dart' hide ShootingMode;
+import 'package:pose_camera_app/coaching/object_coach.dart';
+import 'package:pose_camera_app/coaching/portrait/portrait_mode_handler.dart';
+import 'package:pose_camera_app/coaching/portrait/portrait_overlay_painter.dart';
+import 'package:pose_camera_app/coaching/portrait/portrait_scene_state.dart' as portrait;
+import 'package:pose_camera_app/coaching/subject/subject_detection.dart'
     show detectModelPath, detectionConfidenceThreshold;
 
 const String poseModelPath = 'yolov8n-pose_float16.tflite';
