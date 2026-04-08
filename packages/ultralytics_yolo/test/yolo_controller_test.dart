@@ -67,7 +67,7 @@ void main() {
     });
 
     test('platform methods work with initialized channel', () async {
-      controller.init(mockChannel, 1);
+      controller.init(mockChannel, 1, 'mock_view_id');
 
       // Test threshold methods
       YOLOTestHelpers.validateThresholdBehavior(controller, log, mockChannel);
