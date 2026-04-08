@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../widget/app_bottom_nav.dart';
 import 'best_cut_screen.dart';
-import 'camera_mode_screen.dart';
+import 'camera_screen.dart';
 import 'editor_screen.dart';
 import 'gallery_screen.dart';
 import 'home_screen.dart';
@@ -23,7 +23,7 @@ class _MainShellState extends State<MainShell> {
 
   void goToTab(int index) {
     if (index == 2) {
-      _openCameraModeScreen();
+      _openCamera();
       return;
     }
 
@@ -41,10 +41,10 @@ class _MainShellState extends State<MainShell> {
     });
   }
 
-  Future<void> _openCameraModeScreen() async {
+  Future<void> _openCamera() async {
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => CameraModeScreen(
+        builder: (context) => CameraScreen(
           onMoveTab: (index) {
             Navigator.of(context).pop();
             if (index != 2) {
@@ -52,6 +52,7 @@ class _MainShellState extends State<MainShell> {
             }
           },
           onBack: () => Navigator.of(context).pop(),
+          initialMode: ShootingMode.person,
         ),
       ),
     );
