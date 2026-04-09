@@ -1,5 +1,7 @@
 import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+
 import '../widget/app_bottom_nav.dart';
 import 'best_cut_screen.dart';
 import 'camera_screen.dart';
@@ -16,19 +18,16 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   int _currentIndex = 0;
-
-  // 갤러리에서 "편집" 버튼으로 진입할 때 전달할 이미지 Future
   Future<Uint8List?>? _pendingEditorFuture;
   int _editorKey = 0;
 
   void goToTab(int index) {
     if (index == 2) {
-      _openCameraScreen();
+      _openCamera();
       return;
     }
 
     if (index == _currentIndex) return;
-
     setState(() {
       _currentIndex = index;
     });
@@ -42,7 +41,7 @@ class _MainShellState extends State<MainShell> {
     });
   }
 
-  Future<void> _openCameraScreen() async {
+  Future<void> _openCamera() async {
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => CameraScreen(
@@ -53,6 +52,7 @@ class _MainShellState extends State<MainShell> {
             }
           },
           onBack: () => Navigator.of(context).pop(),
+          initialMode: ShootingMode.person,
         ),
       ),
     );
@@ -74,9 +74,10 @@ class _MainShellState extends State<MainShell> {
       case 4:
         final future = _pendingEditorFuture;
         if (future != null) {
-          // 소비 후 클리어: 다음에 탭을 직접 누를 때 재로드 방지
           Future.microtask(() {
-            if (mounted) setState(() => _pendingEditorFuture = null);
+            if (mounted) {
+              setState(() => _pendingEditorFuture = null);
+            }
           });
         }
         return EditorScreen(
