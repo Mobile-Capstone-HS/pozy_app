@@ -7,7 +7,6 @@ import '../feature/a_cut/model/photo_type_mode.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_shadows.dart';
 import '../theme/app_text_styles.dart';
-import '../widget/app_top_bar.dart';
 import 'a_cut_result_screen.dart';
 
 class BestCutGalleryScreen extends StatefulWidget {
@@ -27,7 +26,7 @@ class _BestCutGalleryScreenState extends State<BestCutGalleryScreen> {
   AssetPathEntity? _selectedAlbum;
   List<AssetEntity> _photos = [];
   final Map<String, AssetEntity> _selectedAssetsById = {};
-  PhotoTypeMode _photoTypeMode = PhotoTypeMode.auto;
+  final PhotoTypeMode _photoTypeMode = PhotoTypeMode.auto;
 
   @override
   void initState() {
@@ -218,51 +217,14 @@ class _BestCutGalleryScreenState extends State<BestCutGalleryScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 10, 18, 0),
-              child: AppTopBar(
-                title: 'Best Cut Gallery',
-                onBack: () => Navigator.of(context).pop(),
-                trailing: GestureDetector(
-                  onTap: _loadAlbumsAndPhotos,
-                  child: Container(
-                    width: 34,
-                    height: 34,
-                    decoration: const BoxDecoration(
-                      color: AppColors.soft,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.refresh,
-                      size: 18,
-                      color: AppColors.primaryText,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 18),
             if (_granted && _albums.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 18),
+                padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
                 child: _BestCutAlbumChipRow(
                   albums: _albums,
                   selectedAlbum: _selectedAlbum,
                   onSelected: _selectAlbum,
                   labelBuilder: _albumLabel,
-                ),
-              ),
-            if (_granted && _albums.isNotEmpty) const SizedBox(height: 12),
-            if (_granted && _albums.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 18),
-                child: _BestCutPhotoTypeSelector(
-                  selected: _photoTypeMode,
-                  onSelected: (mode) {
-                    setState(() {
-                      _photoTypeMode = mode;
-                    });
-                  },
                 ),
               ),
             if (_granted && _albums.isNotEmpty) const SizedBox(height: 10),
@@ -291,15 +253,33 @@ class _BestCutGalleryScreenState extends State<BestCutGalleryScreen> {
                       slivers: [
                         SliverToBoxAdapter(
                           child: Padding(
-                            padding: const EdgeInsets.fromLTRB(18, 0, 18, 10),
-                            child: Text(
-                              _albumLabel(_selectedAlbum!).toUpperCase(),
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w800,
-                                color: AppColors.primaryText,
-                                letterSpacing: 0.2,
-                              ),
+                            padding: const EdgeInsets.fromLTRB(18, 0, 10, 10),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    _albumLabel(_selectedAlbum!).toUpperCase(),
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w800,
+                                      color: AppColors.primaryText,
+                                      letterSpacing: 0.2,
+                                    ),
+                                  ),
+                                ),
+                                GestureDetector(
+                                  onTap: _loadAlbumsAndPhotos,
+                                  child: Container(
+                                    width: 34,
+                                    height: 34,
+                                    decoration: const BoxDecoration(
+                                      color: AppColors.soft,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(Icons.refresh, size: 18, color: AppColors.primaryText),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
@@ -480,54 +460,6 @@ class _BestCutGalleryThumb extends StatelessWidget {
           ],
         );
       },
-    );
-  }
-}
-
-class _BestCutPhotoTypeSelector extends StatelessWidget {
-  final PhotoTypeMode selected;
-  final ValueChanged<PhotoTypeMode> onSelected;
-
-  const _BestCutPhotoTypeSelector({
-    required this.selected,
-    required this.onSelected,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: PhotoTypeMode.values.map((mode) {
-        final isSelected = selected == mode;
-        return Expanded(
-          child: Padding(
-            padding: EdgeInsets.only(
-              right: mode == PhotoTypeMode.values.last ? 0 : 8,
-            ),
-            child: GestureDetector(
-              onTap: () => onSelected(mode),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                height: 38,
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? const Color(0xFF3A3A3A)
-                      : const Color(0xFFEFEFEF),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  mode.label,
-                  style: TextStyle(
-                    color: isSelected ? Colors.white : const Color(0xFF5A5A5A),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-      }).toList(),
     );
   }
 }

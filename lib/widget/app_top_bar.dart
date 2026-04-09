@@ -16,7 +16,7 @@ class AppTopBar extends StatelessWidget {
     this.onLeadingTap,
     this.trailing,
     this.trailingWidth = 36,
-    this.leadingIcon = Icons.menu_rounded,
+    this.leadingIcon = Icons.settings_outlined,
   });
 
   @override

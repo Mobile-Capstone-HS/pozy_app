@@ -496,7 +496,7 @@ class _EditorScreenState extends State<EditorScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 AppTopBar(
-                  title: '보정',
+                  title: '',
                   onBack: widget.onBack,
                   leadingIcon: widget.onBack != null
                       ? Icons.arrow_back_ios_new_rounded
@@ -543,7 +543,7 @@ class _EditorScreenState extends State<EditorScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 6),
                 _buildPreviewCard(
                   previewWidth: previewMetrics.width,
                   previewHeight: previewMetrics.height,

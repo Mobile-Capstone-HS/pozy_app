@@ -93,10 +93,12 @@ class _MainShellState extends State<MainShell> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: _buildPage(_currentIndex),
-      bottomNavigationBar: AppBottomNav(
-        currentIndex: _currentIndex,
-        onTap: goToTab,
-      ),
+      bottomNavigationBar: _currentIndex == 0
+          ? null
+          : AppBottomNav(
+              currentIndex: _currentIndex,
+              onTap: goToTab,
+            ),
     );
   }
 }
