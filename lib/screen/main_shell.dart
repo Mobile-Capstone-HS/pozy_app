@@ -40,6 +40,10 @@ class _MainShellState extends State<MainShell> {
       _editorKey++;
       _currentIndex = 4;
     });
+    // 한 프레임 후 소비 완료 — EditorScreen initState에서 이미 캡처됨
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _pendingEditorFuture = null;
+    });
   }
 
   Future<void> _openCameraScreen() async {
@@ -58,41 +62,26 @@ class _MainShellState extends State<MainShell> {
     );
   }
 
-  Widget _buildPage(int index) {
-    switch (index) {
-      case 0:
-        return HomeScreen(onMoveTab: goToTab);
-      case 1:
-        return GalleryScreen(
-          onMoveTab: goToTab,
-          onOpenInEditor: openImageInEditor,
-        );
-      case 2:
-        return HomeScreen(onMoveTab: goToTab);
-      case 3:
-        return BestCutScreen(onMoveTab: goToTab);
-      case 4:
-        final future = _pendingEditorFuture;
-        if (future != null) {
-          // 소비 후 클리어: 다음에 탭을 직접 누를 때 재로드 방지
-          Future.microtask(() {
-            if (mounted) setState(() => _pendingEditorFuture = null);
-          });
-        }
-        return EditorScreen(
-          key: ValueKey(_editorKey),
-          onMoveTab: goToTab,
-          initialBytesFuture: future,
-        );
-      default:
-        return HomeScreen(onMoveTab: goToTab);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: _buildPage(_currentIndex),
+      body: IndexedStack(
+        index: _currentIndex,
+        children: [
+          HomeScreen(onMoveTab: goToTab),
+          GalleryScreen(
+            onMoveTab: goToTab,
+            onOpenInEditor: openImageInEditor,
+          ),
+          const SizedBox.shrink(), // 카메라는 Navigator.push로 처리
+          BestCutScreen(onMoveTab: goToTab),
+          EditorScreen(
+            key: ValueKey(_editorKey),
+            onMoveTab: goToTab,
+            initialBytesFuture: _pendingEditorFuture,
+          ),
+        ],
+      ),
       bottomNavigationBar: AppBottomNav(
         currentIndex: _currentIndex,
         onTap: goToTab,

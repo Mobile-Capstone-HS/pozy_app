@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import 'package:gal/gal.dart';
 import 'package:image_picker/image_picker.dart';
 
-
 import 'package:pose_camera_app/services/gemini_service.dart';
 import 'crop_screen.dart';
 import '../theme/app_colors.dart';
@@ -24,7 +23,12 @@ class EditorScreen extends StatefulWidget {
   final VoidCallback? onBack;
   final Future<Uint8List?>? initialBytesFuture;
 
-  const EditorScreen({super.key, required this.onMoveTab, this.onBack, this.initialBytesFuture});
+  const EditorScreen({
+    super.key,
+    required this.onMoveTab,
+    this.onBack,
+    this.initialBytesFuture,
+  });
 
   @override
   State<EditorScreen> createState() => _EditorScreenState();
@@ -63,6 +67,10 @@ class _EditorScreenState extends State<EditorScreen> {
   FilterPreset? _activePreset;
   final EditorHistoryManager _history = EditorHistoryManager();
 
+  final TransformationController _zoomController = TransformationController();
+  double _currentZoom = 1.0;
+  bool _showPresets = false;
+
   @override
   void initState() {
     super.initState();
@@ -79,19 +87,18 @@ class _EditorScreenState extends State<EditorScreen> {
   @override
   void dispose() {
     _previewDebounce?.cancel();
+    _zoomController.dispose();
     super.dispose();
   }
 
-  double _valueOf(EditorAdjustment adjustment) =>
-      _adjustments[adjustment] ?? 0;
+  double _valueOf(EditorAdjustment adjustment) => _adjustments[adjustment] ?? 0;
 
   bool get _hasImage =>
       _sourceBytes != null &&
       _previewSourceBytes != null &&
       _previewBytes != null;
 
-  bool get _hasNonZeroAdjustment =>
-      _adjustments.values.any((v) => v != 0);
+  bool get _hasNonZeroAdjustment => _adjustments.values.any((v) => v != 0);
 
   bool get _hasAnyEdit => _imageModified || _hasNonZeroAdjustment;
 
@@ -118,13 +125,15 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   void _pushHistory({bool includeBytes = false}) {
-    _history.push(EditorSnapshot(
-      adjustments: Map<EditorAdjustment, double>.from(_adjustments),
-      sourceBytes: includeBytes ? _sourceBytes : null,
-      previewSourceBytes: includeBytes ? _previewSourceBytes : null,
-      imageAspectRatio: includeBytes ? _imageAspectRatio : null,
-      imageModified: _imageModified,
-    ));
+    _history.push(
+      EditorSnapshot(
+        adjustments: Map<EditorAdjustment, double>.from(_adjustments),
+        sourceBytes: includeBytes ? _sourceBytes : null,
+        previewSourceBytes: includeBytes ? _previewSourceBytes : null,
+        imageAspectRatio: includeBytes ? _imageAspectRatio : null,
+        imageModified: _imageModified,
+      ),
+    );
     setState(() {});
   }
 
@@ -192,6 +201,7 @@ class _EditorScreenState extends State<EditorScreen> {
         _imageModified = false;
         _isPreparingImage = false;
       });
+      _resetZoom();
       _history.clear();
       _pushHistory(includeBytes: true);
     } catch (error) {
@@ -287,7 +297,9 @@ class _EditorScreenState extends State<EditorScreen> {
       return;
     }
 
-    debugPrint('[EditorScreen] _previewSourceBytes 크기: ${_previewSourceBytes!.lengthInBytes} bytes');
+    debugPrint(
+      '[EditorScreen] _previewSourceBytes 크기: ${_previewSourceBytes!.lengthInBytes} bytes',
+    );
 
     try {
       final result = await _geminiService.editImage(
@@ -295,7 +307,9 @@ class _EditorScreenState extends State<EditorScreen> {
         prompt: prompt,
       );
 
-      debugPrint('[EditorScreen] editImage 결과: ${result == null ? "null" : "${result.lengthInBytes} bytes"}');
+      debugPrint(
+        '[EditorScreen] editImage 결과: ${result == null ? "null" : "${result.lengthInBytes} bytes"}',
+      );
 
       if (!mounted) return;
 
@@ -324,9 +338,7 @@ class _EditorScreenState extends State<EditorScreen> {
     if (_sourceBytes == null) return;
 
     final result = await Navigator.of(context).push<Uint8List>(
-      MaterialPageRoute(
-        builder: (_) => CropScreen(sourceBytes: _sourceBytes!),
-      ),
+      MaterialPageRoute(builder: (_) => CropScreen(sourceBytes: _sourceBytes!)),
     );
 
     if (result == null || !mounted) return;
@@ -351,9 +363,9 @@ class _EditorScreenState extends State<EditorScreen> {
     } catch (error) {
       if (!mounted) return;
       setState(() => _isPreparingImage = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('자르기에 실패했습니다: $error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('자르기에 실패했습니다: $error')));
     }
   }
 
@@ -377,9 +389,9 @@ class _EditorScreenState extends State<EditorScreen> {
     } catch (error) {
       if (!mounted) return;
       setState(() => _isPreparingImage = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('회전에 실패했습니다: $error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('회전에 실패했습니다: $error')));
     }
   }
 
@@ -403,9 +415,9 @@ class _EditorScreenState extends State<EditorScreen> {
     } catch (error) {
       if (!mounted) return;
       setState(() => _isPreparingImage = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('뒤집기에 실패했습니다: $error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('뒤집기에 실패했습니다: $error')));
     }
   }
 
@@ -473,492 +485,312 @@ class _EditorScreenState extends State<EditorScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final mediaQuery = MediaQuery.of(context);
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
 
     return SafeArea(
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final activeValue = _valueOf(_activeAdjustment);
-          final screenWidth = constraints.maxWidth;
-          final previewMetrics = _resolvePreviewMetrics(
-            screenWidth: screenWidth,
-            screenHeight: mediaQuery.size.height,
-          );
-
-          return SingleChildScrollView(
-            padding: EdgeInsets.fromLTRB(
-              18,
-              10,
-              18,
-              mediaQuery.padding.bottom + 24,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                AppTopBar(
-                  title: '보정',
-                  onBack: widget.onBack,
-                  leadingIcon: widget.onBack != null
-                      ? Icons.arrow_back_ios_new_rounded
-                      : Icons.menu_rounded,
-                  trailingWidth: 120,
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      GestureDetector(
-                        onTap: _history.canUndo ? _undo : null,
-                        child: Icon(
-                          Icons.undo,
-                          size: 20,
-                          color: _history.canUndo
-                              ? AppColors.primaryText
-                              : AppColors.lightText,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      GestureDetector(
-                        onTap: _history.canRedo ? _redo : null,
-                        child: Icon(
-                          Icons.redo,
-                          size: 20,
-                          color: _history.canRedo
-                              ? AppColors.primaryText
-                              : AppColors.lightText,
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      GestureDetector(
-                        onTap: _hasImage && !_isSaving ? _saveImage : null,
-                        child: Text(
-                          '저장',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: _hasImage && !_isSaving
-                                ? AppColors.primaryText
-                                : AppColors.lightText,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                _buildPreviewCard(
-                  previewWidth: previewMetrics.width,
-                  previewHeight: previewMetrics.height,
-                ),
-                const SizedBox(height: 14),
-                _buildActionRow(),
-                if (_hasImage) ...[
-                  const SizedBox(height: 10),
-                  _buildAiEditButton(),
-                  if (_hasAnyEdit) ...[
-                    const SizedBox(height: 10),
-                    _buildFullResetButton(),
-                  ],
-                  const SizedBox(height: 14),
-                  PresetStrip(
-                    activePreset: _activePreset,
-                    onSelect: _applyPreset,
-                  ),
-                ],
-                const SizedBox(height: 18),
-                _buildAdjustmentPanel(activeValue),
-                const SizedBox(height: 14),
-                _buildToolStrip(screenWidth),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Size _resolvePreviewMetrics({
-    required double screenWidth,
-    required double screenHeight,
-  }) {
-    final maxWidth = screenWidth;
-    final defaultHeight = (screenWidth * 0.98).clamp(
-      280.0,
-      screenHeight * 0.46,
-    );
-    final aspectRatio = _imageAspectRatio;
-
-    if (aspectRatio == null || aspectRatio <= 0) {
-      return Size(maxWidth, defaultHeight);
-    }
-
-    final maxHeight = screenHeight * 0.68;
-    final minHeight = 260.0;
-    final widthFromMaxHeight = maxHeight * aspectRatio;
-
-    if (widthFromMaxHeight <= maxWidth) {
-      return Size(widthFromMaxHeight, maxHeight.clamp(minHeight, maxHeight));
-    }
-
-    final resolvedHeight = (maxWidth / aspectRatio).clamp(minHeight, maxHeight);
-    return Size(maxWidth, resolvedHeight);
-  }
-
-  Widget _buildPreviewCard({
-    required double previewWidth,
-    required double previewHeight,
-  }) {
-    return Align(
-      alignment: Alignment.topCenter,
-      child: GestureDetector(
-        onTap: _pickImage,
-        onLongPressStart: (_) {
-          if (_hasImage) {
-            setState(() {
-              _showOriginalPreview = true;
-            });
-          }
-        },
-        onLongPressEnd: (_) {
-          if (_showOriginalPreview) {
-            setState(() {
-              _showOriginalPreview = false;
-            });
-          }
-        },
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(26),
-          child: Container(
-            height: previewHeight,
-            width: previewWidth,
-            color: Colors.black,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                if (!_hasImage && !_isPreparingImage) const _PlusPlaceholder(),
-                if (_hasImage && _comparisonMode && _originalPreviewSourceBytes != null)
-                  ComparisonView(
-                    originalBytes: _originalPreviewSourceBytes!,
-                    editedBytes: _previewBytes ?? _previewSourceBytes!,
-                    width: previewWidth,
-                    height: previewHeight,
-                  )
-                else if (_hasImage)
-                  InteractiveViewer(
-                    minScale: 1,
-                    maxScale: 4,
-                    child: SizedBox(
-                      width: previewWidth,
-                      height: previewHeight,
-                      child: Image.memory(
-                        _showOriginalPreview
-                            ? _previewSourceBytes!
-                            : (_previewBytes ?? _previewSourceBytes!),
-                        fit: BoxFit.contain,
-                        gaplessPlayback: true,
-                      ),
-                    ),
-                  ),
-                if (_isPreparingImage || _isRenderingPreview || _isSaving)
-                  Container(
-                    color: Colors.black.withOpacity(0.22),
-                    child: Center(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 18,
-                          vertical: 14,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.62),
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.6,
-                                color: Colors.white,
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            Text(
-                              _isSaving
-                                  ? '사진 저장 중...'
-                                  : _isPreparingImage
-                                  ? '사진 준비 중...'
-                                  : '미리보기 적용 중...',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAiEditButton() {
-    return GestureDetector(
-      onTap: _showAiEditSheet,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-        decoration: BoxDecoration(
-          color: AppColors.soft,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: const Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.auto_awesome, size: 18, color: AppColors.primaryText),
-            SizedBox(width: 8),
-            Text(
-              'AI로 편집하기',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: AppColors.primaryText,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFullResetButton() {
-    return GestureDetector(
-      onTap: _resetEverything,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-        decoration: BoxDecoration(
-          color: AppColors.soft,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: const Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.restart_alt, size: 18, color: AppColors.primaryText),
-            SizedBox(width: 8),
-            Text(
-              '전체 초기화',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: AppColors.primaryText,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildActionRow() {
-    final buttonStyle = OutlinedButton.styleFrom(
-      padding: const EdgeInsets.symmetric(vertical: 14),
-      foregroundColor: AppColors.primaryText,
-      side: const BorderSide(color: AppColors.border),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-    );
-
-    final smallButtonStyle = OutlinedButton.styleFrom(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      foregroundColor: AppColors.primaryText,
-      side: const BorderSide(color: AppColors.border),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-    );
-
-    return Column(
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _pickImage,
-                icon: const Icon(Icons.photo_library_outlined),
-                label: Text(_selectedImagePath == null ? '사진 추가' : '사진 바꾸기'),
-                style: buttonStyle,
-              ),
-            ),
-            if (_hasImage) ...[
-              const SizedBox(width: 10),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _openCropScreen,
-                  icon: const Icon(Icons.crop),
-                  label: const Text('자르기'),
-                  style: buttonStyle,
-                ),
-              ),
-            ],
-          ],
-        ),
-        if (_hasImage) ...[
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _rotateImage,
-                  icon: const Icon(Icons.rotate_right, size: 18),
-                  label: const Text('회전'),
-                  style: smallButtonStyle,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _flipImage,
-                  icon: const Icon(Icons.flip, size: 18),
-                  label: const Text('뒤집기'),
-                  style: smallButtonStyle,
-                ),
-              ),
-              if (_hasAnyEdit) ...[
-                const SizedBox(width: 10),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      setState(() {
-                        _comparisonMode = !_comparisonMode;
-                      });
-                    },
-                    icon: Icon(
-                      _comparisonMode ? Icons.compare : Icons.compare_outlined,
-                      size: 18,
-                    ),
-                    label: Text(_comparisonMode ? '닫기' : '비교'),
-                    style: _comparisonMode
-                        ? smallButtonStyle.copyWith(
-                            backgroundColor: WidgetStatePropertyAll(AppColors.primaryText),
-                            foregroundColor: const WidgetStatePropertyAll(Colors.white),
-                          )
-                        : smallButtonStyle,
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildAdjustmentPanel(double activeValue) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.border),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x0F0F172A),
-            blurRadius: 24,
-            offset: Offset(0, 12),
-          ),
-        ],
-      ),
       child: Column(
         children: [
-          Row(
+          // ── 상단 바 (고정) ──
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 10, 18, 0),
+            child: AppTopBar(
+              title: '보정',
+              onBack: widget.onBack,
+              leadingIcon: widget.onBack != null
+                  ? Icons.arrow_back_ios_new_rounded
+                  : Icons.menu_rounded,
+              trailingWidth: 120,
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  GestureDetector(
+                    onTap: _history.canUndo ? _undo : null,
+                    child: Icon(
+                      Icons.undo,
+                      size: 20,
+                      color: _history.canUndo
+                          ? AppColors.primaryText
+                          : AppColors.lightText,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  GestureDetector(
+                    onTap: _history.canRedo ? _redo : null,
+                    child: Icon(
+                      Icons.redo,
+                      size: 20,
+                      color: _history.canRedo
+                          ? AppColors.primaryText
+                          : AppColors.lightText,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  GestureDetector(
+                    onTap: _hasImage && !_isSaving ? _saveImage : null,
+                    child: Text(
+                      '저장',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: _hasImage && !_isSaving
+                            ? AppColors.primaryText
+                            : AppColors.lightText,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // ── 이미지 캔버스 (남는 공간 전부 사용) ──
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 8, bottom: 4),
+              child: _buildCanvas(),
+            ),
+          ),
+
+          // ── 하단 컨트롤 패널 (고정) ──
+          _buildBottomPanel(bottomPadding),
+        ],
+      ),
+    );
+  }
+
+  void _resetZoom() {
+    _zoomController.value = Matrix4.identity();
+    setState(() => _currentZoom = 1.0);
+  }
+
+  // ── 이미지 캔버스 ──
+
+  Widget _buildCanvas() {
+    return GestureDetector(
+      onTap: _hasImage ? null : _pickImage,
+      onLongPressStart: (_) {
+        if (_hasImage) setState(() => _showOriginalPreview = true);
+      },
+      onLongPressEnd: (_) {
+        if (_showOriginalPreview) setState(() => _showOriginalPreview = false);
+      },
+      child: Container(
+          color: AppColors.soft,
+          child: Stack(
+            fit: StackFit.expand,
             children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: AppColors.soft,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  _activeAdjustment.icon,
-                  color: AppColors.primaryText,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _activeAdjustment.label,
-                      style: AppTextStyles.title16,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+              if (_hasImage)
+                CustomPaint(painter: _CheckerboardPainter()),
+
+              if (!_hasImage && !_isPreparingImage) const _PlusPlaceholder(),
+
+              if (_hasImage && _comparisonMode && _originalPreviewSourceBytes != null)
+                LayoutBuilder(
+                  builder: (context, constraints) => ComparisonView(
+                    originalBytes: _originalPreviewSourceBytes!,
+                    editedBytes: _previewBytes ?? _previewSourceBytes!,
+                    width: constraints.maxWidth,
+                    height: constraints.maxHeight,
+                  ),
+                )
+              else if (_hasImage)
+                InteractiveViewer(
+                  transformationController: _zoomController,
+                  minScale: 0.5,
+                  maxScale: 8.0,
+                  panEnabled: true,
+                  scaleEnabled: true,
+                  onInteractionUpdate: (details) {
+                    final zoom = _zoomController.value.getMaxScaleOnAxis();
+                    if ((zoom - _currentZoom).abs() > 0.01) {
+                      setState(() => _currentZoom = zoom);
+                    }
+                  },
+                  onInteractionEnd: (_) {
+                    setState(() {
+                      _currentZoom = _zoomController.value.getMaxScaleOnAxis();
+                    });
+                  },
+                  child: Center(
+                    child: Image.memory(
+                      _showOriginalPreview
+                          ? _previewSourceBytes!
+                          : (_previewBytes ?? _previewSourceBytes!),
+                      fit: BoxFit.contain,
+                      gaplessPlayback: true,
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      _activeAdjustment.description,
-                      style: AppTextStyles.caption12,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  activeValue.round().toString(),
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.primaryText,
                   ),
                 ),
-              ),
-              if (_hasNonZeroAdjustment) ...[
-                const SizedBox(width: 10),
-                GestureDetector(
-                  onTap: _resetAllAdjustments,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 5,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.soft,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Text(
-                      '초기화',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.primaryText,
+
+              // 줌 인디케이터
+              if (_hasImage && !_comparisonMode)
+                Positioned(
+                  left: 12,
+                  bottom: 12,
+                  child: _ZoomIndicator(
+                    zoom: _currentZoom,
+                    onReset: _currentZoom != 1.0 ? _resetZoom : null,
+                  ),
+                ),
+
+              // 로딩 오버레이
+              if (_isPreparingImage || _isRenderingPreview || _isSaving)
+                Container(
+                  color: const Color(0x38000000),
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                      decoration: BoxDecoration(
+                        color: const Color(0x9E000000),
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.6,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            _isSaving
+                                ? '사진 저장 중...'
+                                : _isPreparingImage
+                                    ? '사진 준비 중...'
+                                    : '미리보기 적용 중...',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
                 ),
-              ],
             ],
           ),
-          const SizedBox(height: 14),
-          SliderTheme(
+      ),
+    );
+  }
+
+  // ── 하단 고정 패널 ──
+
+  Widget _buildBottomPanel(double bottomPadding) {
+    final activeValue = _valueOf(_activeAdjustment);
+
+    return Container(
+      padding: EdgeInsets.fromLTRB(18, 6, 18, bottomPadding > 0 ? 4 : 10),
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        border: Border(top: BorderSide(color: AppColors.border)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 액션 아이콘 바
+          _buildActionBar(),
+          const SizedBox(height: 8),
+          // 슬라이더
+          _buildCompactSlider(activeValue),
+          const SizedBox(height: 8),
+          // 탭 전환: 조절 / 필터
+          _buildTabBar(),
+          const SizedBox(height: 8),
+          // 탭 내용
+          _showPresets ? _buildPresetStrip() : _buildToolStrip(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionBar() {
+    return SizedBox(
+      height: 38,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        children: [
+          _ActionBarButton(
+            icon: Icons.photo_library_outlined,
+            label: _selectedImagePath == null ? '사진' : '바꾸기',
+            onTap: _pickImage,
+          ),
+          if (_hasImage) ...[
+            const SizedBox(width: 8),
+            _ActionBarButton(
+              icon: Icons.crop,
+              label: '자르기',
+              onTap: _openCropScreen,
+            ),
+            const SizedBox(width: 8),
+            _ActionBarButton(
+              icon: Icons.rotate_right,
+              label: '회전',
+              onTap: _rotateImage,
+            ),
+            const SizedBox(width: 8),
+            _ActionBarButton(
+              icon: Icons.flip,
+              label: '뒤집기',
+              onTap: _flipImage,
+            ),
+            const SizedBox(width: 8),
+            _ActionBarButton(
+              icon: Icons.auto_awesome,
+              label: 'AI',
+              onTap: _showAiEditSheet,
+            ),
+            if (_hasAnyEdit) ...[
+              const SizedBox(width: 8),
+              _ActionBarButton(
+                icon: _comparisonMode ? Icons.compare : Icons.compare_outlined,
+                label: '비교',
+                onTap: () => setState(() => _comparisonMode = !_comparisonMode),
+                active: _comparisonMode,
+              ),
+              const SizedBox(width: 8),
+              _ActionBarButton(
+                icon: Icons.restart_alt,
+                label: '초기화',
+                onTap: _resetEverything,
+              ),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCompactSlider(double activeValue) {
+    return Row(
+      children: [
+        Icon(_activeAdjustment.icon, size: 18, color: AppColors.primaryText),
+        const SizedBox(width: 6),
+        SizedBox(
+          width: 32,
+          child: Text(
+            _activeAdjustment.shortLabel,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: AppColors.primaryText,
+            ),
+          ),
+        ),
+        Expanded(
+          child: SliderTheme(
             data: SliderTheme.of(context).copyWith(
               activeTrackColor: AppColors.primaryText,
               inactiveTrackColor: AppColors.track,
               thumbColor: Colors.white,
               overlayColor: Colors.transparent,
-              trackHeight: 4,
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+              trackHeight: 3,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
             ),
             child: Slider(
               min: -100,
@@ -969,49 +801,98 @@ class _EditorScreenState extends State<EditorScreen> {
               onChangeEnd: _hasImage ? (_) => _pushHistory() : null,
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Row(
-              children: const [
-                Text('-100', style: AppTextStyles.caption12),
-                Spacer(),
-                Text('0', style: AppTextStyles.caption12),
-                Spacer(),
-                Text('100', style: AppTextStyles.caption12),
-              ],
+        ),
+        SizedBox(
+          width: 32,
+          child: Text(
+            activeValue.round().toString(),
+            textAlign: TextAlign.right,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: AppColors.primaryText,
             ),
           ),
+        ),
+        if (_hasNonZeroAdjustment) ...[
+          const SizedBox(width: 6),
+          GestureDetector(
+            onTap: _resetAllAdjustments,
+            child: const Icon(Icons.refresh, size: 16, color: AppColors.secondaryText),
+          ),
         ],
-      ),
+      ],
     );
   }
 
-  Widget _buildToolStrip(double screenWidth) {
-    final chipWidth = screenWidth < 380 ? 88.0 : 96.0;
+  Widget _buildTabBar() {
+    return Row(
+      children: [
+        _TabButton(
+          label: '조절',
+          selected: !_showPresets,
+          onTap: () => setState(() => _showPresets = false),
+        ),
+        const SizedBox(width: 8),
+        _TabButton(
+          label: '필터',
+          selected: _showPresets,
+          onTap: () => setState(() => _showPresets = true),
+        ),
+        const Spacer(),
+      ],
+    );
+  }
 
+  Widget _buildPresetStrip() {
+    return PresetStrip(
+      activePreset: _activePreset,
+      onSelect: _applyPreset,
+    );
+  }
+
+  Widget _buildToolStrip() {
     return SizedBox(
-      height: 96,
+      height: 38,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: EditorAdjustment.values.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 10),
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
           final adjustment = EditorAdjustment.values[index];
           final selected = adjustment == _activeAdjustment;
+          final value = _valueOf(adjustment).round();
 
-          return SizedBox(
-            width: chipWidth,
-            child: GestureDetector(
-              onTap: () {
-                setState(() {
-                  _activeAdjustment = adjustment;
-                });
-              },
-              child: _AdjustmentChip(
-                icon: adjustment.icon,
-                label: adjustment.shortLabel,
-                value: _valueOf(adjustment).round(),
-                selected: selected,
+          return GestureDetector(
+            onTap: () => setState(() => _activeAdjustment = adjustment),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: selected ? AppColors.primaryText : AppColors.soft,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: selected ? AppColors.primaryText : AppColors.border,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    adjustment.icon,
+                    size: 14,
+                    color: selected ? Colors.white : AppColors.primaryText,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    '${adjustment.shortLabel} $value',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: selected ? Colors.white : AppColors.primaryText,
+                    ),
+                  ),
+                ],
               ),
             ),
           );
@@ -1035,7 +916,7 @@ class _PlusPlaceholder extends StatelessWidget {
             Icon(
               Icons.add_photo_alternate_outlined,
               size: 58,
-              color: Colors.white70,
+              color: AppColors.secondaryText,
             ),
             SizedBox(height: 14),
             Text(
@@ -1043,7 +924,7 @@ class _PlusPlaceholder extends StatelessWidget {
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
-                color: Colors.white,
+                color: AppColors.primaryText,
               ),
               textAlign: TextAlign.center,
             ),
@@ -1054,64 +935,157 @@ class _PlusPlaceholder extends StatelessWidget {
   }
 }
 
-class _AdjustmentChip extends StatelessWidget {
+class _ActionBarButton extends StatelessWidget {
   final IconData icon;
   final String label;
-  final int value;
-  final bool selected;
+  final VoidCallback onTap;
+  final bool active;
 
-  const _AdjustmentChip({
+  const _ActionBarButton({
     required this.icon,
     required this.label,
-    required this.value,
-    required this.selected,
+    required this.onTap,
+    this.active = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      constraints: const BoxConstraints(minHeight: 92),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-      decoration: BoxDecoration(
-        color: selected ? AppColors.primaryText : AppColors.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: selected ? AppColors.primaryText : AppColors.border,
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: active ? AppColors.primaryText : AppColors.soft,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: active ? AppColors.primaryText : AppColors.border,
+          ),
         ),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            icon,
-            size: 20,
-            color: selected ? Colors.white : AppColors.primaryText,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              color: selected ? Colors.white : AppColors.primaryText,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: active ? Colors.white : AppColors.primaryText),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: active ? Colors.white : AppColors.primaryText,
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value.toString(),
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: selected ? Colors.white70 : AppColors.secondaryText,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
 
+class _TabButton extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _TabButton({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primaryText : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: selected ? Colors.white : AppColors.secondaryText,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CheckerboardPainter extends CustomPainter {
+  static const double _cellSize = 10.0;
+  static const Color _light = Color(0xFFEEF1F5);
+  static const Color _dark = Color(0xFFE4E8EE);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paintLight = Paint()..color = _light;
+    final paintDark = Paint()..color = _dark;
+    final cols = (size.width / _cellSize).ceil();
+    final rows = (size.height / _cellSize).ceil();
+
+    for (int row = 0; row < rows; row++) {
+      for (int col = 0; col < cols; col++) {
+        final rect = Rect.fromLTWH(
+          col * _cellSize,
+          row * _cellSize,
+          _cellSize,
+          _cellSize,
+        );
+        canvas.drawRect(rect, (row + col).isEven ? paintLight : paintDark);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _ZoomIndicator extends StatelessWidget {
+  final double zoom;
+  final VoidCallback? onReset;
+
+  const _ZoomIndicator({required this.zoom, this.onReset});
+
+  @override
+  Widget build(BuildContext context) {
+    final label = '${(zoom * 100).round()}%';
+    return GestureDetector(
+      onTap: onReset,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                color: AppColors.primaryText,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            if (onReset != null) ...[
+              const SizedBox(width: 4),
+              const Icon(Icons.refresh, size: 12, color: AppColors.secondaryText),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class _AiEditSheet extends StatefulWidget {
   final Future<void> Function(String prompt) onGenerate;
@@ -1140,11 +1114,14 @@ class _AiEditSheetState extends State<_AiEditSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final mq = MediaQuery.of(context);
+    final bottomPadding = mq.viewInsets.bottom > 0
+        ? mq.viewInsets.bottom
+        : mq.viewPadding.bottom;
     final canSubmit = !_isLoading && _controller.text.trim().isNotEmpty;
 
     return Container(
-      padding: EdgeInsets.fromLTRB(20, 16, 20, 24 + bottomInset),
+      padding: EdgeInsets.fromLTRB(20, 16, 20, 24 + bottomPadding),
       decoration: const BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
@@ -1271,4 +1248,3 @@ class _AiEditSheetState extends State<_AiEditSheet> {
     );
   }
 }
-
