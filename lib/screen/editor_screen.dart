@@ -586,12 +586,17 @@ class _EditorScreenState extends State<EditorScreen> {
               if (!_hasImage && !_isPreparingImage) const _PlusPlaceholder(),
 
               if (_hasImage && _comparisonMode && _originalPreviewSourceBytes != null)
-                LayoutBuilder(
-                  builder: (context, constraints) => ComparisonView(
-                    originalBytes: _originalPreviewSourceBytes!,
-                    editedBytes: _previewBytes ?? _previewSourceBytes!,
-                    width: constraints.maxWidth,
-                    height: constraints.maxHeight,
+                Center(
+                  child: AspectRatio(
+                    aspectRatio: _originalAspectRatio ?? _imageAspectRatio ?? 1.0,
+                    child: LayoutBuilder(
+                      builder: (context, constraints) => ComparisonView(
+                        originalBytes: _originalPreviewSourceBytes!,
+                        editedBytes: _previewBytes ?? _previewSourceBytes!,
+                        width: constraints.maxWidth,
+                        height: constraints.maxHeight,
+                      ),
+                    ),
                   ),
                 )
               else if (_hasImage)
