@@ -116,9 +116,10 @@ class _EditorScreenState extends State<EditorScreen> {
     _pushHistory(includeBytes: true);
   }
 
-  void _resetAllAdjustments() {
+  void _resetActiveAdjustment() {
     setState(() {
-      _resetAdjustmentsLocally();
+      _adjustments[_activeAdjustment] = 0;
+      _activePreset = null;
     });
     _schedulePreviewRender();
     _pushHistory();
@@ -814,10 +815,10 @@ class _EditorScreenState extends State<EditorScreen> {
             ),
           ),
         ),
-        if (_hasNonZeroAdjustment) ...[
+        if (activeValue != 0) ...[
           const SizedBox(width: 6),
           GestureDetector(
-            onTap: _resetAllAdjustments,
+            onTap: _resetActiveAdjustment,
             child: const Icon(Icons.refresh, size: 16, color: AppColors.secondaryText),
           ),
         ],
