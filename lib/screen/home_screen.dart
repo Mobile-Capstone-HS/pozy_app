@@ -26,6 +26,7 @@ class HomeScreen extends StatelessWidget {
               description: 'Pozy의 실시간 코칭을 통해 완벽한 촬영을 경험해보세요.',
               buttonText: 'Launch',
               onTap: () {
+                debugPrint('[HomeScreen] Quick Shoot tapped');
                 Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (_) => CameraScreen(
@@ -52,7 +53,10 @@ class HomeScreen extends StatelessWidget {
               title: 'Gallery',
               description: '당신의 사진을 한 눈에 보고 관리해보세요.',
               buttonText: 'Open',
-              onTap: () => onMoveTab(1),
+              onTap: () {
+                debugPrint('[HomeScreen] Gallery tapped');
+                onMoveTab(1);
+              },
               visual: const _VisualBox(
                 child: Icon(
                   Icons.collections_outlined,
@@ -66,7 +70,10 @@ class HomeScreen extends StatelessWidget {
               title: 'Pick your Best',
               description: '지금 바로 Pozy가 선택한 최고의 컷을 확인해보세요.',
               buttonText: 'Try Now',
-              onTap: () => onMoveTab(3),
+              onTap: () {
+                debugPrint('[HomeScreen] Pick your Best tapped');
+                onMoveTab(3);
+              },
               visual: const _VisualBox(
                 child: Icon(
                   Icons.content_cut_outlined,

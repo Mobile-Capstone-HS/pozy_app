@@ -99,6 +99,12 @@ class PortraitSceneState {
   final bool hasEyes;
   final bool hasShoulders;
 
+  // 다중 인물 데이터
+  final bool isGroupShot;             // 2명 이상인 경우
+  final double secondPersonSizeRatio; // 두 번째 인물 크기 / 메인 인물 크기 (0~1)
+  final int groupCroppedCount;        // 바운딩박스가 프레임 가장자리에 걸리는 인원 수
+  final bool anyFaceEyesClosed;       // 감지된 얼굴 중 눈 감긴 사람이 있는지 (ML Kit)
+
   // 조명 데이터
   final LightingCondition lightingCondition;
   final double lightingConfidence;
@@ -141,6 +147,10 @@ class PortraitSceneState {
     this.hasNose = false,
     this.hasEyes = false,
     this.hasShoulders = false,
+    this.isGroupShot = false,
+    this.secondPersonSizeRatio = 0.0,
+    this.groupCroppedCount = 0,
+    this.anyFaceEyesClosed = false,
     this.lightingCondition = LightingCondition.unknown,
     this.lightingConfidence = 0.0,
     this.leftWristPosition,

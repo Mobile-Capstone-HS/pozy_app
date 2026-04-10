@@ -30,12 +30,10 @@ class PortraitCoachEngine {
       );
     }
 
-    if (s.personCount >= 3) {
-      return const CoachingResult(
-        message: '인원을 두 명 이하로 정리해보세요.',
-        priority: CoachingPriority.critical,
-        confidence: 0.92,
-      );
+    // ─── 그룹샷 코칭 (2명 이상) ──────────────────────────
+    // 3명 이상도 인원 제한 없이 실질적인 피드백을 제공합니다.
+    if (s.isGroupShot) {
+      return _evaluateGroupShot(s);
     }
 
     if (s.areEyesClosed) {
@@ -88,6 +86,96 @@ class PortraitCoachEngine {
       message: _perfectMessage(s),
       priority: CoachingPriority.perfect,
       confidence: 1.0,
+    );
+  }
+
+  // ─── 그룹샷 코칭 (2명 이상) ───────────────────────────
+  CoachingResult _evaluateGroupShot(PortraitSceneState s) {
+    // ── 공통: 프레임 가장자리 잘림 체크 (모든 인원 대상) ──────
+    if (s.groupCroppedCount > 0) {
+      final isMajority = s.groupCroppedCount >= (s.personCount / 2).ceil();
+      return CoachingResult(
+        message: isMajority
+            ? '여러 분이 잘리고 있어요. 더 뒤로 물러나보세요.'
+            : '가장자리 인물이 잘리고 있어요. 프레임을 조금 넓혀보세요.',
+        priority: CoachingPriority.composition,
+        confidence: 0.88,
+      );
+    }
+
+    // ── 공통: 눈 감김 ────────────────────────────────────
+    // anyFaceEyesClosed: ML Kit이 모든 얼굴을 검사한 결과 (캡처 기반, ~20프레임마다 갱신)
+    // areEyesClosed: YOLO 네이티브 메인 인물 기준 (매 프레임)
+    // 둘 중 하나라도 감지되면 경고
+    if (s.anyFaceEyesClosed || s.areEyesClosed) {
+      return const CoachingResult(
+        message: '눈을 감은 분이 있어요.',
+        priority: CoachingPriority.critical,
+        confidence: 0.88,
+      );
+    }
+
+    // ── 공통: 인물이 너무 작게 나오는 경우 ───────────────────
+    if (s.personBboxRatio < 0.12 && s.personCount <= 3) {
+      return const CoachingResult(
+        message: '인물에 조금 더 가까이 가보세요.',
+        priority: CoachingPriority.composition,
+        confidence: 0.72,
+      );
+    }
+
+    // ── 공통: 머리 위 공간 ────────────────────────────────
+    if (s.headroomRatio < 0.04) {
+      return const CoachingResult(
+        message: '머리 위 공간이 부족해요. 카메라를 내려보세요.',
+        priority: CoachingPriority.composition,
+        confidence: 0.80,
+      );
+    }
+
+    // ── 3명 이상 전용 ──────────────────────────────────────
+    if (s.personCount >= 3) {
+      // 모두 잘 잡힌 경우
+      return CoachingResult(
+        message: '${s.personCount}명 모두 잘 잡혔어요!',
+        priority: CoachingPriority.perfect,
+        confidence: 0.85,
+      );
+    }
+
+    // ── 2명 전용 ──────────────────────────────────────────
+    // 한 사람이 너무 멀어 크기 차이가 큰 경우
+    if (s.secondPersonSizeRatio < 0.35) {
+      return const CoachingResult(
+        message: '두 사람의 거리 차이가 커요. 비슷한 위치에 서주세요.',
+        priority: CoachingPriority.composition,
+        confidence: 0.82,
+      );
+    }
+
+    // 두 사람이 프레임에 너무 꽉 찬 경우
+    if (s.personBboxRatio > 0.75) {
+      return const CoachingResult(
+        message: '조금 뒤로 물러서서 두 분을 더 넓게 담아보세요.',
+        priority: CoachingPriority.composition,
+        confidence: 0.78,
+      );
+    }
+
+    // 크기 비율이 비슷하고 헤드룸도 충분하면 칭찬
+    if (s.secondPersonSizeRatio >= 0.7 && s.headroomRatio >= 0.05) {
+      return const CoachingResult(
+        message: '두 분 모두 잘 잡혔어요!',
+        priority: CoachingPriority.perfect,
+        confidence: 0.85,
+      );
+    }
+
+    // 그 외 → 기본 good 메시지
+    return const CoachingResult(
+      message: '좋은 구도예요!',
+      priority: CoachingPriority.perfect,
+      confidence: 0.75,
     );
   }
 

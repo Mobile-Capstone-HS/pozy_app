@@ -7,6 +7,7 @@ class PozyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    debugPrint('[PozyApp] build');
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Pozy',

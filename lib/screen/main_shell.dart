@@ -20,8 +20,16 @@ class _MainShellState extends State<MainShell> {
   int _currentIndex = 0;
   Future<Uint8List?>? _pendingEditorFuture;
   int _editorKey = 0;
+  bool _loggedFirstBuild = false;
+
+  @override
+  void initState() {
+    super.initState();
+    debugPrint('[MainShell] initState currentIndex=$_currentIndex');
+  }
 
   void goToTab(int index) {
+    debugPrint('[MainShell] goToTab index=$index current=$_currentIndex');
     if (index == 2) {
       _openCamera();
       return;
@@ -42,6 +50,7 @@ class _MainShellState extends State<MainShell> {
   }
 
   Future<void> _openCamera() async {
+    debugPrint('[MainShell] _openCamera start');
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => CameraScreen(
@@ -56,6 +65,7 @@ class _MainShellState extends State<MainShell> {
         ),
       ),
     );
+    debugPrint('[MainShell] _openCamera completed');
   }
 
   Widget _buildPage(int index) {
@@ -92,6 +102,10 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_loggedFirstBuild) {
+      _loggedFirstBuild = true;
+      debugPrint('[MainShell] first build currentIndex=$_currentIndex');
+    }
     return Scaffold(
       body: _buildPage(_currentIndex),
       bottomNavigationBar: AppBottomNav(

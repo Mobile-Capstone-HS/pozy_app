@@ -21,6 +21,7 @@ class _SplashScreenState extends State<SplashScreen>
     with TickerProviderStateMixin {
   late final AnimationController _logoController;
   late final AnimationController _exitController;
+  bool _loggedFirstBuild = false;
 
   late final Animation<double> _bracketProgress;
   late final Animation<double> _logoFade;
@@ -31,6 +32,7 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   void initState() {
     super.initState();
+    debugPrint('[SplashScreen] initState');
 
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -74,13 +76,16 @@ class _SplashScreenState extends State<SplashScreen>
     );
 
     _logoController.forward();
+    debugPrint('[SplashScreen] timer scheduled -> MainShell in 2400ms');
     Timer(const Duration(milliseconds: 2400), _navigateToMain);
   }
 
   Future<void> _navigateToMain() async {
+    debugPrint('[SplashScreen] _navigateToMain start mounted=$mounted');
     if (!mounted) return;
     await _exitController.forward();
     if (!mounted) return;
+    debugPrint('[SplashScreen] pushing MainShell');
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
         pageBuilder: (ctx, anim, secondAnim) => const MainShell(),
@@ -98,6 +103,10 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (!_loggedFirstBuild) {
+      _loggedFirstBuild = true;
+      debugPrint('[SplashScreen] first build');
+    }
     return Scaffold(
       backgroundColor: _kBg,
       body: FadeTransition(

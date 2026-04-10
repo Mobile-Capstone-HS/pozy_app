@@ -115,11 +115,22 @@ class PortraitModeHandler {
   Rect? _smoothedFaceRect;
   final Map<int, Offset> _smoothedPosePoints = <int, Offset>{};
 
+  /// 그룹샷 전용: ML Kit으로 감지한 모든 얼굴 중 눈 감긴 사람이 있는지 여부
+  bool _anyFaceEyesClosed = false;
+
   static const double _faceMetricAlpha = 0.3;
   static const double _faceRectAlpha = 0.35;
 
   // ─── 외부 설정 ────────────────────────────────────
   bool isFrontCamera = false;
+
+  /// 기기 방향 (0=세로, 90=가로 왼쪽, 270=가로 오른쪽)
+  /// camera_screen.dart에서 가속도계 기반으로 갱신합니다.
+  int deviceOrientationDeg = 0;
+
+  /// 현재 카메라 프레임을 JPEG bytes로 캡처하는 콜백.
+  /// camera_screen.dart에서 _cameraController.captureFrame을 주입합니다.
+  Future<Uint8List?> Function()? captureFrameCallback;
 
   // ─── 초기화 / 해제 ────────────────────────────────
 
@@ -150,6 +161,7 @@ class PortraitModeHandler {
     _trackedMainBox = null;
     _smoothedFaceRect = null;
     _smoothedPosePoints.clear();
+    _anyFaceEyesClosed = false;
     stableMessage = '카메라를 사람에게 향해주세요';
     _pendingMessage = '';
     _pendingCount = 0;
@@ -161,9 +173,28 @@ class PortraitModeHandler {
   }
 
   void updateNativeMetrics(Map<String, double> metrics) {
-    _faceYaw = _smoothMetric(_faceYaw, metrics['portraitFaceYaw']);
-    _facePitch = _smoothMetric(_facePitch, metrics['portraitFacePitch']);
-    _faceRoll = _smoothMetric(_faceRoll, metrics['portraitFaceRoll']);
+    double? rawYaw = metrics['portraitFaceYaw'];
+    double? rawPitch = metrics['portraitFacePitch'];
+    double? rawRoll = metrics['portraitFaceRoll'];
+
+    // ─── 가로 모드 각도 보정 ───────────────────────────────
+    // 기기가 가로로 돌아갔을 때 카메라 센서 기준의 yaw/roll이
+    // 화면 기준과 90° 어긋납니다.
+    // 가로 왼쪽(90°): 센서 yaw → 화면 roll, 센서 roll → 화면 -yaw
+    // 가로 오른쪽(270°): 센서 yaw → 화면 -roll, 센서 roll → 화면 yaw
+    if (deviceOrientationDeg == 90 && rawYaw != null && rawRoll != null) {
+      final tmp = rawYaw;
+      rawYaw = -rawRoll;
+      rawRoll = tmp;
+    } else if (deviceOrientationDeg == 270 && rawYaw != null && rawRoll != null) {
+      final tmp = rawYaw;
+      rawYaw = rawRoll;
+      rawRoll = -tmp;
+    }
+
+    _faceYaw = _smoothMetric(_faceYaw, rawYaw);
+    _facePitch = _smoothMetric(_facePitch, rawPitch);
+    _faceRoll = _smoothMetric(_faceRoll, rawRoll);
     _leftEyeOpen = _smoothMetric(
       _leftEyeOpen,
       metrics['portraitLeftEyeOpen'],
@@ -231,6 +262,34 @@ class PortraitModeHandler {
     }
 
     final main = _selectMainPerson(persons);
+
+    // ─── 다중 인물 메트릭 ─────────────────────────────
+    final isGroupShot = persons.length >= 2;
+    double secondPersonSizeRatio = 0.0;
+    int groupCroppedCount = 0;
+
+    if (isGroupShot) {
+      // 면적 기준으로 정렬해 메인 다음으로 큰 인물과 크기 비율 계산
+      final areas = persons
+          .map((p) => p.normalizedBox.width * p.normalizedBox.height)
+          .toList()
+        ..sort((a, b) => b.compareTo(a));
+      final mainArea = main.normalizedBox.width * main.normalizedBox.height;
+      final secondArea = areas.length > 1 ? areas[1] : 0.0;
+      secondPersonSizeRatio = mainArea > 0 ? secondArea / mainArea : 0.0;
+
+      // 모든 인물의 바운딩박스가 프레임 가장자리에 걸리는지 검사
+      const edgeMgn = 0.03;
+      for (final p in persons) {
+        final b = p.normalizedBox;
+        if (b.left < edgeMgn ||
+            b.right > 1.0 - edgeMgn ||
+            b.top < edgeMgn ||
+            b.bottom > 1.0 - edgeMgn) {
+          groupCroppedCount++;
+        }
+      }
+    }
 
     // 키포인트 추출
     final nose = _smoothedKp(main, PoseKeypointIndex.nose);
@@ -409,6 +468,10 @@ class PortraitModeHandler {
       shoulderConfidence: sConf,
       elbowConfidence: eConf,
       eyeConfidence: eyeConf,
+      isGroupShot: isGroupShot,
+      secondPersonSizeRatio: secondPersonSizeRatio,
+      groupCroppedCount: groupCroppedCount,
+      anyFaceEyesClosed: _anyFaceEyesClosed,
       lightingCondition: lastLighting,
       lightingConfidence: lastLightingConf,
       visibleKeypointCount: all.where((p) => p != null).length,
@@ -426,6 +489,26 @@ class PortraitModeHandler {
     );
 
     final coaching = _stabilize(_coachEngine.evaluate(state));
+
+    // ─── 그룹샷 전용: 모든 얼굴 눈 감김 비동기 검사 ───────────
+    // captureFrameCallback이 연결된 경우에만 실행 (_faceEveryN 프레임마다)
+    _frameCount++;
+    if (isGroupShot &&
+        captureFrameCallback != null &&
+        !_isAnalyzing &&
+        _frameCount % _faceEveryN == 0) {
+      _isAnalyzing = true;
+      unawaited(() async {
+        try {
+          final bytes = await captureFrameCallback!();
+          if (bytes != null && bytes.isNotEmpty) {
+            await _analyzeFace(bytes);
+          }
+        } finally {
+          _isAnalyzing = false;
+        }
+      }());
+    }
 
     final overlay = OverlayData(
       leftEye: lEye,
@@ -592,13 +675,31 @@ class PortraitModeHandler {
       final faces = await _faceDetector.processImage(input);
 
       if (faces.isNotEmpty) {
-        final f = faces.first;
-        _faceYaw = f.headEulerAngleY;
-        _facePitch = f.headEulerAngleX;
-        _faceRoll = f.headEulerAngleZ;
-        _leftEyeOpen = f.leftEyeOpenProbability;
-        _rightEyeOpen = f.rightEyeOpenProbability;
-        _smileProb = f.smilingProbability;
+        // 가장 큰 얼굴을 메인으로 사용
+        final mainFace = faces.length == 1
+            ? faces.first
+            : faces.reduce((a, b) =>
+                (a.boundingBox.width * a.boundingBox.height) >=
+                        (b.boundingBox.width * b.boundingBox.height)
+                    ? a
+                    : b);
+
+        _faceYaw = mainFace.headEulerAngleY;
+        _facePitch = mainFace.headEulerAngleX;
+        _faceRoll = mainFace.headEulerAngleZ;
+        _leftEyeOpen = mainFace.leftEyeOpenProbability;
+        _rightEyeOpen = mainFace.rightEyeOpenProbability;
+        _smileProb = mainFace.smilingProbability;
+
+        // ─── 그룹샷: 감지된 모든 얼굴에서 눈 감김 검사 ────────
+        // enableClassification: true 이므로 eyeOpenProbability가 제공됨
+        _anyFaceEyesClosed = faces.any((f) {
+          final l = f.leftEyeOpenProbability ?? 1.0;
+          final r = f.rightEyeOpenProbability ?? 1.0;
+          return l < 0.3 && r < 0.3;
+        });
+      } else {
+        _anyFaceEyesClosed = false;
       }
     } catch (e) {
       debugPrint('[FACE] error=$e');

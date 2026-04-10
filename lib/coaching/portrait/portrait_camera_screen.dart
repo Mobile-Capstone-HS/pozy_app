@@ -25,11 +25,15 @@ class PortraitCameraScreen extends StatefulWidget {
   State<PortraitCameraScreen> createState() => _PortraitCameraScreenState();
 }
 
-class _PortraitCameraScreenState extends State<PortraitCameraScreen> {
+class _PortraitCameraScreenState extends State<PortraitCameraScreen>
+    with WidgetsBindingObserver {
   CameraController? _cameraController;
   bool _isInitialized = false;
   bool _isProcessing = false;
   bool _isFrontCamera = false;
+
+  /// 가로 모드 감지를 위한 기기 방향 (0=세로, 90=가로 왼쪽, 270=가로 오른쪽)
+  int _deviceOrientationDeg = 0;
 
   late final PoseDetector _poseDetector;
   late final FaceDetector _faceDetector;
@@ -70,9 +74,22 @@ class _PortraitCameraScreenState extends State<PortraitCameraScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initDetectors();
     _lightingClassifier.load();
     _initCamera();
+  }
+
+  @override
+  void didChangeMetrics() {
+    // 화면 크기 변화로 가로/세로 전환 감지
+    final view = WidgetsBinding.instance.platformDispatcher.views.first;
+    final size = view.physicalSize;
+    setState(() {
+      // physicalSize는 회전 전과 같은 방향으로 보고될 수 있으므로
+      // 가로 여부만 판별하고 방향은 90으로 통일
+      _deviceOrientationDeg = size.width > size.height ? 90 : 0;
+    });
   }
 
   void _initDetectors() {
@@ -124,13 +141,19 @@ class _PortraitCameraScreenState extends State<PortraitCameraScreen> {
 
   // ─── 좌표 변환 핵심 ───────────────────────────
 
+  /// 센서 방향 + 기기 방향을 합산한 실효 회전각(degree)
+  int get _effectiveRotationDeg {
+    if (_isFrontCamera) {
+      return (_sensorOrientation + _deviceOrientationDeg) % 360;
+    }
+    return (_sensorOrientation - _deviceOrientationDeg + 360) % 360;
+  }
+
   /// ML Kit 좌표를 화면 정규화 좌표(0~1)로 변환
-  /// ML Kit은 회전 적용 후 좌표를 반환하므로
-  /// 회전된 이미지 크기로 나눠야 합니다.
+  /// 실효 회전각(센서 + 기기 방향)을 기반으로 가로세로를 결정합니다.
   Offset? _transformLandmark(double lmX, double lmY, double rawW, double rawH) {
-    // 센서가 90/270도 회전 → 가로세로 교체
-    final bool isRotated =
-        _sensorOrientation == 90 || _sensorOrientation == 270;
+    final int effRot = _effectiveRotationDeg;
+    final bool isRotated = effRot == 90 || effRot == 270;
     final double coordW = isRotated ? rawH : rawW;
     final double coordH = isRotated ? rawW : rawH;
 
@@ -147,8 +170,8 @@ class _PortraitCameraScreenState extends State<PortraitCameraScreen> {
 
   /// Face boundingBox를 정규화 좌표로 변환
   Rect _transformFaceRect(Rect bbox, double rawW, double rawH) {
-    final bool isRotated =
-        _sensorOrientation == 90 || _sensorOrientation == 270;
+    final int effRot = _effectiveRotationDeg;
+    final bool isRotated = effRot == 90 || effRot == 270;
     final double coordW = isRotated ? rawH : rawW;
     final double coordH = isRotated ? rawW : rawH;
 
@@ -212,7 +235,8 @@ class _PortraitCameraScreenState extends State<PortraitCameraScreen> {
       Offset? olLeftHip, olRightHip;
 
       if (poses.isNotEmpty) {
-        final pose = poses.first;
+        // 여러 인물이 감지된 경우 화면 중심에 가장 가깝고 가장 큰 포즈를 선택
+        final pose = _selectMainPose(poses, rawW, rawH);
         final lm = pose.landmarks;
 
         // 키포인트를 화면 좌표로 변환하는 헬퍼
@@ -354,7 +378,9 @@ class _PortraitCameraScreenState extends State<PortraitCameraScreen> {
       double? smileProb, leftEyeOpen, rightEyeOpen;
 
       if (faces.isNotEmpty) {
-        final face = faces.first;
+        // 여러 얼굴이 감지된 경우 메인 포즈 상단(얼굴 위치)에 가장 가까운 얼굴 선택
+        final face = _selectMainFace(faces, rawW, rawH,
+            olNose ?? olLeftEye ?? olRightEye);
         faceYaw = face.headEulerAngleY;
         facePitch = face.headEulerAngleX;
         faceRoll = face.headEulerAngleZ;
@@ -459,17 +485,11 @@ class _PortraitCameraScreenState extends State<PortraitCameraScreen> {
     final camera = _cameraController?.description;
     if (camera == null) return null;
 
-    final sensorOrientation = camera.sensorOrientation;
-    InputImageRotation? rotation;
-
-    if (camera.lensDirection == CameraLensDirection.back) {
-      rotation = InputImageRotationValue.fromRawValue(sensorOrientation);
-    } else {
-      rotation = InputImageRotationValue.fromRawValue(
-        (360 - sensorOrientation) % 360,
-      );
-    }
-    rotation ??= InputImageRotation.rotation0deg;
+    // 실효 회전각 = 센서 방향 - 기기 방향(후면) 또는 + 기기 방향(전면)
+    // 가로 모드에서도 ML Kit이 올바른 회전을 적용하도록 보정합니다.
+    final rotation =
+        InputImageRotationValue.fromRawValue(_effectiveRotationDeg) ??
+        InputImageRotation.rotation0deg;
 
     final bytes = _concatenatePlanes(image.planes);
     final metadata = InputImageMetadata(
@@ -515,6 +535,71 @@ class _PortraitCameraScreenState extends State<PortraitCameraScreen> {
     }
   }
 
+  // ─── 다중 인물/얼굴 선택 헬퍼 ─────────────────────────
+
+  /// 여러 포즈 중 화면 중심에 가깝고 가장 큰 포즈를 반환합니다.
+  Pose _selectMainPose(List<Pose> poses, double rawW, double rawH) {
+    if (poses.length == 1) return poses.first;
+
+    Pose? best;
+    double bestScore = double.negativeInfinity;
+    for (final pose in poses) {
+      // 키포인트 bounding box 계산
+      double minX = double.infinity, minY = double.infinity;
+      double maxX = 0, maxY = 0;
+      int count = 0;
+      for (final lm in pose.landmarks.values) {
+        if (lm.likelihood > 0.4) {
+          final pt = _transformLandmark(lm.x, lm.y, rawW, rawH);
+          if (pt != null) {
+            minX = math.min(minX, pt.dx);
+            minY = math.min(minY, pt.dy);
+            maxX = math.max(maxX, pt.dx);
+            maxY = math.max(maxY, pt.dy);
+            count++;
+          }
+        }
+      }
+      if (count == 0) continue;
+      final area = (maxX - minX) * (maxY - minY);
+      final centerDist =
+          ((minX + maxX) / 2 - 0.5).abs() + ((minY + maxY) / 2 - 0.5).abs();
+      final score = area * 1.5 - centerDist * 0.4;
+      if (score > bestScore) {
+        bestScore = score;
+        best = pose;
+      }
+    }
+    return best ?? poses.first;
+  }
+
+  /// 여러 얼굴 중 메인 포즈의 얼굴 위치에 가장 가까운 얼굴을 반환합니다.
+  Face _selectMainFace(
+      List<Face> faces, double rawW, double rawH, Offset? poseHeadPos) {
+    if (faces.length == 1) return faces.first;
+
+    if (poseHeadPos == null) {
+      // 포즈 정보 없으면 가장 큰 얼굴 선택
+      return faces.reduce((a, b) =>
+          (a.boundingBox.width * a.boundingBox.height) >=
+                  (b.boundingBox.width * b.boundingBox.height)
+              ? a
+              : b);
+    }
+
+    Face? best;
+    double bestDist = double.infinity;
+    for (final face in faces) {
+      final faceCenter = _transformFaceRect(face.boundingBox, rawW, rawH).center;
+      final dist = (faceCenter - poseHeadPos).distance;
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = face;
+      }
+    }
+    return best ?? faces.first;
+  }
+
   // ─── 카메라 전환 ──────────────────────────────
 
   Future<void> _switchCamera() async {
@@ -552,6 +637,7 @@ class _PortraitCameraScreenState extends State<PortraitCameraScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _cameraController?.stopImageStream();
     _cameraController?.dispose();
     _poseDetector.close();

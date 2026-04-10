@@ -29,7 +29,7 @@ import 'package:pose_camera_app/segmentation/fastscnn_view.dart';
 import 'package:pose_camera_app/segmentation/landscape_analyzer.dart';
 
 const String poseModelPath = 'yolov8n-pose_float16.tflite';
-const double poseConfidenceThreshold = 0.15;
+const double poseConfidenceThreshold = 0.25;
 
 enum ShootingMode {
   person('\uC778\uBB3C'),
@@ -127,6 +127,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
   Timer? _countdownTimer;
   StreamSubscription<AccelerometerEvent>? _accelerometerSub;
+  bool _loggedFirstBuild = false;
 
   bool get _isPortraitMode => _shootingMode == ShootingMode.person;
   bool get _isLandscapeMode => _shootingMode == ShootingMode.landscape;
@@ -136,16 +137,29 @@ class _CameraScreenState extends State<CameraScreen> {
   void initState() {
     super.initState();
     _shootingMode = widget.initialMode;
+    debugPrint('[CameraScreen] initState mode=${_shootingMode.name}');
 
     unawaited(_portraitHandler.init());
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      debugPrint('[CameraScreen] postFrame restartCamera scheduled');
       await Future<void>.delayed(const Duration(milliseconds: 300));
       if (!mounted) return;
 
-      await _cameraController.restartCamera();
-      await _cameraController.setZoomLevel(_selectedZoom);
-      await _configureZoomPresets();
+      try {
+        debugPrint('[CameraScreen] restartCamera start');
+        await _cameraController.restartCamera();
+        debugPrint('[CameraScreen] restartCamera done');
+        await _cameraController.setZoomLevel(_selectedZoom);
+        debugPrint('[CameraScreen] setZoomLevel done zoom=$_selectedZoom');
+        await _configureZoomPresets();
+        debugPrint(
+          '[CameraScreen] configureZoomPresets done presets=$_zoomPresets',
+        );
+      } catch (error, stackTrace) {
+        debugPrint('[CameraScreen] startup error: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }
     });
 
     _startTiltMonitoring();
@@ -680,10 +694,22 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
+  /// 가속도계 데이터(_gravX, _gravY)로 기기 방향을 0/90/270 중 하나로 반환합니다.
+  int get _deviceOrientationDeg {
+    // |gravX| > 5 m/s² 이면 가로 모드
+    if (_gravX.abs() > 5.0) {
+      return _gravX < 0 ? 90 : 270; // 왼쪽/오른쪽 가로
+    }
+    return 0; // 세로
+  }
+
   void _handlePoseDetections(List<YOLOResult> results) {
     if (!mounted || !_isPortraitMode) return;
 
+    _portraitHandler.deviceOrientationDeg = _deviceOrientationDeg;
     _portraitHandler.isFrontCamera = _isFrontCamera;
+    // 그룹샷 눈 감김 검사를 위해 YOLO 카메라의 captureFrame 콜백을 주입
+    _portraitHandler.captureFrameCallback ??= _cameraController.captureFrame;
     final analysis = _portraitHandler.processResults(results);
 
     if (!analysis.hasPersonStable) {
@@ -1221,6 +1247,10 @@ class _CameraScreenState extends State<CameraScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_loggedFirstBuild) {
+      _loggedFirstBuild = true;
+      debugPrint('[CameraScreen] first build mode=${_shootingMode.name}');
+    }
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
