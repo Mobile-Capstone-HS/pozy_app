@@ -9,15 +9,24 @@ import 'package:ultralytics_yolo/yolo.dart';
 import 'package:ultralytics_yolo/yolo_streaming_config.dart';
 import 'package:ultralytics_yolo/yolo_view.dart';
 
-import 'package:pose_camera_app/coaching/coaching_result.dart' hide ShootingMode;
+import 'package:pose_camera_app/coaching/coaching_result.dart'
+    hide ShootingMode;
 import 'package:pose_camera_app/widget/coaching_interface.dart';
 import 'package:pose_camera_app/widget/horizon_level_indicator.dart';
 import 'package:pose_camera_app/coaching/object_coach.dart';
 import 'package:pose_camera_app/coaching/portrait/portrait_mode_handler.dart';
 import 'package:pose_camera_app/coaching/portrait/portrait_overlay_painter.dart';
-import 'package:pose_camera_app/coaching/portrait/portrait_scene_state.dart' as portrait;
+import 'package:pose_camera_app/coaching/portrait/portrait_scene_state.dart'
+    as portrait;
 import 'package:pose_camera_app/coaching/subject/subject_detection.dart'
     show detectModelPath, detectionConfidenceThreshold;
+import 'package:pose_camera_app/segmentation/composition_engine.dart';
+import 'package:pose_camera_app/segmentation/composition_resolver.dart';
+import 'package:pose_camera_app/segmentation/composition_summary.dart';
+import 'package:pose_camera_app/segmentation/composition_temporal_filter.dart';
+import 'package:pose_camera_app/segmentation/fastscnn_segmentor.dart';
+import 'package:pose_camera_app/segmentation/fastscnn_view.dart';
+import 'package:pose_camera_app/segmentation/landscape_analyzer.dart';
 
 const String poseModelPath = 'yolov8n-pose_float16.tflite';
 const double poseConfidenceThreshold = 0.15;
@@ -51,8 +60,12 @@ class _CameraScreenState extends State<CameraScreen> {
   static const _cameraAspect = 3.0 / 4.0;
 
   final _cameraController = YOLOViewController();
+  final _landscapeController = FastScnnViewController();
   final _sceneCoach = ObjectCoach();
   final _portraitHandler = PortraitModeHandler();
+  final _landscapeCompositionEngine = CompositionEngine();
+  final _landscapeResolver = const CompositionResolver();
+  final _landscapeTemporalFilter = CompositionTemporalFilter();
 
   List<double> _zoomPresets = [1.0, 2.0];
   Size _previewSize = Size.zero;
@@ -95,7 +108,8 @@ class _CameraScreenState extends State<CameraScreen> {
   double _gravY = 9.8;
 
   portrait.CoachingResult _portraitCoaching = const portrait.CoachingResult(
-    message: '\uCE74\uBA54\uB77C\uB97C \uC5EC\uC720\uB86D\uAC8C \uB9DE\uCDB0\uC8FC\uC138\uC694.',
+    message:
+        '\uCE74\uBA54\uB77C\uB97C \uC5EC\uC720\uB86D\uAC8C \uB9DE\uCDB0\uC8FC\uC138\uC694.',
     priority: portrait.CoachingPriority.critical,
     confidence: 1.0,
   );
@@ -108,11 +122,15 @@ class _CameraScreenState extends State<CameraScreen> {
   );
   int _portraitLostFrames = 0;
   static const int _portraitLostFrameTolerance = 8;
+  CompositionDecision? _landscapeDecision;
+  SegmentationResult? _landscapeSegmentation;
 
   Timer? _countdownTimer;
   StreamSubscription<AccelerometerEvent>? _accelerometerSub;
 
   bool get _isPortraitMode => _shootingMode == ShootingMode.person;
+  bool get _isLandscapeMode => _shootingMode == ShootingMode.landscape;
+  bool get _isObjectMode => _shootingMode == ShootingMode.object;
 
   @override
   void initState() {
@@ -136,17 +154,18 @@ class _CameraScreenState extends State<CameraScreen> {
 
   void _startTiltMonitoring() {
     try {
-      _accelerometerSub = accelerometerEventStream(
-        samplingPeriod: SensorInterval.uiInterval,
-      ).listen((event) {
-        _gravX = (_gravX * 0.7) + (event.x * 0.3);
-        _gravY = (_gravY * 0.7) + (event.y * 0.3);
+      _accelerometerSub =
+          accelerometerEventStream(
+            samplingPeriod: SensorInterval.uiInterval,
+          ).listen((event) {
+            _gravX = (_gravX * 0.7) + (event.x * 0.3);
+            _gravY = (_gravY * 0.7) + (event.y * 0.3);
 
-        final rollDeg = math.atan2(_gravX, _gravY) * 180.0 / math.pi;
-        _tiltX = rollDeg;
-        _sceneCoach.updateTilt(_tiltX);
-        setState(() {});
-      });
+            final rollDeg = math.atan2(_gravX, _gravY) * 180.0 / math.pi;
+            _tiltX = rollDeg;
+            _sceneCoach.updateTilt(_tiltX);
+            setState(() {});
+          });
     } catch (_) {}
   }
 
@@ -164,9 +183,7 @@ class _CameraScreenState extends State<CameraScreen> {
     final next = minZoom < 1.0 ? [minZoom, 1.0, 2.0] : [1.0, 2.0];
 
     if (next.length == _zoomPresets.length &&
-        next.indexed.every(
-          (e) => (e.$2 - _zoomPresets[e.$1]).abs() < 0.001,
-        )) {
+        next.indexed.every((e) => (e.$2 - _zoomPresets[e.$1]).abs() < 0.001)) {
       return;
     }
 
@@ -177,7 +194,8 @@ class _CameraScreenState extends State<CameraScreen> {
     _portraitHandler.reset();
     _portraitLostFrames = 0;
     _portraitCoaching = const portrait.CoachingResult(
-      message: '\uCE74\uBA54\uB77C\uB97C \uC5EC\uC720\uB86D\uAC8C \uB9DE\uCDB0\uC8FC\uC138\uC694.',
+      message:
+          '\uCE74\uBA54\uB77C\uB97C \uC5EC\uC720\uB86D\uAC8C \uB9DE\uCDB0\uC8FC\uC138\uC694.',
       priority: portrait.CoachingPriority.critical,
       confidence: 1.0,
     );
@@ -197,6 +215,8 @@ class _CameraScreenState extends State<CameraScreen> {
       _portraitHandler.updateNativeMetrics(metrics);
       return;
     }
+
+    if (_isLandscapeMode) return;
 
     final coaching = _decorateLockedSubjectCoachingSafe(
       _sceneCoach.applyImageMetrics(metrics),
@@ -312,12 +332,14 @@ class _CameraScreenState extends State<CameraScreen> {
     final overlapNow = _overlapRatio(previous, box);
     final iouAnchor = _iou(anchor, box);
     final overlapAnchor = _overlapRatio(anchor, box);
-    final areaRatioNow =
-        _rectArea(box) / math.max(_rectArea(previous), 0.0001);
-    final areaRatioAnchor = _rectArea(box) / math.max(_rectArea(anchor), 0.0001);
-    final aspectNow = (_rectAspect(box) - _rectAspect(previous)).abs() /
+    final areaRatioNow = _rectArea(box) / math.max(_rectArea(previous), 0.0001);
+    final areaRatioAnchor =
+        _rectArea(box) / math.max(_rectArea(anchor), 0.0001);
+    final aspectNow =
+        (_rectAspect(box) - _rectAspect(previous)).abs() /
         math.max(_rectAspect(previous).abs(), 0.0001);
-    final aspectAnchor = (_rectAspect(box) - _rectAspect(anchor)).abs() /
+    final aspectAnchor =
+        (_rectAspect(box) - _rectAspect(anchor)).abs() /
         math.max(_rectAspect(anchor).abs(), 0.0001);
     final targetDistance = _centerDistance(previous, box);
     final anchorDistance = _centerDistance(anchor, box);
@@ -340,7 +362,8 @@ class _CameraScreenState extends State<CameraScreen> {
     if (hasAnchorAppearance || hasRecentAppearance) {
       final maxAnchorAppearance = _lockedLostFrames == 0 ? 0.18 : 0.24;
       final maxRecentAppearance = _lockedLostFrames == 0 ? 0.20 : 0.26;
-      final appearanceMatched = anchorAppearance <= maxAnchorAppearance ||
+      final appearanceMatched =
+          anchorAppearance <= maxAnchorAppearance ||
           recentAppearance <= maxRecentAppearance;
       if (!appearanceMatched) {
         return double.negativeInfinity;
@@ -372,18 +395,23 @@ class _CameraScreenState extends State<CameraScreen> {
     }();
 
     final distanceScore =
-        (1.0 - (targetDistance / (_lockedLostFrames == 0 ? 0.32 : 0.50)))
-            .clamp(0.0, 1.0);
+        (1.0 - (targetDistance / (_lockedLostFrames == 0 ? 0.32 : 0.50))).clamp(
+          0.0,
+          1.0,
+        );
     final anchorDistanceScore =
-        (1.0 - (anchorDistance / (_lockedLostFrames == 0 ? 0.45 : 0.70)))
-            .clamp(0.0, 1.0);
-    final areaSimilarityNow =
-        (1.0 - (areaRatioNow - 1.0).abs() / 1.4).clamp(0.0, 1.0);
-    final areaSimilarityAnchor =
-        (1.0 - (areaRatioAnchor - 1.0).abs() / 1.8).clamp(0.0, 1.0);
+        (1.0 - (anchorDistance / (_lockedLostFrames == 0 ? 0.45 : 0.70))).clamp(
+          0.0,
+          1.0,
+        );
+    final areaSimilarityNow = (1.0 - (areaRatioNow - 1.0).abs() / 1.4).clamp(
+      0.0,
+      1.0,
+    );
+    final areaSimilarityAnchor = (1.0 - (areaRatioAnchor - 1.0).abs() / 1.8)
+        .clamp(0.0, 1.0);
     final aspectSimilarityNow = (1.0 - aspectNow / 1.1).clamp(0.0, 1.0);
-    final aspectSimilarityAnchor =
-        (1.0 - aspectAnchor / 1.3).clamp(0.0, 1.0);
+    final aspectSimilarityAnchor = (1.0 - aspectAnchor / 1.3).clamp(0.0, 1.0);
 
     return det.confidence * 1.3 +
         iouNow * 2.6 +
@@ -407,8 +435,8 @@ class _CameraScreenState extends State<CameraScreen> {
     final candidates = lockedClassName == null
         ? results
         : results
-            .where((r) => r.className.toLowerCase() == lockedClassName)
-            .toList();
+              .where((r) => r.className.toLowerCase() == lockedClassName)
+              .toList();
     final searchSpace = candidates.isNotEmpty ? candidates : results;
 
     YOLOResult? bestMatch;
@@ -418,7 +446,8 @@ class _CameraScreenState extends State<CameraScreen> {
       final iou = _iou(target, box);
       final overlap = _overlapRatio(target, box);
       final containsCenter = target.contains(box.center);
-      final score = iou * 3.0 +
+      final score =
+          iou * 3.0 +
           overlap * 2.4 +
           (containsCenter ? 0.6 : 0.0) +
           det.confidence * 0.8;
@@ -466,8 +495,10 @@ class _CameraScreenState extends State<CameraScreen> {
   void _showSubjectSelectionGuidance() {
     if (!mounted) return;
     setState(() {
-      _guidance = '\uD0D0\uC9C0\uB41C \uD53C\uC0AC\uCCB4\uB97C \uB2E4\uC2DC \uC120\uD0DD\uD574\uC8FC\uC138\uC694';
-      _subGuidance = '\uD53C\uC0AC\uCCB4\uB97C \uD0ED\uD558\uAC70\uB098 \uADF8 \uC704\uB97C \uB4DC\uB798\uADF8\uD574\uC11C \uB2E4\uC2DC \uACE0\uC815\uD574\uBCF4\uC138\uC694';
+      _guidance =
+          '\uD0D0\uC9C0\uB41C \uD53C\uC0AC\uCCB4\uB97C \uB2E4\uC2DC \uC120\uD0DD\uD574\uC8FC\uC138\uC694';
+      _subGuidance =
+          '\uD53C\uC0AC\uCCB4\uB97C \uD0ED\uD558\uAC70\uB098 \uADF8 \uC704\uB97C \uB4DC\uB798\uADF8\uD574\uC11C \uB2E4\uC2DC \uACE0\uC815\uD574\uBCF4\uC138\uC694';
       _coachingLevel = CoachingLevel.caution;
       _isDrawingRoi = false;
       _roiDragStart = null;
@@ -513,8 +544,9 @@ class _CameraScreenState extends State<CameraScreen> {
 
     final nx = (localPosition.dx / _previewSize.width).clamp(0.0, 1.0);
     final ny = (localPosition.dy / _previewSize.height).clamp(0.0, 1.0);
-    final cameraPoint =
-        _screenToCamera(Rect.fromLTWH(nx, ny, 0.0, 0.0)).topLeft;
+    final cameraPoint = _screenToCamera(
+      Rect.fromLTWH(nx, ny, 0.0, 0.0),
+    ).topLeft;
 
     YOLOResult? bestMatch;
     double bestScore = double.negativeInfinity;
@@ -526,7 +558,8 @@ class _CameraScreenState extends State<CameraScreen> {
         math.pow(box.center.dx - cameraPoint.dx, 2) +
             math.pow(box.center.dy - cameraPoint.dy, 2),
       );
-      final score = (containsPoint ? 3.0 : 0.0) +
+      final score =
+          (containsPoint ? 3.0 : 0.0) +
           det.confidence * 1.5 -
           centerDistance * 4.0 -
           _rectArea(box) * 0.35;
@@ -551,7 +584,7 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   void _handleDetections(List<YOLOResult> results) {
-    if (!mounted || _isPortraitMode) return;
+    if (!mounted || !_isObjectMode) return;
     _latestRawDetections = results;
     final filteredResults = _filterResultsForMode(results);
 
@@ -585,7 +618,8 @@ class _CameraScreenState extends State<CameraScreen> {
         );
       } else {
         _lockedLostFrames++;
-        final holdTrack = _lockedLostFrames < _lockLostFrameTolerance &&
+        final holdTrack =
+            _lockedLostFrames < _lockLostFrameTolerance &&
             _lockedTrackingDetection != null;
         if (holdTrack) {
           forCoaching = const [];
@@ -602,8 +636,9 @@ class _CameraScreenState extends State<CameraScreen> {
       forCoaching = filteredResults;
     }
 
-    final frameSize =
-        _previewSize == Size.zero ? MediaQuery.sizeOf(context) : _previewSize;
+    final frameSize = _previewSize == Size.zero
+        ? MediaQuery.sizeOf(context)
+        : _previewSize;
     CoachingResult? coaching;
     var coachingChanged = false;
     if (!holdWithoutFreshDetection) {
@@ -616,12 +651,14 @@ class _CameraScreenState extends State<CameraScreen> {
         ),
       );
 
-      coachingChanged = coaching.guidance != _guidance ||
+      coachingChanged =
+          coaching.guidance != _guidance ||
           coaching.subGuidance != _subGuidance ||
           coaching.level != _coachingLevel;
     }
 
-    final roiMoved = updatedScreenRoi != null &&
+    final roiMoved =
+        updatedScreenRoi != null &&
         (_lockedRoi == null ||
             (_lockedRoi!.left - updatedScreenRoi.left).abs() > 0.004 ||
             (_lockedRoi!.top - updatedScreenRoi.top).abs() > 0.004 ||
@@ -666,15 +703,24 @@ class _CameraScreenState extends State<CameraScreen> {
 
   Future<void> _setZoom(double zoomLevel) async {
     setState(() => _selectedZoom = zoomLevel);
+    if (_isLandscapeMode) {
+      await _landscapeController.setZoomLevel(zoomLevel);
+      return;
+    }
     await _cameraController.setZoomLevel(zoomLevel);
   }
 
   Future<void> _switchCamera() async {
-    await _cameraController.switchCamera();
+    if (_isLandscapeMode) {
+      await _landscapeController.switchCamera();
+    } else {
+      await _cameraController.switchCamera();
+    }
     if (!mounted) return;
 
     _sceneCoach.reset();
     _resetPortraitState();
+    _landscapeTemporalFilter.reset();
 
     setState(() {
       _isFrontCamera = !_isFrontCamera;
@@ -688,8 +734,14 @@ class _CameraScreenState extends State<CameraScreen> {
       _tiltX = 0.0;
       _gravX = 0.0;
       _gravY = 9.8;
+      _landscapeDecision = null;
+      _landscapeSegmentation = null;
     });
 
+    if (_isLandscapeMode) {
+      await _landscapeController.setZoomLevel(1.0);
+      return;
+    }
     await _cameraController.setZoomLevel(1.0);
   }
 
@@ -697,6 +749,8 @@ class _CameraScreenState extends State<CameraScreen> {
     _sceneCoach.reset();
     _cameraController.setLockedRoi();
     _resetPortraitState();
+    _landscapeCompositionEngine.reset();
+    _landscapeTemporalFilter.reset();
 
     setState(() {
       _shootingMode = mode;
@@ -716,11 +770,13 @@ class _CameraScreenState extends State<CameraScreen> {
       _lockedRecentAppearanceSignature = null;
       _lockedTrackingDetection = null;
       _lockedLostFrames = 0;
+      _landscapeDecision = null;
+      _landscapeSegmentation = null;
     });
   }
 
   void _onTapFocus(Offset localPosition) {
-    if (_previewSize == Size.zero || _isPortraitMode) return;
+    if (_previewSize == Size.zero || !_isObjectMode) return;
 
     final detection = _bestDetectionAtScreenPoint(localPosition);
     if (detection != null) {
@@ -916,14 +972,16 @@ class _CameraScreenState extends State<CameraScreen> {
     setState(() => _isSaving = true);
 
     try {
-      if (_torchOn && !_isFrontCamera) {
+      if (_torchOn && !_isFrontCamera && !_isLandscapeMode) {
         await _cameraController.setTorchMode(true);
         await Future<void>.delayed(const Duration(milliseconds: 120));
       }
 
-      final bytes = await _cameraController.captureHighRes();
+      final bytes = _isLandscapeMode
+          ? await _landscapeController.captureFrame()
+          : await _cameraController.captureHighRes();
 
-      if (_torchOn && !_isFrontCamera) {
+      if (_torchOn && !_isFrontCamera && !_isLandscapeMode) {
         await _cameraController.setTorchMode(false);
       }
 
@@ -946,7 +1004,11 @@ class _CameraScreenState extends State<CameraScreen> {
       Gal.putImageBytes(bytes, name: 'pozy_$timestamp').then((_) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('\uC0AC\uC9C4\uC744 \uAC24\uB7EC\uB9AC\uC5D0 \uC800\uC7A5\uD588\uC5B4\uC694.')),
+            const SnackBar(
+              content: Text(
+                '\uC0AC\uC9C4\uC744 \uAC24\uB7EC\uB9AC\uC5D0 \uC800\uC7A5\uD588\uC5B4\uC694.',
+              ),
+            ),
           );
         }
       });
@@ -954,10 +1016,108 @@ class _CameraScreenState extends State<CameraScreen> {
       if (mounted) {
         setState(() => _isSaving = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('\uCD2C\uC601\uC5D0 \uC2E4\uD328\uD588\uC5B4\uC694: $e')),
+          SnackBar(
+            content: Text(
+              '\uCD2C\uC601\uC5D0 \uC2E4\uD328\uD588\uC5B4\uC694: $e',
+            ),
+          ),
         );
       }
     }
+  }
+
+  void _handleLandscapeFrame(FastScnnFrame frame) {
+    if (!mounted || !_isLandscapeMode) return;
+
+    final raw = LandscapeAnalyzer.analyzeFeatures(frame.result);
+    final smoothed = _landscapeTemporalFilter.smooth(raw);
+    final decision = _landscapeTemporalFilter.stabilize(
+      _landscapeResolver.resolve(smoothed),
+    );
+    final summary = _landscapeCompositionEngine.evaluate(
+      features: smoothed,
+      decision: decision,
+    );
+    final landscapeSubGuidance =
+        decision.secondaryGuidance ??
+        (decision.primaryGuidance == summary.guideMessage
+            ? null
+            : decision.primaryGuidance);
+    final landscapeLevel = _landscapeCoachingLevel(summary.guideState);
+
+    setState(() {
+      _landscapeSegmentation = frame.result;
+      _landscapeDecision = decision;
+      _isFrontCamera = frame.isFrontCamera;
+      _currentZoom = frame.zoomLevel;
+      _guidance = summary.guideMessage;
+      _subGuidance = landscapeSubGuidance;
+      _coachingLevel = landscapeLevel;
+    });
+    debugPrint(
+      '[Landscape] frame applied seg=${frame.result.width}x${frame.result.height} '
+      'front=${frame.isFrontCamera} zoom=${frame.zoomLevel.toStringAsFixed(2)} '
+      'mode=${decision.compositionMode.name} overlay=${decision.overlayType}',
+    );
+  }
+
+  CoachingLevel _landscapeCoachingLevel(CompositionGuideState state) {
+    switch (state) {
+      case CompositionGuideState.aligned:
+        return CoachingLevel.good;
+      case CompositionGuideState.nearlyAligned:
+        return CoachingLevel.warning;
+      case CompositionGuideState.searchingLeading:
+      case CompositionGuideState.moveLeft:
+      case CompositionGuideState.moveRight:
+      case CompositionGuideState.moveUp:
+      case CompositionGuideState.moveDown:
+      case CompositionGuideState.adjustHorizon:
+      case CompositionGuideState.adjustSkyMore:
+      case CompositionGuideState.adjustGroundMore:
+        return CoachingLevel.warning;
+    }
+  }
+
+  Widget _buildCameraPreview() {
+    if (_isLandscapeMode) {
+      return FastScnnView(
+        key: ValueKey('fastscnn_${_isFrontCamera ? 'front' : 'back'}'),
+        controller: _landscapeController,
+        frameSkipLevel: 2,
+        inferenceIntervalMs: 220,
+        startWithBackCamera: !_isFrontCamera,
+        onResult: _handleLandscapeFrame,
+        onZoomChanged: (zoomLevel) {
+          if (!mounted) return;
+          setState(() => _currentZoom = zoomLevel);
+        },
+      );
+    }
+
+    return YOLOView(
+      key: ValueKey(
+        'yolo_${_isPortraitMode ? 'pose' : 'detect'}_${_isFrontCamera ? 'front' : 'back'}',
+      ),
+      controller: _cameraController,
+      modelPath: _isPortraitMode ? poseModelPath : detectModelPath,
+      task: _isPortraitMode ? YOLOTask.pose : YOLOTask.detect,
+      useGpu: true,
+      showNativeUI: false,
+      showOverlays: false,
+      confidenceThreshold: _isPortraitMode
+          ? poseConfidenceThreshold
+          : detectionConfidenceThreshold,
+      streamingConfig: _isPortraitMode
+          ? const YOLOStreamingConfig.withPoses()
+          : const YOLOStreamingConfig.minimal(),
+      lensFacing: _isFrontCamera ? LensFacing.front : LensFacing.back,
+      onResult: _isPortraitMode ? _handlePoseDetections : _handleDetections,
+      onZoomChanged: (zoomLevel) {
+        if (!mounted) return;
+        setState(() => _currentZoom = zoomLevel);
+      },
+    );
   }
 
   Widget _buildPortraitTopBar() {
@@ -1054,6 +1214,7 @@ class _CameraScreenState extends State<CameraScreen> {
     _accelerometerSub?.cancel();
     _countdownTimer?.cancel();
     _cameraController.stop();
+    _landscapeController.stop();
     _portraitHandler.dispose();
     super.dispose();
   }
@@ -1069,33 +1230,11 @@ class _CameraScreenState extends State<CameraScreen> {
           children: [
             LayoutBuilder(
               builder: (context, constraints) {
-                _previewSize = Size(constraints.maxWidth, constraints.maxHeight);
-
-                return YOLOView(
-                  key: ValueKey(
-                    'yolo_${_isPortraitMode ? 'pose' : 'detect'}_${_isFrontCamera ? 'front' : 'back'}',
-                  ),
-                  controller: _cameraController,
-                  modelPath: _isPortraitMode ? poseModelPath : detectModelPath,
-                  task: _isPortraitMode ? YOLOTask.pose : YOLOTask.detect,
-                  useGpu: true,
-                  showNativeUI: false,
-                  showOverlays: false,
-                  confidenceThreshold: _isPortraitMode
-                      ? poseConfidenceThreshold
-                      : detectionConfidenceThreshold,
-                  streamingConfig: _isPortraitMode
-                      ? const YOLOStreamingConfig.withPoses()
-                      : const YOLOStreamingConfig.minimal(),
-                  lensFacing:
-                      _isFrontCamera ? LensFacing.front : LensFacing.back,
-                  onResult:
-                      _isPortraitMode ? _handlePoseDetections : _handleDetections,
-                  onZoomChanged: (zoomLevel) {
-                    if (!mounted) return;
-                    setState(() => _currentZoom = zoomLevel);
-                  },
+                _previewSize = Size(
+                  constraints.maxWidth,
+                  constraints.maxHeight,
                 );
+                return _buildCameraPreview();
               },
             ),
             IgnorePointer(
@@ -1123,19 +1262,21 @@ class _CameraScreenState extends State<CameraScreen> {
                 size: Size.infinite,
               ),
             ),
-            if (!_isPortraitMode)
+            if (_isObjectMode)
               GestureDetector(
                 behavior: HitTestBehavior.translucent,
                 onTapUp: _isDrawingRoi
                     ? null
                     : (details) => _onTapFocus(details.localPosition),
-                onPanStart:
-                    _isDrawingRoi ? (d) => _onRoiPanStart(d.localPosition) : null,
-                onPanUpdate:
-                    _isDrawingRoi ? (d) => _onRoiPanUpdate(d.localPosition) : null,
+                onPanStart: _isDrawingRoi
+                    ? (d) => _onRoiPanStart(d.localPosition)
+                    : null,
+                onPanUpdate: _isDrawingRoi
+                    ? (d) => _onRoiPanUpdate(d.localPosition)
+                    : null,
                 onPanEnd: _isDrawingRoi ? (_) => _onRoiPanEnd() : null,
               ),
-            if (!_isPortraitMode &&
+            if (_isObjectMode &&
                 (_lockedRoi != null ||
                     (_isDrawingRoi &&
                         _roiDragStart != null &&
@@ -1152,7 +1293,7 @@ class _CameraScreenState extends State<CameraScreen> {
                   ),
                 ),
               ),
-            if (!_isPortraitMode && _isDrawingRoi)
+            if (_isObjectMode && _isDrawingRoi)
               Positioned(
                 top: 110,
                 left: 0,
@@ -1176,7 +1317,7 @@ class _CameraScreenState extends State<CameraScreen> {
                   ),
                 ),
               ),
-            if (!_isPortraitMode && _showFocusIndicator && _focusPoint != null)
+            if (_isObjectMode && _showFocusIndicator && _focusPoint != null)
               Positioned(
                 left: _focusPoint!.dx - 30,
                 top: _focusPoint!.dy - 30,
@@ -1216,12 +1357,14 @@ class _CameraScreenState extends State<CameraScreen> {
                   : _TopCameraBar(
                       onBack: widget.onBack,
                       torchOn: _torchOn,
-                      onToggleTorch: _isFrontCamera ? null : _toggleTorch,
+                      onToggleTorch: (_isFrontCamera || _isLandscapeMode)
+                          ? null
+                          : _toggleTorch,
                       timerSeconds: _timerSeconds,
                       onCycleTimer: _cycleTimer,
                       isDrawingRoi: _isDrawingRoi,
                       isRoiLocked: _lockedRoi != null,
-                      onToggleRoiLock: _toggleRoiLock,
+                      onToggleRoiLock: _isObjectMode ? _toggleRoiLock : null,
                     ),
             ),
             Positioned(
@@ -1235,7 +1378,9 @@ class _CameraScreenState extends State<CameraScreen> {
                 shootingMode: _shootingMode,
                 isShootReady: _isPortraitMode
                     ? _portraitCoaching.priority ==
-                        portrait.CoachingPriority.perfect
+                          portrait.CoachingPriority.perfect
+                    : _isLandscapeMode
+                    ? true
                     : _coachingLevel == CoachingLevel.good,
                 shotTypeLabel: _isPortraitMode ? _shotTypeLabel() : null,
                 onSelectZoom: _setZoom,
@@ -1246,16 +1391,17 @@ class _CameraScreenState extends State<CameraScreen> {
               ),
             ),
             // 수평 지시선 — 항상 화면 중앙에 표시
-            Center(
-              child: IgnorePointer(
-                child: HorizonLevelIndicator(
-                  tiltDeg: _tiltX,
-                  isLevel: _gravX.abs() > _gravY.abs()
-                      ? (_tiltX.abs() - 90.0).abs() < 2.0
-                      : _tiltX.abs() < 2.0,
+            if (!_isLandscapeMode)
+              Center(
+                child: IgnorePointer(
+                  child: HorizonLevelIndicator(
+                    tiltDeg: _tiltX,
+                    isLevel: _gravX.abs() > _gravY.abs()
+                        ? (_tiltX.abs() - 90.0).abs() < 2.0
+                        : _tiltX.abs() < 2.0,
+                  ),
                 ),
               ),
-            ),
             if (_countdown > 0)
               Center(
                 child: Text(
@@ -1283,7 +1429,7 @@ class _TopCameraBar extends StatelessWidget {
   final VoidCallback onCycleTimer;
   final bool isDrawingRoi;
   final bool isRoiLocked;
-  final VoidCallback onToggleRoiLock;
+  final VoidCallback? onToggleRoiLock;
 
   const _TopCameraBar({
     required this.onBack,
@@ -1301,27 +1447,26 @@ class _TopCameraBar extends StatelessWidget {
     final lockIcon = isRoiLocked
         ? Icons.lock_rounded
         : isDrawingRoi
-            ? Icons.close_rounded
-            : Icons.center_focus_weak_rounded;
+        ? Icons.close_rounded
+        : Icons.center_focus_weak_rounded;
     final lockTint = isRoiLocked
         ? const Color(0xFF38BDF8)
         : isDrawingRoi
-            ? const Color(0xFFFBBF24)
-            : null;
+        ? const Color(0xFFFBBF24)
+        : null;
 
     return Row(
       children: [
-        _GlassIconButton(
-          icon: Icons.arrow_back_ios_new_rounded,
-          onTap: onBack,
-        ),
+        _GlassIconButton(icon: Icons.arrow_back_ios_new_rounded, onTap: onBack),
         const Spacer(),
-        _GlassIconButton(
-          icon: lockIcon,
-          onTap: onToggleRoiLock,
-          tint: lockTint,
-        ),
-        const SizedBox(width: 8),
+        if (onToggleRoiLock != null) ...[
+          _GlassIconButton(
+            icon: lockIcon,
+            onTap: onToggleRoiLock!,
+            tint: lockTint,
+          ),
+          const SizedBox(width: 8),
+        ],
         if (onToggleTorch != null) ...[
           _GlassIconButton(
             icon: torchOn ? Icons.flash_on_rounded : Icons.flash_off_rounded,
@@ -1435,10 +1580,7 @@ class _BottomCameraControls extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 16),
-        _ModeSwitcher(
-          selected: shootingMode,
-          onChanged: onModeChanged,
-        ),
+        _ModeSwitcher(selected: shootingMode, onChanged: onModeChanged),
         const SizedBox(height: 8),
       ],
     );
@@ -1505,9 +1647,9 @@ class _CaptureButtonState extends State<_CaptureButton>
               boxShadow: widget.isShootReady
                   ? [
                       BoxShadow(
-                        color: const Color(0xFF4ADE80).withValues(
-                          alpha: 0.35 + glow * 0.45,
-                        ),
+                        color: const Color(
+                          0xFF4ADE80,
+                        ).withValues(alpha: 0.35 + glow * 0.45),
                         blurRadius: 12 + glow * 20,
                         spreadRadius: 2 + glow * 8,
                       ),
@@ -1541,20 +1683,23 @@ class _CaptureButtonState extends State<_CaptureButton>
 }
 
 class _ModeSwitcher extends StatelessWidget {
+  static const _availableModes = [
+    ShootingMode.person,
+    ShootingMode.object,
+    ShootingMode.landscape,
+  ];
+
   final ShootingMode selected;
   final ValueChanged<ShootingMode> onChanged;
 
-  const _ModeSwitcher({
-    required this.selected,
-    required this.onChanged,
-  });
+  const _ModeSwitcher({required this.selected, required this.onChanged});
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       height: 36,
       child: Row(
-        children: ShootingMode.values.map((mode) {
+        children: _availableModes.map((mode) {
           final isSelected = selected == mode;
           return Expanded(
             child: GestureDetector(
@@ -1568,8 +1713,9 @@ class _ModeSwitcher extends StatelessWidget {
                     style: TextStyle(
                       color: isSelected ? Colors.white : Colors.white54,
                       fontSize: 13,
-                      fontWeight:
-                          isSelected ? FontWeight.w700 : FontWeight.w400,
+                      fontWeight: isSelected
+                          ? FontWeight.w700
+                          : FontWeight.w400,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -1624,10 +1770,7 @@ class _GlassIconButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: bg,
           borderRadius: BorderRadius.circular(999),
-          border: Border.all(
-            color: tint ?? const Color(0x4DFFFFFF),
-            width: 1,
-          ),
+          border: Border.all(color: tint ?? const Color(0x4DFFFFFF), width: 1),
         ),
         alignment: Alignment.center,
         child: label != null
@@ -1701,12 +1844,7 @@ class _RoiPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (isDrawing && dragStart != null && dragEnd != null) {
       final rect = Rect.fromPoints(dragStart!, dragEnd!);
-      _drawDashedRect(
-        canvas,
-        rect,
-        const Color(0xCCFFFFFF),
-        strokeWidth: 1.5,
-      );
+      _drawDashedRect(canvas, rect, const Color(0xCCFFFFFF), strokeWidth: 1.5);
       return;
     }
 

@@ -1,5 +1,7 @@
 import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+
 import '../widget/app_bottom_nav.dart';
 import 'best_cut_screen.dart';
 import 'camera_screen.dart';
@@ -16,19 +18,16 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   int _currentIndex = 0;
-
-  // 갤러리에서 "편집" 버튼으로 진입할 때 전달할 이미지 Future
   Future<Uint8List?>? _pendingEditorFuture;
   int _editorKey = 0;
 
   void goToTab(int index) {
     if (index == 2) {
-      _openCameraScreen();
+      _openCamera();
       return;
     }
 
     if (index == _currentIndex) return;
-
     setState(() {
       _currentIndex = index;
     });
@@ -46,7 +45,7 @@ class _MainShellState extends State<MainShell> {
     });
   }
 
-  Future<void> _openCameraScreen() async {
+  Future<void> _openCamera() async {
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => CameraScreen(
@@ -57,9 +56,42 @@ class _MainShellState extends State<MainShell> {
             }
           },
           onBack: () => Navigator.of(context).pop(),
+          initialMode: ShootingMode.person,
         ),
       ),
     );
+  }
+
+  Widget _buildPage(int index) {
+    switch (index) {
+      case 0:
+        return HomeScreen(onMoveTab: goToTab);
+      case 1:
+        return GalleryScreen(
+          onMoveTab: goToTab,
+          onOpenInEditor: openImageInEditor,
+        );
+      case 2:
+        return HomeScreen(onMoveTab: goToTab);
+      case 3:
+        return BestCutScreen(onMoveTab: goToTab);
+      case 4:
+        final future = _pendingEditorFuture;
+        if (future != null) {
+          Future.microtask(() {
+            if (mounted) {
+              setState(() => _pendingEditorFuture = null);
+            }
+          });
+        }
+        return EditorScreen(
+          key: ValueKey(_editorKey),
+          onMoveTab: goToTab,
+          initialBytesFuture: future,
+        );
+      default:
+        return HomeScreen(onMoveTab: goToTab);
+    }
   }
 
   @override
@@ -69,10 +101,7 @@ class _MainShellState extends State<MainShell> {
         index: _currentIndex,
         children: [
           HomeScreen(onMoveTab: goToTab),
-          GalleryScreen(
-            onMoveTab: goToTab,
-            onOpenInEditor: openImageInEditor,
-          ),
+          GalleryScreen(onMoveTab: goToTab, onOpenInEditor: openImageInEditor),
           const SizedBox.shrink(), // 카메라는 Navigator.push로 처리
           BestCutScreen(onMoveTab: goToTab),
           EditorScreen(
