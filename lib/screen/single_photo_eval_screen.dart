@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../feature/a_cut/layer/evaluation/photo_evaluation_service.dart';
+import '../services/gemini_analysis_service.dart';
 import '../feature/a_cut/model/model_score_detail.dart';
 import '../feature/a_cut/model/photo_evaluation_result.dart';
 import '../firebase/history_service.dart';
@@ -40,7 +41,7 @@ class _SinglePhotoEvalScreenState extends State<SinglePhotoEvalScreen> {
   void initState() {
     super.initState();
     _evaluationService =
-        widget.evaluationService ?? OnDevicePhotoEvaluationService();
+        widget.evaluationService ?? GeminiPhotoEvaluationService();
     _evaluate();
   }
 
@@ -236,6 +237,10 @@ class _ResultView extends StatelessWidget {
             const _InfoBanner(
               text: '현재 단일 사진 평가는 온디바이스 품질 결과를 중심으로 간단히 요약해 보여줘요.',
             ),
+          ],
+          if (result.detailedExplanation != null && result.detailedExplanation!.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            _ExplanationSection(text: result.detailedExplanation!),
           ],
           if (result.scoreDetails.isNotEmpty) ...[
             const SizedBox(height: 16),
@@ -781,6 +786,54 @@ class _ChipSection extends StatelessWidget {
               .toList(),
         ),
       ],
+    );
+  }
+}
+
+class _ExplanationSection extends StatelessWidget {
+  final String text;
+
+  const _ExplanationSection({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: const [
+              Icon(Icons.auto_awesome_rounded, size: 16, color: Color(0xFF4F46E5)),
+              SizedBox(width: 6),
+              Text(
+                'AI 상세 분석',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF4F46E5),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            text,
+            style: const TextStyle(
+              fontSize: 14,
+              height: 1.6,
+              fontWeight: FontWeight.w600,
+              color: AppColors.primaryText,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

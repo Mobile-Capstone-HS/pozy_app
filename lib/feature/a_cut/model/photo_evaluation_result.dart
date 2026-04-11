@@ -11,6 +11,7 @@ class PhotoEvaluationResult {
   final String? modelVersion;
   final String? fileName;
   final bool usesTechnicalScoreAsFinal;
+  final String? detailedExplanation;
 
   const PhotoEvaluationResult({
     required this.finalScore,
@@ -23,6 +24,7 @@ class PhotoEvaluationResult {
     this.modelVersion,
     this.fileName,
     this.usesTechnicalScoreAsFinal = false,
+    this.detailedExplanation,
   });
 
   factory PhotoEvaluationResult.fromJson(Map<String, dynamic> json) {
@@ -47,6 +49,7 @@ class PhotoEvaluationResult {
       fileName: json['file_name'] as String?,
       usesTechnicalScoreAsFinal:
           json['uses_technical_score_as_final'] as bool? ?? false,
+      detailedExplanation: json['detailed_explanation'] as String?,
     );
   }
 
@@ -61,6 +64,7 @@ class PhotoEvaluationResult {
         if (modelVersion != null) 'model_version': modelVersion,
         if (fileName != null) 'file_name': fileName,
         'uses_technical_score_as_final': usesTechnicalScoreAsFinal,
+        if (detailedExplanation != null) 'detailed_explanation': detailedExplanation,
       };
 
   factory PhotoEvaluationResult.fromScores({
@@ -73,6 +77,7 @@ class PhotoEvaluationResult {
     String? modelVersion,
     String? fileName,
     bool usesTechnicalScoreAsFinal = false,
+    String? detailedExplanation,
   }) {
     final normalizedFinal = finalScore.clamp(0.0, 1.0).toDouble();
     final normalizedTechnical = technicalScore.clamp(0.0, 1.0).toDouble();
@@ -90,6 +95,7 @@ class PhotoEvaluationResult {
       modelVersion: modelVersion,
       fileName: fileName,
       usesTechnicalScoreAsFinal: usesTechnicalScoreAsFinal,
+      detailedExplanation: detailedExplanation,
     );
   }
 
