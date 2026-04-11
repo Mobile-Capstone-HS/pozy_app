@@ -26,7 +26,7 @@ class HomeBottomNav extends StatelessWidget {
       child: Container(
         padding: EdgeInsets.fromLTRB(
           isCompact ? 6 : 8,
-          isCompact ? 6 : 8,
+          isCompact ? 4 : 6,
           isCompact ? 6 : 8,
           bottomPadding,
         ),
@@ -153,8 +153,8 @@ class _HomeShutterButtonState extends State<_HomeShutterButton>
     return GestureDetector(
       onTap: widget.onTap,
       child: SizedBox(
-        width: 80,
-        height: 80,
+        width: 72,
+        height: 72,
         child: Stack(
           alignment: Alignment.center,
           children: [
@@ -163,8 +163,8 @@ class _HomeShutterButtonState extends State<_HomeShutterButton>
               builder: (_, _) => Transform.scale(
                 scale: _scale.value,
                 child: Container(
-                  width: 60,
-                  height: 60,
+                  width: 54,
+                  height: 54,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: const Color(0xFF29B6F6)
@@ -174,8 +174,8 @@ class _HomeShutterButtonState extends State<_HomeShutterButton>
               ),
             ),
             Container(
-              width: 60,
-              height: 60,
+              width: 54,
+              height: 54,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(color: const Color(0xFF29B6F6), width: 2.5),

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 import 'best_cut_gallery_screen.dart';
+import 'history_screen.dart';
 
 const _kBlue = Color(0xFF64B5F6);
 
@@ -18,18 +19,20 @@ class BestCutScreen extends StatelessWidget {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final h = constraints.maxHeight;
-          final gap = ((h - 460) / 8).clamp(4.0, 16.0);
-          final featurePad = ((h - 460) / 22).clamp(4.0, 10.0);
-          final btnHeight = h < 620 ? 42.0 : 48.0;
-          final lineH = ((h - 400) / 8).clamp(16.0, 32.0);
+          // 모든 섹션 간격을 하나의 값으로 통일
+          final gap = (h * 0.04).clamp(12.0, 24.0);
+          final featurePad = (h * 0.015).clamp(8.0, 14.0);
+          final btnHeight = (h * 0.067).clamp(42.0, 52.0);
+          final lineH = (h * 0.04).clamp(16.0, 30.0);
 
-          return Padding(
+          return SingleChildScrollView(
             padding: EdgeInsets.fromLTRB(22, gap * 1.5, 22, gap),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // ── 헤더 ────────────────────────────────────
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Container(
                       width: 4,
@@ -52,9 +55,25 @@ class BestCutScreen extends StatelessWidget {
                         ),
                       ),
                     ),
+                    GestureDetector(
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const HistoryScreen(),
+                        ),
+                      ),
+                      child: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: _kBlue.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(Icons.history_rounded, color: _kBlue, size: 20),
+                      ),
+                    ),
                   ],
                 ),
-                const SizedBox(height: 5),
+                const SizedBox(height: 6),
                 const Text(
                   '한 장은 간단 평가, 여러 장은 A컷 랭킹으로 이어져요.',
                   style: TextStyle(
@@ -64,7 +83,9 @@ class BestCutScreen extends StatelessWidget {
                   ),
                 ),
 
-                SizedBox(height: gap),
+                SizedBox(height: gap * 0.5),
+                const _DashedDivider(),
+                SizedBox(height: gap * 0.5),
 
                 // ── 특징 목록 ──────────────────────────────
                 _FeatureRow(
@@ -88,7 +109,44 @@ class BestCutScreen extends StatelessWidget {
                   vertPad: featurePad,
                 ),
 
-                SizedBox(height: gap),
+                SizedBox(height: gap * 0.5),
+
+                // ── 추천 흐름 (타임라인) ──────────────────
+                const Row(
+                  children: [
+                    Icon(Icons.route_rounded, color: _kBlue, size: 17),
+                    SizedBox(width: 6),
+                    Text(
+                      '추천 흐름',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primaryText,
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: gap * 0.5),
+                _TimelineStep(
+                  index: 1,
+                  text: '"한 장 평가하기"로 실시간 구도 가이드와 함께 촬영 후 바로 평가를 받아볼 수 있어요.',
+                  isLast: false,
+                  lineHeight: lineH,
+                ),
+                _TimelineStep(
+                  index: 2,
+                  text: '갤러리에서 1장 선택 시 간단한 단일 평가, 2장 이상 선택 시 A컷 랭킹으로 분석해줘요.',
+                  isLast: false,
+                  lineHeight: lineH,
+                ),
+                _TimelineStep(
+                  index: 3,
+                  text: 'A컷 결과에서 Best 1장, Top 3, 이 외 추천 컷 순서를 우선적으로 보여줘요.',
+                  isLast: true,
+                  lineHeight: lineH,
+                ),
+
+                SizedBox(height: gap * 0.5),
 
                 // ── 버튼 2개 ──────────────────────────────
                 _OutlineButton(
@@ -101,49 +159,12 @@ class BestCutScreen extends StatelessWidget {
                     ),
                   ),
                 ),
-                const SizedBox(height: 8),
+                SizedBox(height: gap * 0.5),
                 _OutlineButton(
                   height: btnHeight,
                   icon: Icons.camera_alt_outlined,
                   label: '카메라로 촬영해 한 장 평가하기',
                   onTap: () => onMoveTab(2),
-                ),
-
-                SizedBox(height: gap),
-
-                // ── 추천 흐름 (타임라인) ──────────────────
-                const Row(
-                  children: [
-                    Icon(Icons.route_rounded, color: _kBlue, size: 14),
-                    SizedBox(width: 5),
-                    Text(
-                      '추천 흐름',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.primaryText,
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: gap * 0.6),
-                _TimelineStep(
-                  index: 1,
-                  text: '카메라 촬영 직후 "이 사진 평가하기"로 단일 평가를 바로 시작할 수 있습니다.',
-                  isLast: false,
-                  lineHeight: lineH,
-                ),
-                _TimelineStep(
-                  index: 2,
-                  text: '갤러리에서 1장 선택 시 단일 평가, 2장 이상 선택 시 A컷 랭킹으로 연결됩니다.',
-                  isLast: false,
-                  lineHeight: lineH,
-                ),
-                _TimelineStep(
-                  index: 3,
-                  text: 'A컷 결과에서 BEST 1장, Top 3, 추천 컷 순서를 우선적으로 보여줍니다.',
-                  isLast: true,
-                  lineHeight: lineH,
                 ),
               ],
             ),
@@ -152,6 +173,39 @@ class BestCutScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+// ── 점선 구분선 ──────────────────────────────────────────
+class _DashedDivider extends StatelessWidget {
+  const _DashedDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      size: const Size(double.infinity, 1),
+      painter: _DashedLinePainter(),
+    );
+  }
+}
+
+class _DashedLinePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color(0xFFDDE3EA)
+      ..strokeWidth = 1;
+
+    const dashWidth = 10.0;
+    const dashSpace = 8.0;
+    double x = 0;
+    while (x < size.width) {
+      canvas.drawLine(Offset(x, 0), Offset(x + dashWidth, 0), paint);
+      x += dashWidth + dashSpace;
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashedLinePainter old) => false;
 }
 
 // ── 특징 행 ──────────────────────────────────────────────

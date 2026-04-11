@@ -32,7 +32,7 @@ class AppBottomNav extends StatelessWidget {
       child: Container(
         padding: EdgeInsets.fromLTRB(
           isCompact ? 6 : 8,
-          isCompact ? 6 : 8,
+          isCompact ? 4 : 6,
           isCompact ? 6 : 8,
           bottomPadding,
         ),
@@ -41,7 +41,7 @@ class AppBottomNav extends StatelessWidget {
           border: Border(top: BorderSide(color: AppColors.border)),
         ),
         child: SizedBox(
-          height: 80,
+          height: 72,
           child: Row(
           children: List.generate(items.length, (index) {
             final selected = currentIndex == index;

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../feature/a_cut/layer/evaluation/photo_evaluation_service.dart';
 import '../feature/a_cut/model/model_score_detail.dart';
 import '../feature/a_cut/model/photo_evaluation_result.dart';
+import '../firebase/history_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_shadows.dart';
 import '../theme/app_text_styles.dart';
@@ -13,12 +14,14 @@ import '../widget/app_top_bar.dart';
 class SinglePhotoEvalScreen extends StatefulWidget {
   final Uint8List imageBytes;
   final String? fileName;
+  final String? assetId;
   final PhotoEvaluationService? evaluationService;
 
   const SinglePhotoEvalScreen({
     super.key,
     required this.imageBytes,
     this.fileName,
+    this.assetId,
     this.evaluationService,
   });
 
@@ -57,6 +60,7 @@ class _SinglePhotoEvalScreenState extends State<SinglePhotoEvalScreen> {
         _result = result;
         _loading = false;
       });
+      HistoryService.instance.saveSingle(result: result, assetId: widget.assetId);
     } catch (error) {
       if (!mounted) return;
       setState(() {

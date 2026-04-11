@@ -40,7 +40,7 @@ class HomeScreen extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF29B6F6),
+                    color: const Color(0xFF81D4FA),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: const Row(
@@ -49,7 +49,7 @@ class HomeScreen extends StatelessWidget {
                       Icon(Icons.map_outlined, color: Colors.white, size: 13),
                       SizedBox(width: 4),
                       Text(
-                        '촬영 지도 보기',
+                        '촬영 스팟 지도',
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: 11,
@@ -69,17 +69,22 @@ class HomeScreen extends StatelessWidget {
           // 로고 이미지 영역
           Expanded(
             child: Container(
-              color: const Color(0x1E29B6F6),
+              color: const Color(0x12000000),
               child: Stack(
                 fit: StackFit.expand,
                 children: [
                   CustomPaint(painter: _GridPainter()),
-                  CustomPaint(painter: _GlowPainter()),
-                  Image.asset(
-                    'assets/images/pozy_logo.png',
-                    fit: BoxFit.contain,
+                  CustomPaint(painter: _VignettePainter()),
+                  Center(
+                    child: Image.asset(
+                      'assets/images/pozy_logo.png',
+                      fit: BoxFit.contain,
+                      width: 240,
+                      height: 240,
+                    ),
                   ),
                   const _ViewfinderBrackets(),
+                  CustomPaint(painter: _FocusPointPainter()),
                 ],
               ),
             ),
@@ -111,7 +116,7 @@ class _SpeechBubble extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           decoration: BoxDecoration(
-            color: const Color(0xFF29B6F6),
+            color: const Color(0xFF81D4FA),
             borderRadius: BorderRadius.circular(20),
           ),
           child: const Text(
@@ -174,7 +179,7 @@ class _BubbleTailPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = const Color(0xFF29B6F6)
+      ..color = const Color(0xFF81D4FA)
       ..style = PaintingStyle.fill;
 
     final path = Path()
@@ -289,26 +294,50 @@ class _GridPainter extends CustomPainter {
   bool shouldRepaint(_GridPainter old) => false;
 }
 
-// ── 중앙 Glow Painter ────────────────────────────────────
-class _GlowPainter extends CustomPainter {
+// ── 비네팅 Painter ───────────────────────────────────────
+class _VignettePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.shortestSide * 0.65;
+    final radius = size.longestSide * 0.75;
 
     final paint = Paint()
       ..shader = RadialGradient(
         colors: [
-          const Color(0xFF29B6F6).withValues(alpha: 0.55),
-          const Color(0xFF29B6F6).withValues(alpha: 0.20),
           Colors.transparent,
+          Colors.black.withValues(alpha: 0.35),
         ],
-        stops: const [0.0, 0.45, 1.0],
+        stops: const [0.5, 1.0],
       ).createShader(Rect.fromCircle(center: center, radius: radius));
 
-    canvas.drawCircle(center, radius, paint);
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), paint);
   }
 
   @override
-  bool shouldRepaint(_GlowPainter old) => false;
+  bool shouldRepaint(_VignettePainter old) => false;
+}
+
+// ── 포커스 포인트 Painter ────────────────────────────────
+class _FocusPointPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    const crossSize = 10.0;
+    const gap = 6.0;
+
+    final paint = Paint()
+      ..color = const Color(0xFF29B6F6).withValues(alpha: 0.7)
+      ..strokeWidth = 1.5
+      ..style = PaintingStyle.stroke;
+
+    // 수평선 (가운데 gap)
+    canvas.drawLine(Offset(center.dx - crossSize - gap, center.dy), Offset(center.dx - gap, center.dy), paint);
+    canvas.drawLine(Offset(center.dx + gap, center.dy), Offset(center.dx + crossSize + gap, center.dy), paint);
+    // 수직선 (가운데 gap)
+    canvas.drawLine(Offset(center.dx, center.dy - crossSize - gap), Offset(center.dx, center.dy - gap), paint);
+    canvas.drawLine(Offset(center.dx, center.dy + gap), Offset(center.dx, center.dy + crossSize + gap), paint);
+  }
+
+  @override
+  bool shouldRepaint(_FocusPointPainter old) => false;
 }
