@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1067121560615",
+    "project_id": "pozy-ec935",
+    "storage_bucket": "pozy-ec935.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1067121560615:android:d1e43d6be665c308ac5202",
+        "android_client_info": {
+          "package_name": "com.example.pose_camera_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDIaXv92j6Pwt0hwVOEo5Xynqnnh0zRRGs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

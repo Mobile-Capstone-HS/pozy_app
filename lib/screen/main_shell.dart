@@ -62,27 +62,46 @@ class _MainShellState extends State<MainShell> {
     );
   }
 
+  Widget _buildPage(int index) {
+    switch (index) {
+      case 0:
+        return HomeScreen(onMoveTab: goToTab);
+      case 1:
+        return GalleryScreen(
+          onMoveTab: goToTab,
+          onOpenInEditor: openImageInEditor,
+        );
+      case 2:
+        return HomeScreen(onMoveTab: goToTab);
+      case 3:
+        return BestCutScreen(onMoveTab: goToTab);
+      case 4:
+        final future = _pendingEditorFuture;
+        if (future != null) {
+          Future.microtask(() {
+            if (mounted) setState(() => _pendingEditorFuture = null);
+          });
+        }
+        return EditorScreen(
+          key: ValueKey(_editorKey),
+          onMoveTab: goToTab,
+          initialBytesFuture: future,
+        );
+      default:
+        return HomeScreen(onMoveTab: goToTab);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: [
-          HomeScreen(onMoveTab: goToTab),
-          GalleryScreen(onMoveTab: goToTab, onOpenInEditor: openImageInEditor),
-          const SizedBox.shrink(), // 카메라는 Navigator.push로 처리
-          BestCutScreen(onMoveTab: goToTab),
-          EditorScreen(
-            key: ValueKey(_editorKey),
-            onMoveTab: goToTab,
-            initialBytesFuture: _pendingEditorFuture,
-          ),
-        ],
-      ),
-      bottomNavigationBar: AppBottomNav(
-        currentIndex: _currentIndex,
-        onTap: goToTab,
-      ),
+      body: _buildPage(_currentIndex),
+      bottomNavigationBar: _currentIndex == 0
+          ? null
+          : AppBottomNav(
+              currentIndex: _currentIndex,
+              onTap: goToTab,
+            ),
     );
   }
 }
