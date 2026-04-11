@@ -7,7 +7,6 @@ import 'main_shell.dart';
 
 // Blue accent used throughout the splash
 const _kBlue = Color(0xFF4A90E2);
-const _kBlueSoft = Color(0xFF6AAEF5);
 const _kBg = Color(0xFFF5F8FF); // very light blue-white
 
 class SplashScreen extends StatefulWidget {
@@ -182,24 +181,11 @@ class _SplashScreenState extends State<SplashScreen>
                               opacity: _logoFade,
                               child: ScaleTransition(
                                 scale: _logoScale,
-                                child: ShaderMask(
-                                  shaderCallback: (bounds) =>
-                                      const LinearGradient(
-                                    colors: [_kBlue, _kBlueSoft],
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                  ).createShader(bounds),
-                                  child: const Text(
-                                    'Pozy',
-                                    style: TextStyle(
-                                      fontFamily: 'Pretendard',
-                                      fontSize: 56,
-                                      fontWeight: FontWeight.w700,
-                                      color: Colors.white,
-                                      letterSpacing: -2.0,
-                                      height: 1.0,
-                                    ),
-                                  ),
+                                child: Image.asset(
+                                  'assets/images/pozy_logo.png',
+                                  width: 160,
+                                  height: 120,
+                                  fit: BoxFit.contain,
                                 ),
                               ),
                             ),

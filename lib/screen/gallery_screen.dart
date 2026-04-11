@@ -4,7 +4,6 @@ import 'package:photo_manager/photo_manager.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_shadows.dart';
 import '../theme/app_text_styles.dart';
-import '../widget/app_top_bar.dart';
 
 class GalleryScreen extends StatefulWidget {
   final ValueChanged<int> onMoveTab;
@@ -190,32 +189,9 @@ class _GalleryScreenState extends State<GalleryScreen> {
         color: const Color(0xFFF7F7F7),
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 10, 18, 0),
-              child: AppTopBar(
-                title: 'Gallery',
-                trailing: GestureDetector(
-                  onTap: _loadAlbumsAndPhotos,
-                  child: Container(
-                    width: 34,
-                    height: 34,
-                    decoration: const BoxDecoration(
-                      color: AppColors.soft,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.refresh,
-                      size: 18,
-                      color: AppColors.primaryText,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 18),
             if (_granted && _albums.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 18),
+                padding: const EdgeInsets.fromLTRB(18, 22, 18, 0),
                 child: _AlbumChipRow(
                   albums: _albums,
                   selectedAlbum: _selectedAlbum,
@@ -223,7 +199,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
                   labelBuilder: _albumLabel,
                 ),
               ),
-            if (_granted && _albums.isNotEmpty) const SizedBox(height: 18),
+            if (_granted && _albums.isNotEmpty) const SizedBox(height: 12),
             Expanded(
               child: _loading
                   ? const _LoadingView()
@@ -247,15 +223,33 @@ class _GalleryScreenState extends State<GalleryScreen> {
                       slivers: [
                         SliverToBoxAdapter(
                           child: Padding(
-                            padding: const EdgeInsets.fromLTRB(18, 0, 18, 10),
-                            child: Text(
-                              _albumLabel(_selectedAlbum!).toUpperCase(),
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w800,
-                                color: AppColors.primaryText,
-                                letterSpacing: 0.2,
-                              ),
+                            padding: const EdgeInsets.fromLTRB(18, 0, 10, 10),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    _albumLabel(_selectedAlbum!).toUpperCase(),
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w800,
+                                      color: AppColors.primaryText,
+                                      letterSpacing: 0.2,
+                                    ),
+                                  ),
+                                ),
+                                GestureDetector(
+                                  onTap: _loadAlbumsAndPhotos,
+                                  child: Container(
+                                    width: 34,
+                                    height: 34,
+                                    decoration: const BoxDecoration(
+                                      color: AppColors.soft,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(Icons.refresh, size: 18, color: AppColors.primaryText),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),

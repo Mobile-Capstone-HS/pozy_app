@@ -47,6 +47,10 @@ class _MainShellState extends State<MainShell> {
       _editorKey++;
       _currentIndex = 4;
     });
+    // 한 프레임 후 소비 완료 — EditorScreen initState에서 이미 캡처됨
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _pendingEditorFuture = null;
+    });
   }
 
   Future<void> _openCamera() async {
@@ -85,9 +89,7 @@ class _MainShellState extends State<MainShell> {
         final future = _pendingEditorFuture;
         if (future != null) {
           Future.microtask(() {
-            if (mounted) {
-              setState(() => _pendingEditorFuture = null);
-            }
+            if (mounted) setState(() => _pendingEditorFuture = null);
           });
         }
         return EditorScreen(
@@ -108,10 +110,12 @@ class _MainShellState extends State<MainShell> {
     }
     return Scaffold(
       body: _buildPage(_currentIndex),
-      bottomNavigationBar: AppBottomNav(
-        currentIndex: _currentIndex,
-        onTap: goToTab,
-      ),
+      bottomNavigationBar: _currentIndex == 0
+          ? null
+          : AppBottomNav(
+              currentIndex: _currentIndex,
+              onTap: goToTab,
+            ),
     );
   }
 }

@@ -74,18 +74,19 @@ class _ComparisonViewState extends State<ComparisonView> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Container(
-                      width: 2,
-                      height: widget.height * 0.35,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(1),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Color(0x40000000),
-                            blurRadius: 4,
-                          ),
-                        ],
+                    Expanded(
+                      child: Container(
+                        width: 2,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(1),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0x40000000),
+                              blurRadius: 4,
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -109,18 +110,19 @@ class _ComparisonViewState extends State<ComparisonView> {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Container(
-                      width: 2,
-                      height: widget.height * 0.35,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(1),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Color(0x40000000),
-                            blurRadius: 4,
-                          ),
-                        ],
+                    Expanded(
+                      child: Container(
+                        width: 2,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(1),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0x40000000),
+                              blurRadius: 4,
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ],

@@ -14,92 +14,88 @@ class AppBottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final textScale = MediaQuery.textScalerOf(context).scale(1);
+    final isCompact = MediaQuery.sizeOf(context).width < 360 || textScale > 1.1;
+    final hasSystemNav = MediaQuery.paddingOf(context).bottom > 0;
+    final bottomPadding = hasSystemNav ? 4.0 : (isCompact ? 10.0 : 14.0);
+
     const items = [
-      _NavItem(icon: Icons.home_outlined, activeIcon: Icons.home, label: 'Home'),
-      _NavItem(icon: Icons.image_outlined, activeIcon: Icons.image, label: 'Gallery'),
-      _NavItem(icon: Icons.camera_alt_outlined, activeIcon: Icons.camera_alt, label: 'Camera'),
-      _NavItem(icon: Icons.content_cut_outlined, activeIcon: Icons.content_cut, label: 'Best Cut'),
-      _NavItem(icon: Icons.auto_awesome_outlined, activeIcon: Icons.auto_awesome, label: 'Editor'),
+      _NavItemData(icon: Icons.home_outlined, activeIcon: Icons.home, label: 'Home'),
+      _NavItemData(icon: Icons.image_outlined, activeIcon: Icons.image, label: 'Gallery'),
+      _NavItemData(icon: Icons.camera_alt_outlined, activeIcon: Icons.camera_alt, label: 'Camera'),
+      _NavItemData(icon: Icons.content_cut_outlined, activeIcon: Icons.content_cut, label: 'Best Cut'),
+      _NavItemData(icon: Icons.auto_awesome_outlined, activeIcon: Icons.auto_awesome, label: 'Editor'),
     ];
 
     return SafeArea(
       top: false,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final textScale = MediaQuery.textScalerOf(context).scale(1);
-          final isCompact = constraints.maxWidth < 360 || textScale > 1.1;
-          final bottomPadding = MediaQuery.paddingOf(context).bottom > 0
-              ? 10.0
-              : (isCompact ? 10.0 : 14.0);
-
-          return Container(
-            padding: EdgeInsets.fromLTRB(
-              isCompact ? 6 : 8,
-              isCompact ? 6 : 8,
-              isCompact ? 6 : 8,
-              bottomPadding,
-            ),
-            decoration: const BoxDecoration(
-              color: AppColors.surface,
-              border: Border(
-                top: BorderSide(color: AppColors.border),
-              ),
-            ),
-            child: Row(
-              children: List.generate(items.length, (index) {
-                final selected = currentIndex == index;
-                final item = items[index];
-                final color = selected ? Colors.black : const Color(0xFFB8C0CC);
-
-                return Expanded(
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(14),
-                    onTap: () => onTap(index),
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: isCompact ? 2 : 4,
-                        vertical: 4,
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            selected ? item.activeIcon : item.icon,
-                            size: isCompact ? 20 : 22,
-                            color: color,
-                          ),
-                          SizedBox(height: isCompact ? 3 : 4),
-                          Text(
-                            item.label,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.center,
-                            style: AppTextStyles.nav11.copyWith(
-                              color: color,
-                              fontSize: isCompact ? 10 : 11,
-                              height: 1.1,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+      child: Container(
+        padding: EdgeInsets.fromLTRB(
+          isCompact ? 6 : 8,
+          isCompact ? 4 : 6,
+          isCompact ? 6 : 8,
+          bottomPadding,
+        ),
+        decoration: const BoxDecoration(
+          color: AppColors.surface,
+          border: Border(top: BorderSide(color: AppColors.border)),
+        ),
+        child: SizedBox(
+          height: 72,
+          child: Row(
+          children: List.generate(items.length, (index) {
+            final selected = currentIndex == index;
+            final item = items[index];
+            final color = selected ? Colors.black : const Color(0xFFB8C0CC);
+            return Expanded(
+              child: InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: () => onTap(index),
+                child: Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isCompact ? 2 : 4,
+                    vertical: 4,
                   ),
-                );
-              }),
-            ),
-          );
-        },
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        selected ? item.activeIcon : item.icon,
+                        size: isCompact ? 20 : 22,
+                        color: color,
+                      ),
+                      SizedBox(height: isCompact ? 3 : 4),
+                      Text(
+                        item.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: AppTextStyles.nav11.copyWith(
+                          color: color,
+                          fontSize: isCompact ? 10 : 11,
+                          height: 1.1,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }),
+          ),
+        ),
       ),
     );
   }
 }
 
-class _NavItem {
+class _NavItemData {
   final IconData icon;
   final IconData activeIcon;
   final String label;
 
-  const _NavItem({
+  const _NavItemData({
     required this.icon,
     required this.activeIcon,
     required this.label,

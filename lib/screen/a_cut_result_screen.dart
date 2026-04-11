@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:photo_manager/photo_manager.dart';
 
+import '../firebase/history_service.dart';
+
 import '../feature/a_cut/layer/evaluation/photo_evaluation_service.dart';
 import '../feature/a_cut/layer/scoring/image_scoring_service.dart';
 import '../feature/a_cut/model/multi_photo_ranking_result.dart';
@@ -93,6 +95,11 @@ class _ACutResultScreenState extends State<ACutResultScreen> {
     setState(() {
       _isScoring = false;
     });
+
+    HistoryService.instance.saveACut(
+      ranking: _ranking,
+      mode: _photoTypeMode.label,
+    );
   }
 
   Future<void> _openDetail(
@@ -109,6 +116,7 @@ class _ACutResultScreenState extends State<ACutResultScreen> {
         builder: (_) => SinglePhotoEvalScreen(
           imageBytes: bytes,
           fileName: scored.fileName,
+          assetId: scored.asset.id,
           evaluationService: _PrecomputedEvalService(scored.evaluation!),
         ),
       ),
@@ -123,6 +131,11 @@ class _ACutResultScreenState extends State<ACutResultScreen> {
       _photoTypeMode = mode;
     });
     _startScoring();
+  }
+
+  void _returnToBestCutMain() {
+    var popCount = 0;
+    Navigator.of(context).popUntil((route) => popCount++ >= 2);
   }
 
   @override
@@ -142,7 +155,8 @@ class _ACutResultScreenState extends State<ACutResultScreen> {
               padding: const EdgeInsets.fromLTRB(18, 10, 18, 0),
               child: AppTopBar(
                 title: 'A컷 추천',
-                onBack: () => Navigator.of(context).pop(),
+                leadingIcon: Icons.home_rounded,
+                onLeadingTap: _returnToBestCutMain,
                 trailingWidth: 90,
                 trailing: GestureDetector(
                   onTap: _isScoring ? null : _startScoring,
