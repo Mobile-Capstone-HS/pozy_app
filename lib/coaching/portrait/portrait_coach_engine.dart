@@ -199,7 +199,7 @@ class PortraitCoachEngine {
         if (yaw == null) return null;
         if (yaw >= 15 && yaw <= 30) {
           return const CoachingResult(
-            message: '렘브란트 조명이에요, 멋진 빛이에요!',
+            message: '사이드 조명이 얼굴에 입체감을 줘요!',
             priority: CoachingPriority.perfect,
             confidence: 0.8,
           );
@@ -246,7 +246,7 @@ class PortraitCoachEngine {
         }
         if (s.lightingConfidence >= 0.6) {
           return const CoachingResult(
-            message: '역광이라 방향을 바꾸거나 림라이트처럼 활용해보세요.',
+            message: '역광이에요. 방향을 바꾸거나, 해를 프레임 밖으로 빼면 플레어를 줄일 수 있어요.',
             priority: CoachingPriority.composition,
             confidence: 0.75,
           );
@@ -315,6 +315,27 @@ class PortraitCoachEngine {
         confidence: 0.65,
         reason: '삼분할 구도가 안정적이에요',
       );
+    }
+
+    // upperBody/waistShot 리딩룸 체크
+    if ((s.shotType == ShotType.upperBody || s.shotType == ShotType.waistShot) &&
+        s.faceYaw != null) {
+      // 얼굴이 오른쪽을 보는데(yaw > 0) 인물이 오른쪽에 치우친 경우
+      if (s.faceYaw! > 10 && s.personCenterX > 0.6) {
+        return const CoachingResult(
+          message: '시선 방향에 여백을 두면 안정적이에요.',
+          priority: CoachingPriority.composition,
+          confidence: 0.68,
+        );
+      }
+      // 얼굴이 왼쪽을 보는데(yaw < 0) 인물이 왼쪽에 치우친 경우
+      if (s.faceYaw! < -10 && s.personCenterX < 0.4) {
+        return const CoachingResult(
+          message: '시선 방향에 여백을 두면 안정적이에요.',
+          priority: CoachingPriority.composition,
+          confidence: 0.68,
+        );
+      }
     }
 
     if (s.shotType == ShotType.environmental) {
@@ -471,7 +492,7 @@ class PortraitCoachEngine {
     if (checkShoulder &&
         s.shoulderAngleDeg != null &&
         s.shoulderConfidence > _minConf) {
-      if (s.shoulderAngleDeg!.abs() < 2) {
+      if (s.shoulderAngleDeg!.abs() < 5) {
         return const CoachingResult(
           message: '어깨를 조금 틀어보세요.',
           priority: CoachingPriority.pose,
@@ -579,6 +600,18 @@ class PortraitCoachEngine {
       return const CoachingResult(
         message: '고개가 많이 기울어 있어요.',
         priority: CoachingPriority.refinement,
+        confidence: 0.7,
+      );
+    }
+
+    // 적절한 얼굴 각도 칭찬 (headShot/closeUp에서)
+    if ((s.shotType == ShotType.headShot || s.shotType == ShotType.closeUp) &&
+        s.faceYaw != null &&
+        s.faceYaw!.abs() >= 15 &&
+        s.faceYaw!.abs() <= 35) {
+      return const CoachingResult(
+        message: '얼굴 각도가 자연스러워요!',
+        priority: CoachingPriority.perfect,
         confidence: 0.7,
       );
     }

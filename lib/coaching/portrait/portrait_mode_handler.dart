@@ -16,7 +16,6 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
-import 'package:image/image.dart' as img;
 import 'package:ultralytics_yolo/yolo.dart';
 
 import 'lighting_classifier.dart';
@@ -78,9 +77,7 @@ class PortraitModeHandler {
 
   // ─── 분석 주기 (최적화: 기존 15/10 → 30/20으로 늘림) ────
   static const double _posePointAlpha = 0.38;
-  static const int _lightingEveryN = 30;
   static const int _faceEveryN = 20;
-  static const double _lightingMinConf = 0.5;
 
   // ─── 메시지 안정화 ────────────────────────────────
   static const int _stabilityThreshold = 5;
@@ -540,133 +537,6 @@ class PortraitModeHandler {
     );
   }
 
-  // ─── 비동기 분석 스케줄러 (captureFrame 공유) ──────────
-
-  void _scheduleAnalysis(
-    Future<Uint8List?> Function() captureFrame,
-    YOLOResult mainPerson,
-    Offset? nose,
-    Offset? lEye,
-    Offset? rEye,
-    Offset? lShoulder,
-    Offset? rShoulder,
-  ) {
-    final needLighting =
-        _lightingClassifier.isLoaded &&
-        !_isAnalyzing &&
-        _frameCount % _lightingEveryN == 0;
-    final needFace = !_isAnalyzing && _frameCount % _faceEveryN == 0;
-
-    if (!needLighting && !needFace) return;
-
-    _isAnalyzing = true;
-
-    unawaited(() async {
-      try {
-        // captureFrame 한 번만 호출
-        final bytes = await captureFrame();
-        if (bytes == null || bytes.isEmpty) return;
-
-        // 조명 분석
-        if (needLighting) {
-          await _analyzeLight(
-            bytes,
-            mainPerson,
-            nose,
-            lEye,
-            rEye,
-            lShoulder,
-            rShoulder,
-          );
-        }
-
-        // 얼굴 분석
-        if (needFace) {
-          await _analyzeFace(bytes);
-        }
-      } catch (e) {
-        debugPrint('[PORTRAIT] analysis error=$e');
-      } finally {
-        _isAnalyzing = false;
-      }
-    }());
-  }
-
-  Future<void> _analyzeLight(
-    Uint8List bytes,
-    YOLOResult mainPerson,
-    Offset? nose,
-    Offset? lEye,
-    Offset? rEye,
-    Offset? lShoulder,
-    Offset? rShoulder,
-  ) async {
-    try {
-      final decoded = img.decodeImage(bytes);
-      if (decoded == null) return;
-
-      final baked = img.bakeOrientation(decoded);
-
-      final faceRect = _estimateFaceRect(
-        personBox: Rect.fromLTRB(
-          mainPerson.normalizedBox.left,
-          mainPerson.normalizedBox.top,
-          mainPerson.normalizedBox.right,
-          mainPerson.normalizedBox.bottom,
-        ),
-        nose: nose,
-        leftEye: lEye,
-        rightEye: rEye,
-        leftShoulder: lShoulder,
-        rightShoulder: rShoulder,
-      );
-
-      // 최적화: 전체 이미지를 luminance 변환하지 않고
-      // 얼굴 영역만 크롭 → 224x224 리사이즈 → 작은 이미지에서 luminance
-      final fx = (faceRect.left * baked.width).round().clamp(
-        0,
-        baked.width - 1,
-      );
-      final fy = (faceRect.top * baked.height).round().clamp(
-        0,
-        baked.height - 1,
-      );
-      final fw = (faceRect.width * baked.width).round().clamp(
-        1,
-        baked.width - fx,
-      );
-      final fh = (faceRect.height * baked.height).round().clamp(
-        1,
-        baked.height - fy,
-      );
-
-      final faceCrop = img.copyCrop(baked, x: fx, y: fy, width: fw, height: fh);
-      final resized = img.copyResize(faceCrop, width: 224, height: 224);
-
-      // 224x224 작은 이미지에서만 luminance → 5만 픽셀 (기존 400만에서 80배 감소)
-      final lum = _toLuminance(resized);
-      final crop = _lightingClassifier.prepareFaceCrop(
-        imageBytes: lum,
-        imageWidth: 224,
-        imageHeight: 224,
-        faceLeft: 0.0,
-        faceTop: 0.0,
-        faceWidth: 1.0,
-        faceHeight: 1.0,
-      );
-      if (crop == null) return;
-
-      final r = _lightingClassifier.classify(crop);
-      final cond = r.confidence >= _lightingMinConf
-          ? r.condition
-          : LightingCondition.unknown;
-      lastLighting = cond;
-      lastLightingConf = cond == LightingCondition.unknown ? 0.0 : r.confidence;
-    } catch (e) {
-      debugPrint('[LIGHT] error=$e');
-    }
-  }
-
   Future<void> _analyzeFace(Uint8List bytes) async {
     try {
       final tempFile = File('${Directory.systemTemp.path}/pozy_face.jpg');
@@ -931,21 +801,6 @@ class PortraitModeHandler {
     }
   }
 
-  Uint8List _toLuminance(img.Image image) {
-    final out = Uint8List(image.width * image.height);
-    var i = 0;
-    for (int y = 0; y < image.height; y++) {
-      for (int x = 0; x < image.width; x++) {
-        final p = image.getPixel(x, y);
-        out[i++] = (0.299 * p.r + 0.587 * p.g + 0.114 * p.b).round().clamp(
-          0,
-          255,
-        );
-      }
-    }
-    return out;
-  }
-
   CoachingResult _stabilize(CoachingResult c) {
     if (c.priority == CoachingPriority.critical) {
       stableMessage = c.message;
@@ -961,9 +816,15 @@ class PortraitModeHandler {
       _pendingMessage = c.message;
       _pendingCount = 1;
     }
-    final threshold = _stableCoaching.priority == CoachingPriority.perfect
-        ? _stabilityThreshold + 2
-        : _stabilityThreshold;
+    final int threshold;
+    if (_stableCoaching.priority == CoachingPriority.perfect) {
+      threshold = _stabilityThreshold + 2; // perfect에서 벗어나려면 7프레임
+    } else if (_stableCoaching.priority == CoachingPriority.critical &&
+               c.priority != CoachingPriority.critical) {
+      threshold = _stabilityThreshold - 2; // critical에서 벗어날 때 3프레임 (빠른 응답)
+    } else {
+      threshold = _stabilityThreshold; // 기본 5프레임
+    }
     if (_pendingCount >= threshold) {
       stableMessage = _pendingMessage;
       _stableCoaching = CoachingResult(

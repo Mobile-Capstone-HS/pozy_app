@@ -5,8 +5,6 @@
 /// 3클래스: normal_light / side_light / back_light
 library;
 
-import 'dart:typed_data';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_litert/flutter_litert.dart';
