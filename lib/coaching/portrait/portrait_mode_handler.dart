@@ -16,6 +16,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
+import 'package:image/image.dart' as img;
 import 'package:ultralytics_yolo/yolo.dart';
 
 import 'lighting_classifier.dart';
@@ -77,7 +78,9 @@ class PortraitModeHandler {
 
   // ─── 분석 주기 (최적화: 기존 15/10 → 30/20으로 늘림) ────
   static const double _posePointAlpha = 0.38;
+  static const int _lightingEveryN = 30;
   static const int _faceEveryN = 20;
+  static const double _lightingMinConf = 0.5;
 
   // ─── 메시지 안정화 ────────────────────────────────
   static const int _stabilityThreshold = 5;
@@ -183,7 +186,9 @@ class PortraitModeHandler {
       final tmp = rawYaw;
       rawYaw = -rawRoll;
       rawRoll = tmp;
-    } else if (deviceOrientationDeg == 270 && rawYaw != null && rawRoll != null) {
+    } else if (deviceOrientationDeg == 270 &&
+        rawYaw != null &&
+        rawRoll != null) {
       final tmp = rawYaw;
       rawYaw = rawRoll;
       rawRoll = -tmp;
@@ -192,22 +197,17 @@ class PortraitModeHandler {
     _faceYaw = _smoothMetric(_faceYaw, rawYaw);
     _facePitch = _smoothMetric(_facePitch, rawPitch);
     _faceRoll = _smoothMetric(_faceRoll, rawRoll);
-    _leftEyeOpen = _smoothMetric(
-      _leftEyeOpen,
-      metrics['portraitLeftEyeOpen'],
-    );
+    _leftEyeOpen = _smoothMetric(_leftEyeOpen, metrics['portraitLeftEyeOpen']);
     _rightEyeOpen = _smoothMetric(
       _rightEyeOpen,
       metrics['portraitRightEyeOpen'],
     );
-    _smileProb = _smoothMetric(
-      _smileProb,
-      metrics['portraitSmileProbability'],
-    );
+    _smileProb = _smoothMetric(_smileProb, metrics['portraitSmileProbability']);
 
     final lightingCode = metrics['portraitLightingCode'];
     lastLighting = _lightingFromCode(lightingCode);
-    lastLightingConf = _smoothMetric(
+    lastLightingConf =
+        _smoothMetric(
           lastLightingConf == 0.0 ? null : lastLightingConf,
           metrics['portraitLightingConfidence'],
         ) ??
@@ -217,7 +217,6 @@ class PortraitModeHandler {
   // ─── 메인 처리 ────────────────────────────────────
 
   PortraitAnalysisResult processResults(List<YOLOResult> results) {
-
     final persons = results
         .where((r) => r.className.toLowerCase() == 'person')
         .toList();
@@ -267,10 +266,11 @@ class PortraitModeHandler {
 
     if (isGroupShot) {
       // 면적 기준으로 정렬해 메인 다음으로 큰 인물과 크기 비율 계산
-      final areas = persons
-          .map((p) => p.normalizedBox.width * p.normalizedBox.height)
-          .toList()
-        ..sort((a, b) => b.compareTo(a));
+      final areas =
+          persons
+              .map((p) => p.normalizedBox.width * p.normalizedBox.height)
+              .toList()
+            ..sort((a, b) => b.compareTo(a));
       final mainArea = main.normalizedBox.width * main.normalizedBox.height;
       final secondArea = areas.length > 1 ? areas[1] : 0.0;
       secondPersonSizeRatio = mainArea > 0 ? secondArea / mainArea : 0.0;
@@ -295,15 +295,27 @@ class PortraitModeHandler {
     final lShoulder = _smoothedKp(main, PoseKeypointIndex.leftShoulder);
     final rShoulder = _smoothedKp(main, PoseKeypointIndex.rightShoulder);
     final lElbow = _smoothedKp(main, PoseKeypointIndex.leftElbow, minConf: 0.3);
-    final rElbow = _smoothedKp(main, PoseKeypointIndex.rightElbow, minConf: 0.3);
+    final rElbow = _smoothedKp(
+      main,
+      PoseKeypointIndex.rightElbow,
+      minConf: 0.3,
+    );
     final lWrist = _smoothedKp(main, PoseKeypointIndex.leftWrist, minConf: 0.3);
-    final rWrist = _smoothedKp(main, PoseKeypointIndex.rightWrist, minConf: 0.3);
+    final rWrist = _smoothedKp(
+      main,
+      PoseKeypointIndex.rightWrist,
+      minConf: 0.3,
+    );
     final lHip = _smoothedKp(main, PoseKeypointIndex.leftHip, minConf: 0.3);
     final rHip = _smoothedKp(main, PoseKeypointIndex.rightHip, minConf: 0.3);
     final lKnee = _smoothedKp(main, PoseKeypointIndex.leftKnee, minConf: 0.3);
     final rKnee = _smoothedKp(main, PoseKeypointIndex.rightKnee, minConf: 0.3);
     final lAnkle = _smoothedKp(main, PoseKeypointIndex.leftAnkle, minConf: 0.3);
-    final rAnkle = _smoothedKp(main, PoseKeypointIndex.rightAnkle, minConf: 0.3);
+    final rAnkle = _smoothedKp(
+      main,
+      PoseKeypointIndex.rightAnkle,
+      minConf: 0.3,
+    );
 
     // ─── 비동기 분석 (조명 + 얼굴, captureFrame 공유) ─────
     // 어깨 각도
@@ -537,6 +549,133 @@ class PortraitModeHandler {
     );
   }
 
+  // ─── 비동기 분석 스케줄러 (captureFrame 공유) ──────────
+
+  void _scheduleAnalysis(
+    Future<Uint8List?> Function() captureFrame,
+    YOLOResult mainPerson,
+    Offset? nose,
+    Offset? lEye,
+    Offset? rEye,
+    Offset? lShoulder,
+    Offset? rShoulder,
+  ) {
+    final needLighting =
+        _lightingClassifier.isLoaded &&
+        !_isAnalyzing &&
+        _frameCount % _lightingEveryN == 0;
+    final needFace = !_isAnalyzing && _frameCount % _faceEveryN == 0;
+
+    if (!needLighting && !needFace) return;
+
+    _isAnalyzing = true;
+
+    unawaited(() async {
+      try {
+        // captureFrame 한 번만 호출
+        final bytes = await captureFrame();
+        if (bytes == null || bytes.isEmpty) return;
+
+        // 조명 분석
+        if (needLighting) {
+          await _analyzeLight(
+            bytes,
+            mainPerson,
+            nose,
+            lEye,
+            rEye,
+            lShoulder,
+            rShoulder,
+          );
+        }
+
+        // 얼굴 분석
+        if (needFace) {
+          await _analyzeFace(bytes);
+        }
+      } catch (e) {
+        debugPrint('[PORTRAIT] analysis error=$e');
+      } finally {
+        _isAnalyzing = false;
+      }
+    }());
+  }
+
+  Future<void> _analyzeLight(
+    Uint8List bytes,
+    YOLOResult mainPerson,
+    Offset? nose,
+    Offset? lEye,
+    Offset? rEye,
+    Offset? lShoulder,
+    Offset? rShoulder,
+  ) async {
+    try {
+      final decoded = img.decodeImage(bytes);
+      if (decoded == null) return;
+
+      final baked = img.bakeOrientation(decoded);
+
+      final faceRect = _estimateFaceRect(
+        personBox: Rect.fromLTRB(
+          mainPerson.normalizedBox.left,
+          mainPerson.normalizedBox.top,
+          mainPerson.normalizedBox.right,
+          mainPerson.normalizedBox.bottom,
+        ),
+        nose: nose,
+        leftEye: lEye,
+        rightEye: rEye,
+        leftShoulder: lShoulder,
+        rightShoulder: rShoulder,
+      );
+
+      // 최적화: 전체 이미지를 luminance 변환하지 않고
+      // 얼굴 영역만 크롭 → 224x224 리사이즈 → 작은 이미지에서 luminance
+      final fx = (faceRect.left * baked.width).round().clamp(
+        0,
+        baked.width - 1,
+      );
+      final fy = (faceRect.top * baked.height).round().clamp(
+        0,
+        baked.height - 1,
+      );
+      final fw = (faceRect.width * baked.width).round().clamp(
+        1,
+        baked.width - fx,
+      );
+      final fh = (faceRect.height * baked.height).round().clamp(
+        1,
+        baked.height - fy,
+      );
+
+      final faceCrop = img.copyCrop(baked, x: fx, y: fy, width: fw, height: fh);
+      final resized = img.copyResize(faceCrop, width: 224, height: 224);
+
+      // 224x224 작은 이미지에서만 luminance → 5만 픽셀 (기존 400만에서 80배 감소)
+      final lum = _toLuminance(resized);
+      final crop = _lightingClassifier.prepareFaceCrop(
+        imageBytes: lum,
+        imageWidth: 224,
+        imageHeight: 224,
+        faceLeft: 0.0,
+        faceTop: 0.0,
+        faceWidth: 1.0,
+        faceHeight: 1.0,
+      );
+      if (crop == null) return;
+
+      final r = _lightingClassifier.classify(crop);
+      final cond = r.confidence >= _lightingMinConf
+          ? r.condition
+          : LightingCondition.unknown;
+      lastLighting = cond;
+      lastLightingConf = cond == LightingCondition.unknown ? 0.0 : r.confidence;
+    } catch (e) {
+      debugPrint('[LIGHT] error=$e');
+    }
+  }
+
   Future<void> _analyzeFace(Uint8List bytes) async {
     try {
       final tempFile = File('${Directory.systemTemp.path}/pozy_face.jpg');
@@ -548,11 +687,13 @@ class PortraitModeHandler {
         // 가장 큰 얼굴을 메인으로 사용
         final mainFace = faces.length == 1
             ? faces.first
-            : faces.reduce((a, b) =>
-                (a.boundingBox.width * a.boundingBox.height) >=
+            : faces.reduce(
+                (a, b) =>
+                    (a.boundingBox.width * a.boundingBox.height) >=
                         (b.boundingBox.width * b.boundingBox.height)
                     ? a
-                    : b);
+                    : b,
+              );
 
         _faceYaw = mainFace.headEulerAngleY;
         _facePitch = mainFace.headEulerAngleX;
@@ -801,6 +942,21 @@ class PortraitModeHandler {
     }
   }
 
+  Uint8List _toLuminance(img.Image image) {
+    final out = Uint8List(image.width * image.height);
+    var i = 0;
+    for (int y = 0; y < image.height; y++) {
+      for (int x = 0; x < image.width; x++) {
+        final p = image.getPixel(x, y);
+        out[i++] = (0.299 * p.r + 0.587 * p.g + 0.114 * p.b).round().clamp(
+          0,
+          255,
+        );
+      }
+    }
+    return out;
+  }
+
   CoachingResult _stabilize(CoachingResult c) {
     if (c.priority == CoachingPriority.critical) {
       stableMessage = c.message;
@@ -816,15 +972,9 @@ class PortraitModeHandler {
       _pendingMessage = c.message;
       _pendingCount = 1;
     }
-    final int threshold;
-    if (_stableCoaching.priority == CoachingPriority.perfect) {
-      threshold = _stabilityThreshold + 2; // perfect에서 벗어나려면 7프레임
-    } else if (_stableCoaching.priority == CoachingPriority.critical &&
-               c.priority != CoachingPriority.critical) {
-      threshold = _stabilityThreshold - 2; // critical에서 벗어날 때 3프레임 (빠른 응답)
-    } else {
-      threshold = _stabilityThreshold; // 기본 5프레임
-    }
+    final threshold = _stableCoaching.priority == CoachingPriority.perfect
+        ? _stabilityThreshold + 2
+        : _stabilityThreshold;
     if (_pendingCount >= threshold) {
       stableMessage = _pendingMessage;
       _stableCoaching = CoachingResult(
@@ -892,6 +1042,9 @@ class PortraitModeHandler {
 
   bool _isAtEdge(Offset? p, {double margin = 0.03}) {
     if (p == null) return false;
-    return p.dx < margin || p.dx > 1 - margin || p.dy < margin || p.dy > 1 - margin;
+    return p.dx < margin ||
+        p.dx > 1 - margin ||
+        p.dy < margin ||
+        p.dy > 1 - margin;
   }
 }
