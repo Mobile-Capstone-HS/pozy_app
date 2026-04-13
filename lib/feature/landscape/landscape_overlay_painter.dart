@@ -12,8 +12,8 @@ class LandscapeCompositionOverlayPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final gridPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.82)
-      ..strokeWidth = 1.6
+      ..color = const Color(0x33FFFFFF)
+      ..strokeWidth = 1.0
       ..strokeCap = StrokeCap.round;
 
     final dx1 = size.width / 3;

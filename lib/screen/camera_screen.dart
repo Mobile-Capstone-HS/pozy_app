@@ -28,6 +28,7 @@ import 'package:pose_camera_app/coaching/portrait/portrait_scene_state.dart'
     as portrait;
 import 'package:pose_camera_app/coaching/subject/subject_detection.dart'
     show detectModelPath, detectionConfidenceThreshold;
+import 'package:pose_camera_app/feature/landscape/landscape_overlay_painter.dart';
 import 'package:pose_camera_app/segmentation/composition_engine.dart';
 import 'package:pose_camera_app/segmentation/composition_resolver.dart';
 import 'package:pose_camera_app/segmentation/composition_summary.dart';
@@ -135,7 +136,6 @@ class _CameraScreenState extends State<CameraScreen> {
   /// 사용자가 상단 selector에서 선택한 구도 규칙. 인물/객체 모드에서만 사용.
   CompositionRuleType _selectedRule = CompositionRuleType.none;
   CompositionRule get _activeRule => CompositionRuleRegistry.of(_selectedRule);
-
   @override
   void initState() {
     super.initState();
@@ -1130,7 +1130,6 @@ class _CameraScreenState extends State<CameraScreen> {
   Widget _buildCameraPreview() {
     if (_isLandscapeMode) {
       return FastScnnView(
-        key: ValueKey('fastscnn_${_isFrontCamera ? 'front' : 'back'}'),
         controller: _landscapeController,
         frameSkipLevel: 2,
         inferenceIntervalMs: 220,
@@ -1139,6 +1138,16 @@ class _CameraScreenState extends State<CameraScreen> {
         onZoomChanged: (zoomLevel) {
           if (!mounted) return;
           setState(() => _currentZoom = zoomLevel);
+        },
+        overlayBuilder: (context, frame) {
+          return IgnorePointer(
+            child: CustomPaint(
+              painter: LandscapeSegmentationDotPainter(
+                result: frame?.result ?? _landscapeSegmentation,
+              ),
+              size: Size.infinite,
+            ),
+          );
         },
       );
     }
@@ -1266,6 +1275,10 @@ class _CameraScreenState extends State<CameraScreen> {
                 painter: _isPortraitMode
                     ? PortraitOverlayPainter(
                         data: _portraitOverlayData.copyWithRule(_activeRule),
+                      )
+                    : _isLandscapeMode
+                    ? LandscapeCompositionOverlayPainter(
+                        decision: _landscapeDecision,
                       )
                     : CompositionGridPainter(rule: _activeRule),
                 size: Size.infinite,
@@ -1421,17 +1434,16 @@ class _CameraScreenState extends State<CameraScreen> {
               ),
             ),
             // 수평 지시선 — 항상 화면 중앙에 표시
-            if (!_isLandscapeMode)
-              Center(
-                child: IgnorePointer(
-                  child: HorizonLevelIndicator(
-                    tiltDeg: _tiltX,
-                    isLevel: _gravX.abs() > _gravY.abs()
-                        ? (_tiltX.abs() - 90.0).abs() < 2.0
-                        : _tiltX.abs() < 2.0,
-                  ),
+            Center(
+              child: IgnorePointer(
+                child: HorizonLevelIndicator(
+                  tiltDeg: _tiltX,
+                  isLevel: _gravX.abs() > _gravY.abs()
+                      ? (_tiltX.abs() - 90.0).abs() < 2.0
+                      : _tiltX.abs() < 2.0,
                 ),
               ),
+            ),
             if (_countdown > 0)
               Center(
                 child: Text(
