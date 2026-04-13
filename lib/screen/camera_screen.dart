@@ -134,8 +134,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
   /// 사용자가 상단 selector에서 선택한 구도 규칙. 인물/객체 모드에서만 사용.
   CompositionRuleType _selectedRule = CompositionRuleType.none;
-  CompositionRule get _activeRule =>
-      CompositionRuleRegistry.of(_selectedRule);
+  CompositionRule get _activeRule => CompositionRuleRegistry.of(_selectedRule);
 
   @override
   void initState() {
@@ -151,17 +150,19 @@ class _CameraScreenState extends State<CameraScreen> {
       if (!mounted) return;
 
       try {
-        debugPrint('[CameraScreen] restartCamera start');
+        debugPrint('[YOLO_DEBUG][startup] restartCamera start');
         await _cameraController.restartCamera();
-        debugPrint('[CameraScreen] restartCamera done');
+        debugPrint('[YOLO_DEBUG][startup] restartCamera done');
         await _cameraController.setZoomLevel(_selectedZoom);
-        debugPrint('[CameraScreen] setZoomLevel done zoom=$_selectedZoom');
+        debugPrint(
+          '[YOLO_DEBUG][startup] setZoomLevel done zoom=$_selectedZoom',
+        );
         await _configureZoomPresets();
         debugPrint(
-          '[CameraScreen] configureZoomPresets done presets=$_zoomPresets',
+          '[YOLO_DEBUG][startup] configureZoomPresets done presets=$_zoomPresets',
         );
       } catch (error, stackTrace) {
-        debugPrint('[CameraScreen] startup error: $error');
+        debugPrint('[YOLO_DEBUG][startup] startup error: $error');
         debugPrintStack(stackTrace: stackTrace);
       }
     });
@@ -601,7 +602,14 @@ class _CameraScreenState extends State<CameraScreen> {
     return bestMatch;
   }
 
+  int _yoloDebugObjFrame = 0;
   void _handleDetections(List<YOLOResult> results) {
+    if (++_yoloDebugObjFrame % 30 == 1) {
+      debugPrint(
+        '[YOLO_DEBUG][obj] cb#$_yoloDebugObjFrame results=${results.length} '
+        'mode=${_shootingMode.name} mounted=$mounted',
+      );
+    }
     if (!mounted || !_isObjectMode) return;
     _latestRawDetections = results;
     final filteredResults = _filterResultsForMode(results);
@@ -707,7 +715,17 @@ class _CameraScreenState extends State<CameraScreen> {
     return 0; // 세로
   }
 
+  int _yoloDebugPoseFrame = 0;
   void _handlePoseDetections(List<YOLOResult> results) {
+    if (++_yoloDebugPoseFrame % 30 == 1) {
+      final personCount = results
+          .where((r) => r.className.toLowerCase() == 'person')
+          .length;
+      debugPrint(
+        '[YOLO_DEBUG][pose] cb#$_yoloDebugPoseFrame results=${results.length} '
+        'persons=$personCount mode=${_shootingMode.name} mounted=$mounted',
+      );
+    }
     if (!mounted || !_isPortraitMode) return;
 
     _portraitHandler.deviceOrientationDeg = _deviceOrientationDeg;
@@ -1323,7 +1341,7 @@ class _CameraScreenState extends State<CameraScreen> {
                 ),
               ),
             Positioned(
-              top: 64,
+              top: 108,
               right: 12,
               child: IgnorePointer(
                 child: CoachingSpeechBubble(
