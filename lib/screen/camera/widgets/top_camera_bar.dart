@@ -3,7 +3,10 @@ import 'package:flutter/material.dart';
 import 'glass_icon_button.dart';
 
 /// 카메라 화면 상단의 공용 컨트롤 바.
-/// - 뒤로가기, ROI 잠금(객체 모드), 플래시, 타이머
+/// - 왼쪽: 뒤로가기 + (선택) badge 슬롯 (예: 인물 모드 배지)
+/// - 오른쪽: ROI 잠금(객체 모드) / 플래시 / 타이머
+///
+/// 각 우측 기능은 해당 모드에서 의미가 없으면 콜백을 `null`로 두어 숨긴다.
 class TopCameraBar extends StatelessWidget {
   final VoidCallback onBack;
   final bool torchOn;
@@ -13,6 +16,9 @@ class TopCameraBar extends StatelessWidget {
   final bool isDrawingRoi;
   final bool isRoiLocked;
   final VoidCallback? onToggleRoiLock;
+
+  /// 뒤로가기 오른쪽에 표시할 배지(예: `PortraitBadge`). 없으면 Spacer만 들어간다.
+  final Widget? badge;
 
   const TopCameraBar({
     super.key,
@@ -24,6 +30,7 @@ class TopCameraBar extends StatelessWidget {
     required this.isDrawingRoi,
     required this.isRoiLocked,
     required this.onToggleRoiLock,
+    this.badge,
   });
 
   @override
@@ -40,8 +47,13 @@ class TopCameraBar extends StatelessWidget {
         : null;
 
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         GlassIconButton(icon: Icons.arrow_back_ios_new_rounded, onTap: onBack),
+        if (badge != null) ...[
+          const SizedBox(width: 10),
+          badge!,
+        ],
         const Spacer(),
         if (onToggleRoiLock != null) ...[
           GlassIconButton(

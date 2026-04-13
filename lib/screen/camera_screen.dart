@@ -12,7 +12,7 @@ import 'package:ultralytics_yolo/yolo_view.dart';
 import 'package:pose_camera_app/coaching/coaching_result.dart';
 import 'package:pose_camera_app/screen/camera/shooting_mode.dart';
 import 'package:pose_camera_app/screen/camera/widgets/bottom_camera_controls.dart';
-import 'package:pose_camera_app/screen/camera/widgets/portrait_top_bar.dart';
+import 'package:pose_camera_app/screen/camera/widgets/portrait_badge.dart';
 import 'package:pose_camera_app/screen/camera/widgets/roi_painter.dart';
 import 'package:pose_camera_app/screen/camera/widgets/thirds_grid_painter.dart';
 import 'package:pose_camera_app/screen/camera/widgets/top_camera_bar.dart';
@@ -1142,14 +1142,6 @@ class _CameraScreenState extends State<CameraScreen> {
     );
   }
 
-  Widget _buildPortraitTopBar() {
-    return PortraitTopBar(
-      onBack: widget.onBack,
-      isFrontCamera: _isFrontCamera,
-      currentZoom: _currentZoom,
-    );
-  }
-
   CoachingLevel _portraitCoachingLevel() {
     return switch (_portraitCoaching.priority) {
       portrait.CoachingPriority.perfect => CoachingLevel.good,
@@ -1341,20 +1333,24 @@ class _CameraScreenState extends State<CameraScreen> {
               top: 8,
               left: 16,
               right: 16,
-              child: _isPortraitMode
-                  ? _buildPortraitTopBar()
-                  : TopCameraBar(
-                      onBack: widget.onBack,
-                      torchOn: _torchOn,
-                      onToggleTorch: (_isFrontCamera || _isLandscapeMode)
-                          ? null
-                          : _toggleTorch,
-                      timerSeconds: _timerSeconds,
-                      onCycleTimer: _cycleTimer,
-                      isDrawingRoi: _isDrawingRoi,
-                      isRoiLocked: _lockedRoi != null,
-                      onToggleRoiLock: _isObjectMode ? _toggleRoiLock : null,
-                    ),
+              child: TopCameraBar(
+                onBack: widget.onBack,
+                torchOn: _torchOn,
+                onToggleTorch: (_isFrontCamera || _isLandscapeMode)
+                    ? null
+                    : _toggleTorch,
+                timerSeconds: _timerSeconds,
+                onCycleTimer: _cycleTimer,
+                isDrawingRoi: _isDrawingRoi,
+                isRoiLocked: _lockedRoi != null,
+                onToggleRoiLock: _isObjectMode ? _toggleRoiLock : null,
+                badge: _isPortraitMode
+                    ? PortraitBadge(
+                        isFrontCamera: _isFrontCamera,
+                        currentZoom: _currentZoom,
+                      )
+                    : null,
+              ),
             ),
             Positioned(
               left: 0,
