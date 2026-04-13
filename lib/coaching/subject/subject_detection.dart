@@ -116,10 +116,7 @@ class SubjectCategorySmoother {
 
   SubjectCategory? _stableCategory;
 
-  SubjectCategorySmoother({
-    this.alpha = 0.35,
-    this.switchMargin = 1.15,
-  });
+  SubjectCategorySmoother({this.alpha = 0.35, this.switchMargin = 1.15});
 
   SubjectCategory update(Map<SubjectCategory, double> currentScores) {
     for (final category in SubjectCategory.values) {
@@ -163,16 +160,12 @@ class SubjectCategorySmoother {
 
 /// 간단 테스트용 전역 smoother
 /// 실제 앱에서는 Camera 화면의 State 안에서 1번만 생성해서 유지하는 걸 추천
-final SubjectCategorySmoother subjectCategorySmoother =
-    SubjectCategorySmoother(
+final SubjectCategorySmoother subjectCategorySmoother = SubjectCategorySmoother(
   alpha: 0.35,
   switchMargin: 1.15,
 );
 
-SubjectTarget? selectSubjectTarget(
-  List<YOLOResult> results,
-  Size screenSize,
-) {
+SubjectTarget? selectSubjectTarget(List<YOLOResult> results, Size screenSize) {
   final analysis = _analyzeFrame(
     results,
     screenSize,
@@ -180,14 +173,14 @@ SubjectTarget? selectSubjectTarget(
   );
   if (analysis == null) return null;
 
-  final stableCategory =
-      subjectCategorySmoother.update(analysis.categoryScores);
+  final stableCategory = subjectCategorySmoother.update(
+    analysis.categoryScores,
+  );
 
   final representativeCandidates = analysis.detections.where((d) {
     if (d.primaryCategory != stableCategory) return false;
 
-    final area =
-        d.result.normalizedBox.width * d.result.normalizedBox.height;
+    final area = d.result.normalizedBox.width * d.result.normalizedBox.height;
 
     if (area < _minAreaForRepresentativeBox(d.primaryCategory)) {
       return false;
@@ -197,10 +190,7 @@ SubjectTarget? selectSubjectTarget(
     final centerY = d.boundingBox.center.dy / screenSize.height;
 
     // 화면 중앙 위주의 객체만 대표 박스로 허용
-    if (centerX < 0.18 ||
-        centerX > 0.82 ||
-        centerY < 0.18 ||
-        centerY > 0.82) {
+    if (centerX < 0.18 || centerX > 0.82 || centerY < 0.18 || centerY > 0.82) {
       return false;
     }
 
@@ -209,8 +199,7 @@ SubjectTarget? selectSubjectTarget(
 
   if (representativeCandidates.isEmpty) {
     final fallbackCandidates = analysis.detections.where((d) {
-      final area =
-          d.result.normalizedBox.width * d.result.normalizedBox.height;
+      final area = d.result.normalizedBox.width * d.result.normalizedBox.height;
       if (area < 0.015) return false;
 
       final centerX = d.boundingBox.center.dx / screenSize.width;
@@ -224,8 +213,7 @@ SubjectTarget? selectSubjectTarget(
       }
 
       return true;
-    }).toList()
-      ..sort((a, b) => b.detectionScore.compareTo(a.detectionScore));
+    }).toList()..sort((a, b) => b.detectionScore.compareTo(a.detectionScore));
 
     if (fallbackCandidates.isEmpty) {
       final allSorted = analysis.detections.toList()
@@ -313,9 +301,9 @@ List<SubjectTarget> collectSubjectTargets(
 
 _FrameAnalysisResult? _analyzeFrame(
   List<YOLOResult> results,
-  Size screenSize,
-  {required bool restrictToFocusRegion}
-) {
+  Size screenSize, {
+  required bool restrictToFocusRegion,
+}) {
   if (results.isEmpty) return null;
 
   final scoredDetections = <_ScoredDetection>[];
@@ -414,8 +402,8 @@ double _computeBaseDetectionScore({
   // 가장자리 강한 패널티
   final edgePenalty =
       (centerX < 0.12 || centerX > 0.88 || centerY < 0.12 || centerY > 0.88)
-          ? 0.35
-          : 1.0;
+      ? 0.35
+      : 1.0;
 
   final areaWeight = math.sqrt(areaNorm);
 
@@ -517,9 +505,7 @@ Map<SubjectCategory, double> _categoryContribution(String className) {
 
   switch (normalized) {
     case 'person':
-      return {
-        SubjectCategory.person: 1.0,
-      };
+      return {SubjectCategory.person: 1.0};
 
     case 'apple':
     case 'banana':
@@ -531,9 +517,7 @@ Map<SubjectCategory, double> _categoryContribution(String className) {
     case 'orange':
     case 'pizza':
     case 'sandwich':
-      return {
-        SubjectCategory.food: 1.0,
-      };
+      return {SubjectCategory.food: 1.0};
 
     case 'bowl':
     case 'cup':
@@ -541,22 +525,13 @@ Map<SubjectCategory, double> _categoryContribution(String className) {
     case 'knife':
     case 'spoon':
     case 'wine glass':
-      return {
-        SubjectCategory.food: 0.55,
-        SubjectCategory.object: 0.45,
-      };
+      return {SubjectCategory.food: 0.55, SubjectCategory.object: 0.45};
 
     case 'bottle':
-      return {
-        SubjectCategory.food: 0.35,
-        SubjectCategory.object: 0.65,
-      };
+      return {SubjectCategory.food: 0.35, SubjectCategory.object: 0.65};
 
     case 'dining table':
-      return {
-        SubjectCategory.food: 0.35,
-        SubjectCategory.object: 0.80,
-      };
+      return {SubjectCategory.food: 0.35, SubjectCategory.object: 0.80};
 
     case 'bear':
     case 'bird':
@@ -568,14 +543,10 @@ Map<SubjectCategory, double> _categoryContribution(String className) {
     case 'horse':
     case 'sheep':
     case 'zebra':
-      return {
-        SubjectCategory.animal: 1.0,
-      };
+      return {SubjectCategory.animal: 1.0};
 
     case 'potted plant':
-      return {
-        SubjectCategory.plant: 1.0,
-      };
+      return {SubjectCategory.plant: 1.0};
 
     case 'airplane':
     case 'bicycle':
@@ -585,9 +556,7 @@ Map<SubjectCategory, double> _categoryContribution(String className) {
     case 'motorcycle':
     case 'train':
     case 'truck':
-      return {
-        SubjectCategory.vehicle: 1.0,
-      };
+      return {SubjectCategory.vehicle: 1.0};
 
     case 'cell phone':
     case 'keyboard':
@@ -599,15 +568,9 @@ Map<SubjectCategory, double> _categoryContribution(String className) {
     case 'remote':
     case 'toaster':
     case 'tv':
-      return {
-        SubjectCategory.electronics: 1.0,
-        SubjectCategory.object: 0.25,
-      };
+      return {SubjectCategory.electronics: 1.0, SubjectCategory.object: 0.25};
 
     default:
-      return {
-        SubjectCategory.object: 1.0,
-      };
+      return {SubjectCategory.object: 1.0};
   }
 }
-
