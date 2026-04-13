@@ -1141,11 +1141,22 @@ class _CameraScreenState extends State<CameraScreen> {
         },
         overlayBuilder: (context, frame) {
           return IgnorePointer(
-            child: CustomPaint(
-              painter: LandscapeSegmentationDotPainter(
-                result: frame?.result ?? _landscapeSegmentation,
-              ),
-              size: Size.infinite,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                CustomPaint(
+                  painter: LandscapeSegmentationDotPainter(
+                    result: frame?.result ?? _landscapeSegmentation,
+                  ),
+                  size: Size.infinite,
+                ),
+                CustomPaint(
+                  painter: LandscapeCompositionOverlayPainter(
+                    decision: _landscapeDecision,
+                  ),
+                  size: Size.infinite,
+                ),
+              ],
             ),
           );
         },
@@ -1277,9 +1288,7 @@ class _CameraScreenState extends State<CameraScreen> {
                         data: _portraitOverlayData.copyWithRule(_activeRule),
                       )
                     : _isLandscapeMode
-                    ? LandscapeCompositionOverlayPainter(
-                        decision: _landscapeDecision,
-                      )
+                    ? null
                     : CompositionGridPainter(rule: _activeRule),
                 size: Size.infinite,
               ),

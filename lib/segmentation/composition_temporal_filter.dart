@@ -64,6 +64,11 @@ class CompositionTemporalFilter {
           : (prev.horizonThirdDistance == null
                 ? raw.horizonThirdDistance
                 : ema(prev.horizonThirdDistance!, raw.horizonThirdDistance!)),
+      horizonDetected: raw.horizonDetected || prev.horizonDetected,
+      horizonType: raw.horizonConfidence >= prev.horizonConfidence
+          ? raw.horizonType
+          : prev.horizonType,
+      boundaryPoints: _smoothBoundaryPoints(prev.boundaryPoints, raw.boundaryPoints),
     );
 
     _smoothed = smoothed;
@@ -101,5 +106,25 @@ class CompositionTemporalFilter {
     }
 
     return stable;
+  }
+
+  List<HorizonBoundaryPoint> _smoothBoundaryPoints(
+    List<HorizonBoundaryPoint> previous,
+    List<HorizonBoundaryPoint> current,
+  ) {
+    if (previous.isEmpty) return current;
+    if (current.isEmpty) return previous;
+    if (previous.length != current.length) {
+      return current.length >= previous.length ? current : previous;
+    }
+
+    return List<HorizonBoundaryPoint>.generate(previous.length, (index) {
+      final prev = previous[index];
+      final next = current[index];
+      return HorizonBoundaryPoint(
+        xNorm: next.xNorm,
+        yNorm: prev.yNorm * (1 - alpha) + next.yNorm * alpha,
+      );
+    }, growable: false);
   }
 }
