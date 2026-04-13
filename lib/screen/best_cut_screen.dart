@@ -1,17 +1,77 @@
-import 'package:flutter/material.dart';
+import 'dart:typed_data';
 
+import 'package:flutter/material.dart';
+import 'package:gal/gal.dart';
+import 'package:photo_manager/photo_manager.dart';
+
+import '../feature/a_cut/model/photo_type_mode.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
+import 'a_cut_result_screen.dart';
 import 'best_cut_gallery_screen.dart';
+import 'camera_screen.dart';
 import 'history_screen.dart';
 
 const _kBlue = Color(0xFF64B5F6);
 
-class BestCutScreen extends StatelessWidget {
+class BestCutScreen extends StatefulWidget {
   final ValueChanged<int> onMoveTab;
   final VoidCallback? onBack;
 
   const BestCutScreen({super.key, required this.onMoveTab, this.onBack});
+
+  @override
+  State<BestCutScreen> createState() => _BestCutScreenState();
+}
+
+class _BestCutScreenState extends State<BestCutScreen> {
+  Future<void> _openCameraForEval() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (routeContext) => CameraScreen(
+          onMoveTab: (_) {},
+          onBack: () => Navigator.of(routeContext).pop(),
+          onCapture: (Uint8List bytes) async {
+            // 갤러리에 저장
+            final name = 'pozy_${DateTime.now().millisecondsSinceEpoch}';
+            await Gal.putImageBytes(bytes, name: name);
+            // 갤러리 인덱싱 대기
+            await Future<void>.delayed(const Duration(milliseconds: 600));
+
+            final permission = await PhotoManager.requestPermissionExtend();
+            if (!permission.hasAccess || !routeContext.mounted) return;
+
+            final albums = await PhotoManager.getAssetPathList(
+              type: RequestType.image,
+              filterOption: FilterOptionGroup(
+                orders: [
+                  const OrderOption(
+                    type: OrderOptionType.createDate,
+                    asc: false,
+                  ),
+                ],
+              ),
+            );
+            if (albums.isEmpty || !routeContext.mounted) return;
+
+            final recent =
+                await albums.first.getAssetListRange(start: 0, end: 1);
+            if (recent.isEmpty || !routeContext.mounted) return;
+
+            // 카메라 화면을 ACutResultScreen으로 교체
+            Navigator.of(routeContext).pushReplacement(
+              MaterialPageRoute<void>(
+                builder: (_) => ACutResultScreen(
+                  selectedAssets: recent,
+                  initialPhotoTypeMode: PhotoTypeMode.auto,
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -152,7 +212,7 @@ class BestCutScreen extends StatelessWidget {
                 _OutlineButton(
                   height: btnHeight,
                   icon: Icons.photo_library_outlined,
-                  label: '갤러리에서 여러 장 분석하기',
+                  label: '갤러리에서 분석하기',
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
                       builder: (_) => const BestCutGalleryScreen(),
@@ -164,7 +224,7 @@ class BestCutScreen extends StatelessWidget {
                   height: btnHeight,
                   icon: Icons.camera_alt_outlined,
                   label: '카메라로 촬영해 한 장 평가하기',
-                  onTap: () => onMoveTab(2),
+                  onTap: _openCameraForEval,
                 ),
               ],
             ),

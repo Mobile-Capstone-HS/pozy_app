@@ -99,6 +99,43 @@ class _SinglePhotoEvalScreenState extends State<SinglePhotoEvalScreen> {
                     : null,
               ),
             ),
+            if (_loading) ...[
+              const SizedBox(height: 12),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Text('분석 진행: 0/1', style: AppTextStyles.body13),
+                        const Spacer(),
+                        const Text(
+                          '0%',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.primaryText,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(999),
+                      child: const LinearProgressIndicator(
+                        minHeight: 8,
+                        value: null,
+                        backgroundColor: AppColors.track,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          AppColors.primaryText,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+            ],
             Expanded(
               child: _loading
                   ? _LoadingView(fileName: widget.fileName)
@@ -124,20 +161,42 @@ class _LoadingView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const CircularProgressIndicator(
-            strokeWidth: 2.5,
-            color: AppColors.primaryText,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            boxShadow: AppShadows.card,
           ),
-          const SizedBox(height: 20),
-          Text('사진을 평가하는 중이에요', style: AppTextStyles.title16),
-          if (fileName != null) ...[
-            const SizedBox(height: 6),
-            Text(fileName!, style: AppTextStyles.body13),
-          ],
-        ],
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(
+                strokeWidth: 2.5,
+                color: AppColors.primaryText,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                '사진을 평가하는 중이에요',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.primaryText,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                fileName ?? 'AI가 구도, 밝기, 미적 완성도를 분석하고 있어요.',
+                style: AppTextStyles.body13,
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
