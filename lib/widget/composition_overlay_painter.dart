@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../composition/composition_rule.dart';
+import '../composition/composition_rule_registry.dart';
 import '../models/composition_candidate.dart';
 import '../services/composition_feedback_service.dart';
 
@@ -14,6 +16,9 @@ class CompositionOverlayPainter extends CustomPainter {
   /// Rendered below the main debug label when non-null.
   final String? scorerDebug;
 
+  /// 사용자가 선택한 구도 규칙. null이면 기존 3분할 격자.
+  final CompositionRule? activeRule;
+
   static const Color _guideColor = Color(0x66FFFFFF);
   static const Color _almostColor = Color(0xFFFFD700);
   static const Color _goodColor = Color(0xFF4ADE80);
@@ -25,6 +30,7 @@ class CompositionOverlayPainter extends CustomPainter {
     this.showDebug = false,
     this.tiltAngle,
     this.scorerDebug,
+    this.activeRule,
   });
 
   @override
@@ -60,7 +66,7 @@ class CompositionOverlayPainter extends CustomPainter {
       _drawDimming(canvas, size, px);
       _drawCropBorder(canvas, px, feedbackColor, strokeWidth);
       _drawCornerBrackets(canvas, px, feedbackColor, strokeWidth);
-      _drawThirdsGrid(canvas, px, feedbackColor.withAlpha(76)); // 0.3 * 255 = 76.5
+      _drawCompositionGrid(canvas, px, feedbackColor.withAlpha(76)); // 0.3 * 255 = 76.5
 
       if (showDebug) {
         _drawDebugLabel(canvas, px, active, feedback);
@@ -139,18 +145,10 @@ class CompositionOverlayPainter extends CustomPainter {
         Offset(rect.right, rect.bottom - len), paint);
   }
 
-  void _drawThirdsGrid(Canvas canvas, Rect rect, Color color) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = 0.8;
-    final dx1 = rect.left + rect.width / 3;
-    final dx2 = rect.left + rect.width * 2 / 3;
-    final dy1 = rect.top + rect.height / 3;
-    final dy2 = rect.top + rect.height * 2 / 3;
-    canvas.drawLine(Offset(dx1, rect.top), Offset(dx1, rect.bottom), paint);
-    canvas.drawLine(Offset(dx2, rect.top), Offset(dx2, rect.bottom), paint);
-    canvas.drawLine(Offset(rect.left, dy1), Offset(rect.right, dy1), paint);
-    canvas.drawLine(Offset(rect.left, dy2), Offset(rect.right, dy2), paint);
+  void _drawCompositionGrid(Canvas canvas, Rect rect, Color color) {
+    final rule = activeRule ??
+        CompositionRuleRegistry.of(CompositionRuleType.ruleOfThirds);
+    rule.paintOverlay(canvas, rect, color: color, strokeWidth: 0.8);
   }
 
   void _drawDebugLabel(
@@ -213,6 +211,7 @@ class CompositionOverlayPainter extends CustomPainter {
         old.feedback != feedback ||
         old.showDebug != showDebug ||
         old.tiltAngle != tiltAngle ||
-        old.scorerDebug != scorerDebug;
+        old.scorerDebug != scorerDebug ||
+        old.activeRule?.type != activeRule?.type;
   }
 }

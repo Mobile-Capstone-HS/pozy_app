@@ -10,11 +10,14 @@ import 'package:ultralytics_yolo/yolo_streaming_config.dart';
 import 'package:ultralytics_yolo/yolo_view.dart';
 
 import 'package:pose_camera_app/coaching/coaching_result.dart';
+import 'package:pose_camera_app/composition/composition_rule.dart';
+import 'package:pose_camera_app/composition/composition_rule_registry.dart';
 import 'package:pose_camera_app/screen/camera/shooting_mode.dart';
 import 'package:pose_camera_app/screen/camera/widgets/bottom_camera_controls.dart';
+import 'package:pose_camera_app/screen/camera/widgets/composition_grid_painter.dart';
+import 'package:pose_camera_app/screen/camera/widgets/composition_rule_selector.dart';
 import 'package:pose_camera_app/screen/camera/widgets/portrait_badge.dart';
 import 'package:pose_camera_app/screen/camera/widgets/roi_painter.dart';
-import 'package:pose_camera_app/screen/camera/widgets/thirds_grid_painter.dart';
 import 'package:pose_camera_app/screen/camera/widgets/top_camera_bar.dart';
 import 'package:pose_camera_app/widget/coaching_interface.dart';
 import 'package:pose_camera_app/widget/horizon_level_indicator.dart';
@@ -128,6 +131,11 @@ class _CameraScreenState extends State<CameraScreen> {
   bool get _isPortraitMode => _shootingMode == ShootingMode.person;
   bool get _isLandscapeMode => _shootingMode == ShootingMode.landscape;
   bool get _isObjectMode => _shootingMode == ShootingMode.object;
+
+  /// 사용자가 상단 selector에서 선택한 구도 규칙. 인물/객체 모드에서만 사용.
+  CompositionRuleType _selectedRule = CompositionRuleType.none;
+  CompositionRule get _activeRule =>
+      CompositionRuleRegistry.of(_selectedRule);
 
   @override
   void initState() {
@@ -1238,8 +1246,10 @@ class _CameraScreenState extends State<CameraScreen> {
             IgnorePointer(
               child: CustomPaint(
                 painter: _isPortraitMode
-                    ? PortraitOverlayPainter(data: _portraitOverlayData)
-                    : const ThirdsGridPainter(),
+                    ? PortraitOverlayPainter(
+                        data: _portraitOverlayData.copyWithRule(_activeRule),
+                      )
+                    : CompositionGridPainter(rule: _activeRule),
                 size: Size.infinite,
               ),
             ),
@@ -1352,6 +1362,23 @@ class _CameraScreenState extends State<CameraScreen> {
                     : null,
               ),
             ),
+            // 구도 규칙 selector — 인물/객체 모드만. 풍경은 자동 감지 사용.
+            if (!_isLandscapeMode)
+              Positioned(
+                top: 60,
+                left: 0,
+                right: 0,
+                child: CompositionRuleSelector(
+                  selected: _selectedRule,
+                  onChanged: (type) {
+                    if (type == _selectedRule) return;
+                    setState(() => _selectedRule = type);
+                    // Phase 4에서 코칭 엔진에도 전달.
+                    _sceneCoach.setRule(_activeRule);
+                    _portraitHandler.setRule(_activeRule);
+                  },
+                ),
+              ),
             Positioned(
               left: 0,
               right: 0,

@@ -19,6 +19,7 @@ import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:image/image.dart' as img;
 import 'package:ultralytics_yolo/yolo.dart';
 
+import '../../composition/composition_rule.dart';
 import 'lighting_classifier.dart';
 import 'portrait_coach_engine.dart';
 import 'portrait_overlay_painter.dart';
@@ -139,6 +140,11 @@ class PortraitModeHandler {
     debugPrint(
       '[PORTRAIT] init done, lighting=${_lightingClassifier.isLoaded}',
     );
+  }
+
+  /// 사용자가 상단 selector에서 선택한 구도 규칙을 코칭 엔진에 전달.
+  void setRule(CompositionRule rule) {
+    _coachEngine.setRule(rule);
   }
 
   void dispose() {
