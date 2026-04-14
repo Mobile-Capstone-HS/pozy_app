@@ -5,8 +5,8 @@ import 'package:photo_manager/photo_manager.dart';
 
 import '../firebase/history_service.dart';
 
+import '../feature/a_cut/layer/evaluation/hybrid_photo_evaluation_service.dart';
 import '../feature/a_cut/layer/evaluation/photo_evaluation_service.dart';
-import '../services/gemini_analysis_service.dart';
 import '../feature/a_cut/layer/scoring/image_scoring_service.dart';
 import '../feature/a_cut/model/multi_photo_ranking_result.dart';
 import '../feature/a_cut/model/photo_evaluation_result.dart';
@@ -36,7 +36,7 @@ class _ACutResultScreenState extends State<ACutResultScreen> {
   static const double _defaultTopPercent = 0.2;
 
   final ImageScoreService _scoreService = OnDeviceImageScoreService(
-    evaluationService: GeminiPhotoEvaluationService(),
+    evaluationService: HybridPhotoEvaluationService(),
   );
 
   MultiPhotoRankingResult _ranking = const MultiPhotoRankingResult.empty();

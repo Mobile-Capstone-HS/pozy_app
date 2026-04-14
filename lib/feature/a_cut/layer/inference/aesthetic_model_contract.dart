@@ -371,7 +371,31 @@ const List<AestheticModelContract> defaultTechnicalModelContracts = [
   fliveImageMobileContract,
 ];
 
+// Legacy placeholder — asset file does not exist. Use activeAadbContract instead.
 const List<AestheticModelContract> futureAestheticModelContracts = [
   aadbMobileContract,
   nimaMobileContract,
+];
+
+/// AADB student-distilled model that is actually present in assets.
+/// Input : 224×224, float32, RGB÷255, NHWC
+/// Output: [1,1] float32 scalar in [0,1] (sigmoid, higher = better aesthetics)
+const AestheticModelContract activeAadbContract = AestheticModelContract(
+  id: 'aadb_mobile',
+  label: 'AADB',
+  assetPath:
+      'assets/models/stage5_student_full_aadb_aesthetic_mobile_fp32.tflite',
+  dimension: ModelScoreDimension.aesthetic,
+  inputWidth: 224,
+  inputHeight: 224,
+  expectedOutputLength: 1,
+  normalization: ImageNormalization.zeroToOne,
+  outputType: AestheticModelOutputType.scalarUnitInterval,
+  weight: 1.0,
+  useFlexDelegate: false,
+);
+
+/// The aesthetic models that are active in the current build.
+const List<AestheticModelContract> defaultAestheticModelContracts = [
+  activeAadbContract,
 ];

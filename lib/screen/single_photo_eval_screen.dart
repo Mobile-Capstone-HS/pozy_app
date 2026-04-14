@@ -2,8 +2,8 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../feature/a_cut/layer/evaluation/hybrid_photo_evaluation_service.dart';
 import '../feature/a_cut/layer/evaluation/photo_evaluation_service.dart';
-import '../services/gemini_analysis_service.dart';
 import '../feature/a_cut/model/model_score_detail.dart';
 import '../feature/a_cut/model/photo_evaluation_result.dart';
 import '../firebase/history_service.dart';
@@ -41,7 +41,7 @@ class _SinglePhotoEvalScreenState extends State<SinglePhotoEvalScreen> {
   void initState() {
     super.initState();
     _evaluationService =
-        widget.evaluationService ?? GeminiPhotoEvaluationService();
+        widget.evaluationService ?? HybridPhotoEvaluationService();
     _evaluate();
   }
 
@@ -297,9 +297,13 @@ class _ResultView extends StatelessWidget {
               text: '현재 단일 사진 평가는 온디바이스 품질 결과를 중심으로 간단히 요약해 보여줘요.',
             ),
           ],
-          if (result.detailedExplanation != null && result.detailedExplanation!.isNotEmpty) ...[
+          if ((result.shortExplanation?.isNotEmpty ?? false) ||
+              (result.detailedExplanation?.isNotEmpty ?? false)) ...[
             const SizedBox(height: 16),
-            _ExplanationSection(text: result.detailedExplanation!),
+            _ExplanationSection(
+              shortText: result.shortExplanation,
+              detailedText: result.detailedExplanation,
+            ),
           ],
           if (result.scoreDetails.isNotEmpty) ...[
             const SizedBox(height: 16),
@@ -850,9 +854,10 @@ class _ChipSection extends StatelessWidget {
 }
 
 class _ExplanationSection extends StatelessWidget {
-  final String text;
+  const _ExplanationSection({this.shortText, this.detailedText});
 
-  const _ExplanationSection({required this.text});
+  final String? shortText;
+  final String? detailedText;
 
   @override
   Widget build(BuildContext context) {
@@ -867,9 +872,13 @@ class _ExplanationSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: const [
-              Icon(Icons.auto_awesome_rounded, size: 16, color: Color(0xFF4F46E5)),
+          const Row(
+            children: [
+              Icon(
+                Icons.auto_awesome_rounded,
+                size: 16,
+                color: Color(0xFF4F46E5),
+              ),
               SizedBox(width: 6),
               Text(
                 'AI 상세 분석',
@@ -881,16 +890,29 @@ class _ExplanationSection extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          Text(
-            text,
-            style: const TextStyle(
-              fontSize: 14,
-              height: 1.6,
-              fontWeight: FontWeight.w600,
-              color: AppColors.primaryText,
+          if (shortText?.isNotEmpty ?? false) ...[
+            const SizedBox(height: 10),
+            Text(
+              shortText!,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                color: AppColors.primaryText,
+              ),
             ),
-          ),
+          ],
+          if (detailedText?.isNotEmpty ?? false) ...[
+            const SizedBox(height: 8),
+            Text(
+              detailedText!,
+              style: const TextStyle(
+                fontSize: 14,
+                height: 1.6,
+                fontWeight: FontWeight.w600,
+                color: AppColors.primaryText,
+              ),
+            ),
+          ],
         ],
       ),
     );
