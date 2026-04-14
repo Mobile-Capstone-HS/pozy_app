@@ -1,0 +1,349 @@
+{
+  "checkpoint_dir": "/home/omen_pc1/photo_score_project/checkpoints/student_full_aadb",
+  "tflite_path": "/home/omen_pc1/photo_score_project/exports/tflite/stage5_student_full_aadb_aesthetic_mobile_fp32.tflite",
+  "num_images": 15,
+  "image_paths": [
+    "/home/omen_pc1/photo_score_project/test_samples/KakaoTalk_20260330_180646779.jpg",
+    "/home/omen_pc1/photo_score_project/test_samples/KakaoTalk_20260330_180646779_01.jpg",
+    "/home/omen_pc1/photo_score_project/test_samples/KakaoTalk_20260330_180646779_02.jpg",
+    "/home/omen_pc1/photo_score_project/test_samples/KakaoTalk_20260330_180646779_03.jpg",
+    "/home/omen_pc1/photo_score_project/test_samples/KakaoTalk_20260330_180646779_04.jpg",
+    "/home/omen_pc1/photo_score_project/test_samples/KakaoTalk_20260330_180646779_05.jpg",
+    "/home/omen_pc1/photo_score_project/test_samples/KakaoTalk_20260330_180646779_06.jpg",
+    "/home/omen_pc1/photo_score_project/test_samples/KakaoTalk_20260330_180646779_07.jpg",
+    "/home/omen_pc1/photo_score_project/test_samples/KakaoTalk_20260330_180646779_08.jpg",
+    "/home/omen_pc1/photo_score_project/test_samples/KakaoTalk_20260330_180646779_09.jpg",
+    "/home/omen_pc1/photo_score_project/test_samples/KakaoTalk_20260330_180646779_10.jpg",
+    "/home/omen_pc1/photo_score_project/test_samples/KakaoTalk_20260330_180646779_11.jpg",
+    "/home/omen_pc1/photo_score_project/test_samples/KakaoTalk_20260330_180646779_12.jpg",
+    "/home/omen_pc1/photo_score_project/test_samples/KakaoTalk_20260330_180646779_13.jpg",
+    "/home/omen_pc1/photo_score_project/test_samples/KakaoTalk_20260330_180646779_14.jpg"
+  ],
+  "input_details": [
+    {
+      "name": "serving_default_image:0",
+      "shape": [
+        1,
+        224,
+        224,
+        3
+      ],
+      "shape_signature": [
+        -1,
+        224,
+        224,
+        3
+      ],
+      "dtype": "float32",
+      "index": 0
+    }
+  ],
+  "output_details": [
+    {
+      "name": "StatefulPartitionedCall_1:0",
+      "shape": [
+        1,
+        1
+      ],
+      "shape_signature": [
+        -1,
+        1
+      ],
+      "dtype": "float32",
+      "index": 175
+    }
+  ],
+  "score_ranges": {
+    "keras": {
+      "min": 0.36232811212539673,
+      "max": 0.4907769560813904
+    },
+    "saved_model": {
+      "min": 0.36232811212539673,
+      "max": 0.4907769560813904
+    },
+    "tflite": {
+      "min": 0.3610103726387024,
+      "max": 0.49159136414527893
+    }
+  },
+  "diff_summary": {
+    "tflite_vs_keras": {
+      "max_abs_diff": 0.0028714239597320557,
+      "mean_abs_diff": 0.0007897258037701249,
+      "p95_abs_diff": 0.0017838447820395231
+    },
+    "tflite_vs_saved_model": {
+      "max_abs_diff": 0.0028714239597320557,
+      "mean_abs_diff": 0.0007897258037701249,
+      "p95_abs_diff": 0.0017838447820395231
+    },
+    "keras_vs_saved_model": {
+      "max_abs_diff": 0.0,
+      "mean_abs_diff": 0.0,
+      "p95_abs_diff": 0.0
+    }
+  },
+  "ranking_summary": {
+    "tflite_vs_keras": {
+      "reference_order": [
+        "KakaoTalk_20260330_180646779_10.jpg",
+        "KakaoTalk_20260330_180646779_12.jpg",
+        "KakaoTalk_20260330_180646779_07.jpg",
+        "KakaoTalk_20260330_180646779_08.jpg",
+        "KakaoTalk_20260330_180646779_11.jpg",
+        "KakaoTalk_20260330_180646779_06.jpg",
+        "KakaoTalk_20260330_180646779_02.jpg",
+        "KakaoTalk_20260330_180646779_01.jpg",
+        "KakaoTalk_20260330_180646779.jpg",
+        "KakaoTalk_20260330_180646779_13.jpg",
+        "KakaoTalk_20260330_180646779_09.jpg",
+        "KakaoTalk_20260330_180646779_05.jpg",
+        "KakaoTalk_20260330_180646779_04.jpg",
+        "KakaoTalk_20260330_180646779_14.jpg",
+        "KakaoTalk_20260330_180646779_03.jpg"
+      ],
+      "candidate_order": [
+        "KakaoTalk_20260330_180646779_10.jpg",
+        "KakaoTalk_20260330_180646779_12.jpg",
+        "KakaoTalk_20260330_180646779_07.jpg",
+        "KakaoTalk_20260330_180646779_08.jpg",
+        "KakaoTalk_20260330_180646779_11.jpg",
+        "KakaoTalk_20260330_180646779_06.jpg",
+        "KakaoTalk_20260330_180646779_02.jpg",
+        "KakaoTalk_20260330_180646779_01.jpg",
+        "KakaoTalk_20260330_180646779.jpg",
+        "KakaoTalk_20260330_180646779_13.jpg",
+        "KakaoTalk_20260330_180646779_09.jpg",
+        "KakaoTalk_20260330_180646779_05.jpg",
+        "KakaoTalk_20260330_180646779_04.jpg",
+        "KakaoTalk_20260330_180646779_14.jpg",
+        "KakaoTalk_20260330_180646779_03.jpg"
+      ],
+      "exact_match": true,
+      "top_1_match": true,
+      "top_5_match": true,
+      "spearman_rank_corr": 1.0,
+      "pairwise_order_agreement": 1.0
+    },
+    "tflite_vs_saved_model": {
+      "reference_order": [
+        "KakaoTalk_20260330_180646779_10.jpg",
+        "KakaoTalk_20260330_180646779_12.jpg",
+        "KakaoTalk_20260330_180646779_07.jpg",
+        "KakaoTalk_20260330_180646779_08.jpg",
+        "KakaoTalk_20260330_180646779_11.jpg",
+        "KakaoTalk_20260330_180646779_06.jpg",
+        "KakaoTalk_20260330_180646779_02.jpg",
+        "KakaoTalk_20260330_180646779_01.jpg",
+        "KakaoTalk_20260330_180646779.jpg",
+        "KakaoTalk_20260330_180646779_13.jpg",
+        "KakaoTalk_20260330_180646779_09.jpg",
+        "KakaoTalk_20260330_180646779_05.jpg",
+        "KakaoTalk_20260330_180646779_04.jpg",
+        "KakaoTalk_20260330_180646779_14.jpg",
+        "KakaoTalk_20260330_180646779_03.jpg"
+      ],
+      "candidate_order": [
+        "KakaoTalk_20260330_180646779_10.jpg",
+        "KakaoTalk_20260330_180646779_12.jpg",
+        "KakaoTalk_20260330_180646779_07.jpg",
+        "KakaoTalk_20260330_180646779_08.jpg",
+        "KakaoTalk_20260330_180646779_11.jpg",
+        "KakaoTalk_20260330_180646779_06.jpg",
+        "KakaoTalk_20260330_180646779_02.jpg",
+        "KakaoTalk_20260330_180646779_01.jpg",
+        "KakaoTalk_20260330_180646779.jpg",
+        "KakaoTalk_20260330_180646779_13.jpg",
+        "KakaoTalk_20260330_180646779_09.jpg",
+        "KakaoTalk_20260330_180646779_05.jpg",
+        "KakaoTalk_20260330_180646779_04.jpg",
+        "KakaoTalk_20260330_180646779_14.jpg",
+        "KakaoTalk_20260330_180646779_03.jpg"
+      ],
+      "exact_match": true,
+      "top_1_match": true,
+      "top_5_match": true,
+      "spearman_rank_corr": 1.0,
+      "pairwise_order_agreement": 1.0
+    },
+    "keras_vs_saved_model": {
+      "reference_order": [
+        "KakaoTalk_20260330_180646779_10.jpg",
+        "KakaoTalk_20260330_180646779_12.jpg",
+        "KakaoTalk_20260330_180646779_07.jpg",
+        "KakaoTalk_20260330_180646779_08.jpg",
+        "KakaoTalk_20260330_180646779_11.jpg",
+        "KakaoTalk_20260330_180646779_06.jpg",
+        "KakaoTalk_20260330_180646779_02.jpg",
+        "KakaoTalk_20260330_180646779_01.jpg",
+        "KakaoTalk_20260330_180646779.jpg",
+        "KakaoTalk_20260330_180646779_13.jpg",
+        "KakaoTalk_20260330_180646779_09.jpg",
+        "KakaoTalk_20260330_180646779_05.jpg",
+        "KakaoTalk_20260330_180646779_04.jpg",
+        "KakaoTalk_20260330_180646779_14.jpg",
+        "KakaoTalk_20260330_180646779_03.jpg"
+      ],
+      "candidate_order": [
+        "KakaoTalk_20260330_180646779_10.jpg",
+        "KakaoTalk_20260330_180646779_12.jpg",
+        "KakaoTalk_20260330_180646779_07.jpg",
+        "KakaoTalk_20260330_180646779_08.jpg",
+        "KakaoTalk_20260330_180646779_11.jpg",
+        "KakaoTalk_20260330_180646779_06.jpg",
+        "KakaoTalk_20260330_180646779_02.jpg",
+        "KakaoTalk_20260330_180646779_01.jpg",
+        "KakaoTalk_20260330_180646779.jpg",
+        "KakaoTalk_20260330_180646779_13.jpg",
+        "KakaoTalk_20260330_180646779_09.jpg",
+        "KakaoTalk_20260330_180646779_05.jpg",
+        "KakaoTalk_20260330_180646779_04.jpg",
+        "KakaoTalk_20260330_180646779_14.jpg",
+        "KakaoTalk_20260330_180646779_03.jpg"
+      ],
+      "exact_match": true,
+      "top_1_match": true,
+      "top_5_match": true,
+      "spearman_rank_corr": 1.0,
+      "pairwise_order_agreement": 1.0
+    }
+  },
+  "per_image": [
+    {
+      "image_path": "/home/omen_pc1/photo_score_project/test_samples/KakaoTalk_20260330_180646779.jpg",
+      "keras_score": 0.4407505691051483,
+      "saved_model_score": 0.4407505691051483,
+      "tflite_score": 0.43787914514541626,
+      "abs_diff_tflite_vs_keras": 0.0028714239597320557,
+      "abs_diff_tflite_vs_saved_model": 0.0028714239597320557,
+      "abs_diff_keras_vs_saved_model": 0.0
+    },
+    {
+      "image_path": "/home/omen_pc1/photo_score_project/test_samples/KakaoTalk_20260330_180646779_01.jpg",
+      "keras_score": 0.4422273337841034,
+      "saved_model_score": 0.4422273337841034,
+      "tflite_score": 0.44268685579299927,
+      "abs_diff_tflite_vs_keras": 0.000459522008895874,
+      "abs_diff_tflite_vs_saved_model": 0.000459522008895874,
+      "abs_diff_keras_vs_saved_model": 0.0
+    },
+    {
+      "image_path": "/home/omen_pc1/photo_score_project/test_samples/KakaoTalk_20260330_180646779_02.jpg",
+      "keras_score": 0.44547900557518005,
+      "saved_model_score": 0.44547900557518005,
+      "tflite_score": 0.44531649351119995,
+      "abs_diff_tflite_vs_keras": 0.00016251206398010254,
+      "abs_diff_tflite_vs_saved_model": 0.00016251206398010254,
+      "abs_diff_keras_vs_saved_model": 0.0
+    },
+    {
+      "image_path": "/home/omen_pc1/photo_score_project/test_samples/KakaoTalk_20260330_180646779_03.jpg",
+      "keras_score": 0.36232811212539673,
+      "saved_model_score": 0.36232811212539673,
+      "tflite_score": 0.3610103726387024,
+      "abs_diff_tflite_vs_keras": 0.001317739486694336,
+      "abs_diff_tflite_vs_saved_model": 0.001317739486694336,
+      "abs_diff_keras_vs_saved_model": 0.0
+    },
+    {
+      "image_path": "/home/omen_pc1/photo_score_project/test_samples/KakaoTalk_20260330_180646779_04.jpg",
+      "keras_score": 0.3889073133468628,
+      "saved_model_score": 0.3889073133468628,
+      "tflite_score": 0.3896695077419281,
+      "abs_diff_tflite_vs_keras": 0.0007621943950653076,
+      "abs_diff_tflite_vs_saved_model": 0.0007621943950653076,
+      "abs_diff_keras_vs_saved_model": 0.0
+    },
+    {
+      "image_path": "/home/omen_pc1/photo_score_project/test_samples/KakaoTalk_20260330_180646779_05.jpg",
+      "keras_score": 0.40179958939552307,
+      "saved_model_score": 0.40179958939552307,
+      "tflite_score": 0.40219613909721375,
+      "abs_diff_tflite_vs_keras": 0.00039654970169067383,
+      "abs_diff_tflite_vs_saved_model": 0.00039654970169067383,
+      "abs_diff_keras_vs_saved_model": 0.0
+    },
+    {
+      "image_path": "/home/omen_pc1/photo_score_project/test_samples/KakaoTalk_20260330_180646779_06.jpg",
+      "keras_score": 0.4463489353656769,
+      "saved_model_score": 0.4463489353656769,
+      "tflite_score": 0.4460400640964508,
+      "abs_diff_tflite_vs_keras": 0.0003088712692260742,
+      "abs_diff_tflite_vs_saved_model": 0.0003088712692260742,
+      "abs_diff_keras_vs_saved_model": 0.0
+    },
+    {
+      "image_path": "/home/omen_pc1/photo_score_project/test_samples/KakaoTalk_20260330_180646779_07.jpg",
+      "keras_score": 0.4747915267944336,
+      "saved_model_score": 0.4747915267944336,
+      "tflite_score": 0.47527799010276794,
+      "abs_diff_tflite_vs_keras": 0.0004864633083343506,
+      "abs_diff_tflite_vs_saved_model": 0.0004864633083343506,
+      "abs_diff_keras_vs_saved_model": 0.0
+    },
+    {
+      "image_path": "/home/omen_pc1/photo_score_project/test_samples/KakaoTalk_20260330_180646779_08.jpg",
+      "keras_score": 0.4652916491031647,
+      "saved_model_score": 0.4652916491031647,
+      "tflite_score": 0.46555525064468384,
+      "abs_diff_tflite_vs_keras": 0.00026360154151916504,
+      "abs_diff_tflite_vs_saved_model": 0.00026360154151916504,
+      "abs_diff_keras_vs_saved_model": 0.0
+    },
+    {
+      "image_path": "/home/omen_pc1/photo_score_project/test_samples/KakaoTalk_20260330_180646779_09.jpg",
+      "keras_score": 0.42664119601249695,
+      "saved_model_score": 0.42664119601249695,
+      "tflite_score": 0.42671048641204834,
+      "abs_diff_tflite_vs_keras": 6.92903995513916e-05,
+      "abs_diff_tflite_vs_saved_model": 6.92903995513916e-05,
+      "abs_diff_keras_vs_saved_model": 0.0
+    },
+    {
+      "image_path": "/home/omen_pc1/photo_score_project/test_samples/KakaoTalk_20260330_180646779_10.jpg",
+      "keras_score": 0.4907769560813904,
+      "saved_model_score": 0.4907769560813904,
+      "tflite_score": 0.49159136414527893,
+      "abs_diff_tflite_vs_keras": 0.0008144080638885498,
+      "abs_diff_tflite_vs_saved_model": 0.0008144080638885498,
+      "abs_diff_keras_vs_saved_model": 0.0
+    },
+    {
+      "image_path": "/home/omen_pc1/photo_score_project/test_samples/KakaoTalk_20260330_180646779_11.jpg",
+      "keras_score": 0.46046626567840576,
+      "saved_model_score": 0.46046626567840576,
+      "tflite_score": 0.46171605587005615,
+      "abs_diff_tflite_vs_keras": 0.0012497901916503906,
+      "abs_diff_tflite_vs_saved_model": 0.0012497901916503906,
+      "abs_diff_keras_vs_saved_model": 0.0
+    },
+    {
+      "image_path": "/home/omen_pc1/photo_score_project/test_samples/KakaoTalk_20260330_180646779_12.jpg",
+      "keras_score": 0.49077340960502625,
+      "saved_model_score": 0.49077340960502625,
+      "tflite_score": 0.48951977491378784,
+      "abs_diff_tflite_vs_keras": 0.0012536346912384033,
+      "abs_diff_tflite_vs_saved_model": 0.0012536346912384033,
+      "abs_diff_keras_vs_saved_model": 0.0
+    },
+    {
+      "image_path": "/home/omen_pc1/photo_score_project/test_samples/KakaoTalk_20260330_180646779_13.jpg",
+      "keras_score": 0.4335079789161682,
+      "saved_model_score": 0.4335079789161682,
+      "tflite_score": 0.43270692229270935,
+      "abs_diff_tflite_vs_keras": 0.0008010566234588623,
+      "abs_diff_tflite_vs_saved_model": 0.0008010566234588623,
+      "abs_diff_keras_vs_saved_model": 0.0
+    },
+    {
+      "image_path": "/home/omen_pc1/photo_score_project/test_samples/KakaoTalk_20260330_180646779_14.jpg",
+      "keras_score": 0.3804355263710022,
+      "saved_model_score": 0.3804355263710022,
+      "tflite_score": 0.3798066973686218,
+      "abs_diff_tflite_vs_keras": 0.0006288290023803711,
+      "abs_diff_tflite_vs_saved_model": 0.0006288290023803711,
+      "abs_diff_keras_vs_saved_model": 0.0
+    }
+  ]
+}
