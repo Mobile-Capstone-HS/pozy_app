@@ -1150,12 +1150,6 @@ class _CameraScreenState extends State<CameraScreen> {
                   ),
                   size: Size.infinite,
                 ),
-                CustomPaint(
-                  painter: LandscapeCompositionOverlayPainter(
-                    decision: _landscapeDecision,
-                  ),
-                  size: Size.infinite,
-                ),
               ],
             ),
           );
@@ -1288,7 +1282,9 @@ class _CameraScreenState extends State<CameraScreen> {
                         data: _portraitOverlayData.copyWithRule(_activeRule),
                       )
                     : _isLandscapeMode
-                    ? null
+                    ? LandscapeCompositionOverlayPainter(
+                        decision: _landscapeDecision,
+                      )
                     : CompositionGridPainter(rule: _activeRule),
                 size: Size.infinite,
               ),

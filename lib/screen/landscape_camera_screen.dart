@@ -134,6 +134,14 @@ class _LandscapeCameraScreenState extends State<LandscapeCameraScreen> {
               },
             ),
             IgnorePointer(
+              child: CustomPaint(
+                painter: LandscapeCompositionOverlayPainter(
+                  decision: _uiState.decision,
+                ),
+                size: Size.infinite,
+              ),
+            ),
+            IgnorePointer(
               child: DecoratedBox(
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(
@@ -148,14 +156,6 @@ class _LandscapeCameraScreenState extends State<LandscapeCameraScreen> {
                     stops: [0, 0.2, 0.8, 1],
                   ),
                 ),
-              ),
-            ),
-            IgnorePointer(
-              child: CustomPaint(
-                painter: LandscapeCompositionOverlayPainter(
-                  decision: _uiState.decision,
-                ),
-                size: Size.infinite,
               ),
             ),
             Positioned(

@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:pose_camera_app/composition/composition_rule.dart';
+import 'package:pose_camera_app/composition/composition_rule_registry.dart';
 import 'package:pose_camera_app/segmentation/composition_resolver.dart';
 import 'package:pose_camera_app/segmentation/fastscnn_segmentor.dart';
 
@@ -11,19 +13,15 @@ class LandscapeCompositionOverlayPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final gridPaint = Paint()
-      ..color = const Color(0x33FFFFFF)
-      ..strokeWidth = 1.0
-      ..strokeCap = StrokeCap.round;
-
-    final dx1 = size.width / 3;
-    final dx2 = size.width * 2 / 3;
-    final dy1 = size.height / 3;
-    final dy2 = size.height * 2 / 3;
-    canvas.drawLine(Offset(dx1, 0), Offset(dx1, size.height), gridPaint);
-    canvas.drawLine(Offset(dx2, 0), Offset(dx2, size.height), gridPaint);
-    canvas.drawLine(Offset(0, dy1), Offset(size.width, dy1), gridPaint);
-    canvas.drawLine(Offset(0, dy2), Offset(size.width, dy2), gridPaint);
+    final bounds = Offset.zero & size;
+    final thirdsRule =
+        CompositionRuleRegistry.of(CompositionRuleType.ruleOfThirds);
+    thirdsRule.paintOverlay(
+      canvas,
+      bounds,
+      color: const Color(0x33FFFFFF),
+      strokeWidth: 1.0,
+    );
   }
 
   @override
