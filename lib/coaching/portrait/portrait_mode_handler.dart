@@ -80,7 +80,7 @@ class PortraitModeHandler {
   // ─── 분석 주기 (최적화: 기존 15/10 → 30/20으로 늘림) ────
   static const double _posePointAlpha = 0.38;
   static const int _lightingEveryN = 30;
-  static const int _faceEveryN = 8;
+  static const int _faceEveryN = 5;
   static const double _lightingMinConf = 0.5;
 
   // ─── 메시지 안정화 ────────────────────────────────
@@ -109,6 +109,7 @@ class PortraitModeHandler {
   // ─── 분석 프레임 카운터 ────────────────────────────
   int _frameCount = 0;
   bool _isAnalyzing = false; // captureFrame 기반 분석 잠금
+  bool _isFaceAnalyzing = false;
 
   // ─── 조명 결과 ────────────────────────────────────
   LightingCondition lastLighting = LightingCondition.unknown;
@@ -127,6 +128,8 @@ class PortraitModeHandler {
 
   /// 그룹샷 전용: ML Kit으로 감지한 모든 얼굴 중 눈 감긴 사람이 있는지 여부
   bool _anyFaceEyesClosed = false;
+  int _closedFaceCount = 0;
+  List<Rect> _closedFaceRects = const [];
 
   // ─── 눈 감김 정밀 추적 ────────────────────────────
   int _eyeClosedStreak = 0;          // 연속 눈 감김 프레임 수 (네이티브 raw 기반)
@@ -134,7 +137,7 @@ class PortraitModeHandler {
   static const int _eyeConfirmFrames = 2; // 확정에 필요한 연속 프레임
 
   // ─── 카메라 안정성 추적 ───────────────────────────
-  double _cameraStability = 0.0;
+  double _cameraStability = 1.0;
   final List<double> _recentDeltas = [];
   final Map<String, Offset> _prevKeypoints = {};
   static const int _stabilityWindow = 10;
@@ -175,8 +178,12 @@ class PortraitModeHandler {
 
   void reset() {
     _personStreak = 0;
+    _isGroupShotStable = false;
+    _groupStreak = 0;
+    _stablePersonCount = 1;
     _frameCount = 0;
     _isAnalyzing = false;
+    _isFaceAnalyzing = false;
     lastLighting = LightingCondition.unknown;
     lastLightingConf = 0.0;
     _faceYaw = null;
@@ -189,9 +196,11 @@ class PortraitModeHandler {
     _smoothedFaceRect = null;
     _smoothedPosePoints.clear();
     _anyFaceEyesClosed = false;
+    _closedFaceCount = 0;
+    _closedFaceRects = const [];
     _eyeClosedStreak = 0;
     _anyEyeClosedStreak = 0;
-    _cameraStability = 0.0;
+    _cameraStability = 1.0;
     _recentDeltas.clear();
     _prevKeypoints.clear();
     stableMessage = '카메라를 사람에게 향해주세요';
@@ -265,9 +274,10 @@ class PortraitModeHandler {
 
   int _portraitDebugFrame = 0;
   PortraitAnalysisResult processResults(List<YOLOResult> results) {
-    final persons = results
+    final rawPersons = results
         .where((r) => r.className.toLowerCase() == 'person')
         .toList();
+    final persons = _dedupePersons(rawPersons);
 
     // 사람 안정화
     _personStreak = (persons.isNotEmpty ? _personStreak + 1 : _personStreak - 1)
@@ -276,7 +286,8 @@ class PortraitModeHandler {
     if (++_portraitDebugFrame % 30 == 1) {
       debugPrint(
         '[YOLO_DEBUG][handler] frame#$_portraitDebugFrame results=${results.length} '
-        'persons=${persons.length} streak=$_personStreak stable=$stable',
+        'personsRaw=${rawPersons.length} persons=${persons.length} '
+        'streak=$_personStreak stable=$stable',
       );
     }
 
@@ -286,6 +297,7 @@ class PortraitModeHandler {
       return PortraitAnalysisResult(
         coaching: stableCoaching,
         overlayData: OverlayData(
+          closedFaceRects: const [],
           coaching: stableCoaching,
           shotType: ShotType.unknown,
         ),
@@ -302,6 +314,7 @@ class PortraitModeHandler {
       return PortraitAnalysisResult(
         coaching: stableCoaching,
         overlayData: OverlayData(
+          closedFaceRects: const [],
           coaching: stableCoaching,
           shotType: ShotType.unknown,
         ),
@@ -313,9 +326,46 @@ class PortraitModeHandler {
 
     final main = _selectMainPerson(persons);
 
+    final areas =
+        persons
+            .map((p) => p.normalizedBox.width * p.normalizedBox.height)
+            .toList()
+          ..sort((a, b) => b.compareTo(a));
+    final mainArea = main.normalizedBox.width * main.normalizedBox.height;
+    final secondArea = areas.length > 1 ? areas[1] : 0.0;
+    final avgPersonArea =
+        areas.isEmpty ? 0.0 : areas.reduce((a, b) => a + b) / areas.length;
+    double secondPersonSizeRatio = mainArea > 0 ? secondArea / mainArea : 0.0;
+
+    double groupLeft = double.infinity;
+    double groupTop = double.infinity;
+    double groupRight = double.negativeInfinity;
+    double groupBottom = double.negativeInfinity;
+    for (final p in persons) {
+      final b = p.normalizedBox;
+      if (b.left < groupLeft) groupLeft = b.left;
+      if (b.top < groupTop) groupTop = b.top;
+      if (b.right > groupRight) groupRight = b.right;
+      if (b.bottom > groupBottom) groupBottom = b.bottom;
+    }
+    final groupBboxRatio =
+        groupLeft.isFinite &&
+            groupTop.isFinite &&
+            groupRight.isFinite &&
+            groupBottom.isFinite
+        ? (groupRight - groupLeft) * (groupBottom - groupTop)
+        : mainArea;
+
+    final groupShotCandidate = _shouldTreatAsGroupShot(
+      persons,
+      secondPersonSizeRatio,
+      groupBboxRatio,
+      avgPersonArea,
+    );
+
     // ─── 다중 인물 메트릭 ─────────────────────────────
     // 그룹샷 안정화: 진입은 빠르게, 이탈은 느리게 (깜빡임 방지)
-    if (persons.length >= 2) {
+    if (groupShotCandidate) {
       _groupStreak = (_groupStreak + 1).clamp(0, _groupExitThreshold);
     } else {
       _groupStreak = (_groupStreak - 1).clamp(0, _groupExitThreshold);
@@ -330,25 +380,14 @@ class PortraitModeHandler {
     if (isGroupShot) {
       _stablePersonCount = persons.length;
     } else {
-      _stablePersonCount = persons.isEmpty ? 0 : 1;
+      _stablePersonCount = persons.length;
     }
-    double secondPersonSizeRatio = 0.0;
     int groupCroppedCount = 0;
     int faceHiddenCount = 0;
     double spacingUnevenness = 0.0;
     double heightVariation = 0.0;
 
     if (isGroupShot) {
-      // 면적 기준으로 정렬해 메인 다음으로 큰 인물과 크기 비율 계산
-      final areas =
-          persons
-              .map((p) => p.normalizedBox.width * p.normalizedBox.height)
-              .toList()
-            ..sort((a, b) => b.compareTo(a));
-      final mainArea = main.normalizedBox.width * main.normalizedBox.height;
-      final secondArea = areas.length > 1 ? areas[1] : 0.0;
-      secondPersonSizeRatio = mainArea > 0 ? secondArea / mainArea : 0.0;
-
       // 모든 인물의 바운딩박스가 프레임 가장자리에 걸리는지 검사
       const edgeMgn = 0.03;
       for (final p in persons) {
@@ -510,16 +549,7 @@ class PortraitModeHandler {
     final mainBox = main.normalizedBox;
     final double bboxRatio;
     if (isGroupShot) {
-      double gLeft = double.infinity, gTop = double.infinity;
-      double gRight = double.negativeInfinity, gBottom = double.negativeInfinity;
-      for (final p in persons) {
-        final b = p.normalizedBox;
-        if (b.left < gLeft) gLeft = b.left;
-        if (b.top < gTop) gTop = b.top;
-        if (b.right > gRight) gRight = b.right;
-        if (b.bottom > gBottom) gBottom = b.bottom;
-      }
-      bboxRatio = (gRight - gLeft) * (gBottom - gTop);
+      bboxRatio = groupBboxRatio;
     } else {
       bboxRatio = mainBox.width * mainBox.height;
     }
@@ -542,6 +572,19 @@ class PortraitModeHandler {
 
     if (isGroupShot) {
       shot = ShotType.groupShot;
+      double groupMinTop = double.infinity;
+      double groupMaxBottom = double.negativeInfinity;
+      for (final p in persons) {
+        final b = p.normalizedBox;
+        if (b.top < groupMinTop) groupMinTop = b.top;
+        if (b.bottom > groupMaxBottom) groupMaxBottom = b.bottom;
+      }
+      if (groupMinTop.isFinite) {
+        headroom = groupMinTop;
+      }
+      if (groupMaxBottom.isFinite) {
+        footSpace = 1.0 - groupMaxBottom;
+      }
     } else if (bboxRatio < 0.35) {
       shot = ShotType.environmental;
     } else if (maxY > minY) {
@@ -566,19 +609,6 @@ class PortraitModeHandler {
       }
       headroom = minY;
       footSpace = 1.0 - maxY;
-    }
-
-    // 그룹샷: headroom을 전체 인물 중 가장 위쪽(키 큰 사람) 기준으로 보정
-    if (isGroupShot) {
-      double groupMinTop = double.infinity;
-      for (final p in persons) {
-        if (p.normalizedBox.top < groupMinTop) {
-          groupMinTop = p.normalizedBox.top;
-        }
-      }
-      if (groupMinTop < headroom) {
-        headroom = groupMinTop;
-      }
     }
 
     // 관절 크로핑 (샷 타입에 따라 체크 관절 구분)
@@ -674,6 +704,7 @@ class PortraitModeHandler {
       secondPersonSizeRatio: secondPersonSizeRatio,
       groupCroppedCount: groupCroppedCount,
       anyFaceEyesClosed: _anyFaceEyesClosed,
+      closedFaceCount: _closedFaceCount,
       lightingCondition: lastLighting,
       lightingConfidence: lastLightingConf,
       visibleKeypointCount: all.where((p) => p != null).length,
@@ -704,9 +735,9 @@ class PortraitModeHandler {
     _frameCount++;
     if (isGroupShot &&
         captureFrameCallback != null &&
-        !_isAnalyzing &&
+        !_isFaceAnalyzing &&
         _frameCount % _faceEveryN == 0) {
-      _isAnalyzing = true;
+      _isFaceAnalyzing = true;
       unawaited(() async {
         try {
           final bytes = await captureFrameCallback!();
@@ -714,7 +745,7 @@ class PortraitModeHandler {
             await _analyzeFace(bytes);
           }
         } finally {
-          _isAnalyzing = false;
+          _isFaceAnalyzing = false;
         }
       }());
     }
@@ -722,6 +753,7 @@ class PortraitModeHandler {
     final coaching = _stabilize(_coachEngine.evaluate(state));
 
     final overlay = OverlayData(
+      closedFaceRects: _closedFaceRects,
       leftEye: lEye,
       rightEye: rEye,
       nose: nose,
@@ -884,6 +916,9 @@ class PortraitModeHandler {
 
   Future<void> _analyzeFace(Uint8List bytes) async {
     try {
+      final decoded = img.decodeImage(bytes);
+      if (decoded == null) return;
+
       final tempFile = File('${Directory.systemTemp.path}/pozy_face.jpg');
       await tempFile.writeAsBytes(bytes);
       final input = InputImage.fromFilePath(tempFile.path);
@@ -909,20 +944,35 @@ class PortraitModeHandler {
         _smileProb = _smoothMetric(_smileProb, mainFace.smilingProbability);
 
         // ─── 모든 얼굴: 눈 감김 검사 (그룹샷 + 싱글 보조) ────
-        // 비동기 주기가 8프레임(~0.27초)이므로 streak 1이면 확정
-        final anyEyesClosed = faces.any((f) {
-          final l = f.leftEyeOpenProbability ?? 1.0;
-          final r = f.rightEyeOpenProbability ?? 1.0;
-          return l < 0.3 && r < 0.3;
-        });
-        if (anyEyesClosed) {
+        final visibleFaces = faces.where(_hasUsableEyeData).toList();
+        final closedFaces =
+            visibleFaces.where(_isFaceLikelyEyesClosed).toList();
+        final closedFaceCount = closedFaces.length;
+        _closedFaceRects = closedFaces
+            .map((face) => _normalizeFaceRect(face.boundingBox, decoded.width, decoded.height))
+            .whereType<Rect>()
+            .toList(growable: false);
+
+        if (closedFaceCount > 0) {
           _anyEyeClosedStreak++;
-        } else {
+          _closedFaceCount = math.max(_closedFaceCount, closedFaceCount);
+        } else if (visibleFaces.length >= 2 || _stablePersonCount <= 1) {
           _anyEyeClosedStreak = 0;
+          _closedFaceCount = 0;
+          _closedFaceRects = const [];
+        } else {
+          // 다중 인물에서는 한 프레임 얼굴 누락이 잦아서 즉시 초기화하지 않습니다.
+          _anyEyeClosedStreak = math.max(0, _anyEyeClosedStreak - 1);
+          if (_anyEyeClosedStreak == 0) {
+            _closedFaceCount = 0;
+            _closedFaceRects = const [];
+          }
         }
         _anyFaceEyesClosed = _anyEyeClosedStreak >= 1;
-      } else {
+      } else if (_stablePersonCount <= 1) {
         _anyFaceEyesClosed = false;
+        _closedFaceCount = 0;
+        _closedFaceRects = const [];
         _anyEyeClosedStreak = 0;
       }
     } catch (e) {
@@ -1016,6 +1066,104 @@ class PortraitModeHandler {
     final list = confs is List ? confs : <dynamic>[];
     if (idx >= list.length) return 0.0;
     return (list[idx] as num).toDouble();
+  }
+
+  List<YOLOResult> _dedupePersons(List<YOLOResult> persons) {
+    if (persons.length <= 1) return persons;
+
+    final sorted = [...persons]..sort((a, b) {
+      final aScore = a.confidence * a.normalizedBox.width * a.normalizedBox.height;
+      final bScore = b.confidence * b.normalizedBox.width * b.normalizedBox.height;
+      return bScore.compareTo(aScore);
+    });
+
+    final kept = <YOLOResult>[];
+    for (final person in sorted) {
+      if (person.confidence < 0.12) continue;
+
+      final isDuplicate = kept.any((other) => _looksLikeSamePerson(other, person));
+      if (!isDuplicate) {
+        kept.add(person);
+      }
+    }
+
+    return kept.isEmpty ? [sorted.first] : kept;
+  }
+
+  bool _looksLikeSamePerson(YOLOResult a, YOLOResult b) {
+    final boxA = a.normalizedBox;
+    final boxB = b.normalizedBox;
+
+    final intersectionArea = _intersectionArea(boxA, boxB);
+    final areaA = boxA.width * boxA.height;
+    final areaB = boxB.width * boxB.height;
+    final minArea = math.min(areaA, areaB);
+    final maxArea = math.max(areaA, areaB);
+    final overlapOnSmaller = minArea <= 0 ? 0.0 : intersectionArea / minArea;
+    final areaRatio = maxArea <= 0 ? 0.0 : minArea / maxArea;
+    final centerDistance = (boxA.center - boxB.center).distance;
+    final iou = _intersectionOverUnion(boxA, boxB);
+
+    if (isFrontCamera) {
+      return iou > 0.52 ||
+          overlapOnSmaller > 0.82 ||
+          (centerDistance < 0.05 && areaRatio > 0.72);
+    }
+
+    return iou > 0.55 ||
+        overlapOnSmaller > 0.75 ||
+        (centerDistance < 0.06 && areaRatio > 0.55);
+  }
+
+  double _intersectionArea(Rect a, Rect b) {
+    final intersection = a.intersect(b);
+    if (intersection.isEmpty) return 0.0;
+    return intersection.width * intersection.height;
+  }
+
+  bool _hasUsableEyeData(Face face) {
+    return face.leftEyeOpenProbability != null || face.rightEyeOpenProbability != null;
+  }
+
+  bool _isFaceLikelyEyesClosed(Face face) {
+    final l = face.leftEyeOpenProbability;
+    final r = face.rightEyeOpenProbability;
+
+    if (l != null && r != null) {
+      final avg = (l + r) / 2;
+      return (l < 0.38 && r < 0.38) || (avg < 0.32 && (l < 0.45 || r < 0.45));
+    }
+
+    if (l != null) return l < 0.18;
+    if (r != null) return r < 0.18;
+    return false;
+  }
+
+  Rect? _normalizeFaceRect(Rect rect, int imageWidth, int imageHeight) {
+    if (imageWidth <= 0 || imageHeight <= 0) return null;
+
+    final left = (rect.left / imageWidth).clamp(0.0, 1.0);
+    final top = (rect.top / imageHeight).clamp(0.0, 1.0);
+    final right = (rect.right / imageWidth).clamp(0.0, 1.0);
+    final bottom = (rect.bottom / imageHeight).clamp(0.0, 1.0);
+    if (right <= left || bottom <= top) return null;
+    return Rect.fromLTRB(left, top, right, bottom);
+  }
+
+  bool _shouldTreatAsGroupShot(
+    List<YOLOResult> persons,
+    double secondPersonSizeRatio,
+    double groupBboxRatio,
+    double avgPersonArea,
+  ) {
+    if (persons.length < 2) return false;
+
+    if (persons.length >= 3) {
+      return groupBboxRatio >= 0.22 &&
+          (avgPersonArea >= 0.022 || secondPersonSizeRatio >= 0.22);
+    }
+
+    return groupBboxRatio >= 0.18 && secondPersonSizeRatio >= 0.28;
   }
 
   // ─── 얼굴 영역 추정 ───────────────────────────────
@@ -1300,6 +1448,11 @@ class PortraitModeHandler {
       if (_recentDeltas.length > _stabilityWindow) {
         _recentDeltas.removeAt(0);
       }
+      if (_recentDeltas.length < 3) {
+        _cameraStability = 1.0;
+        return;
+      }
+
       final avg = _recentDeltas.reduce((a, b) => a + b) / _recentDeltas.length;
       _cameraStability = (1.0 - (avg / _stabilityMaxDelta)).clamp(0.0, 1.0);
     }

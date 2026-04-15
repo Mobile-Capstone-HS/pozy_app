@@ -65,15 +65,6 @@ class PortraitCoachEngine {
       );
     }
 
-    // ─── 카메라 안정성 (모든 모드 공통) ────────────────────
-    final stability = _evaluateStability(s);
-    if (stability != null) return stability;
-
-    // ─── 셀카 모드 ───────────────────────────────────────
-    if (s.isFrontCamera) {
-      return _evaluateSelfie(s);
-    }
-
     if (s.lightingCondition == LightingCondition.back &&
         s.lightingConfidence > 0.8 &&
         s.personBboxRatio >= 0.4) {
@@ -96,9 +87,6 @@ class PortraitCoachEngine {
     final pose = _evaluatePose(s);
     if (pose != null) return pose;
 
-    final expression = _evaluateExpression(s);
-    if (expression != null) return expression;
-
     final face = _evaluateFaceDirection(s);
     if (face != null) return face;
 
@@ -110,8 +98,21 @@ class PortraitCoachEngine {
       );
     }
 
+    // ─── 카메라 안정성은 구도/조명/포즈보다 뒤에서 보조적으로 사용 ──────
+    final stability = _evaluateStability(s);
+    if (stability != null) return stability;
+
+    // ─── 셀카 전용 미세 조정은 공통 인물 규칙 뒤에서 적용 ─────────────
+    if (s.isFrontCamera) {
+      final selfie = _evaluateSelfie(s);
+      if (selfie != null) return selfie;
+    }
+
+    final expression = _evaluateExpression(s);
+    if (expression != null) return expression;
+
     return CoachingResult(
-      message: _perfectMessage(s),
+      message: s.isFrontCamera ? _selfiePerfectMessage(s) : _perfectMessage(s),
       priority: CoachingPriority.perfect,
       confidence: 1.0,
     );
@@ -144,8 +145,10 @@ class PortraitCoachEngine {
 
     // ── 공통: 눈 감김 ────────────────────────────────────
     if (s.anyFaceEyesClosed || s.areEyesClosed) {
-      return const CoachingResult(
-        message: '눈을 감은 분이 있어요.',
+      return CoachingResult(
+        message: s.closedFaceCount > 1
+            ? '${s.closedFaceCount}명이 눈을 감고 있어요.'
+            : '눈을 감은 분이 있어요.',
         priority: CoachingPriority.critical,
         confidence: 0.88,
       );
@@ -889,7 +892,7 @@ class PortraitCoachEngine {
 
   // ─── 셀카 모드 전용 코칭 ─────────────────────────────
 
-  CoachingResult _evaluateSelfie(PortraitSceneState s) {
+  CoachingResult? _evaluateSelfie(PortraitSceneState s) {
     // ── 1. 광각 왜곡 경고 (전면 카메라 = 광각, 가까울수록 왜곡 심함) ──
     if (s.personBboxRatio > 0.55) {
       return const CoachingResult(
@@ -999,11 +1002,7 @@ class PortraitCoachEngine {
       );
     }
 
-    // ── 8. 표정 ──────────────────────────────────────────
-    final expr = _evaluateExpression(s);
-    if (expr != null) return expr;
-
-    // ── 9. 고개 기울기 ───────────────────────────────────
+    // ── 8. 고개 기울기 ───────────────────────────────────
     if (s.faceRoll != null && s.faceRoll!.abs() > 20) {
       return const CoachingResult(
         message: '고개가 기울었어요. 바로 세워보세요.',
@@ -1012,12 +1011,7 @@ class PortraitCoachEngine {
       );
     }
 
-    // ── 10. 셀카 Perfect ─────────────────────────────────
-    return CoachingResult(
-      message: _selfiePerfectMessage(s),
-      priority: CoachingPriority.perfect,
-      confidence: 1.0,
-    );
+    return null;
   }
 
   CoachingResult? _evaluateSelfieLighting(PortraitSceneState s) {

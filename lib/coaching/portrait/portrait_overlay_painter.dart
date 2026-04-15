@@ -19,6 +19,7 @@ import 'portrait_scene_state.dart';
 
 /// 오버레이에 필요한 포즈/얼굴 데이터
 class OverlayData {
+  final List<Rect> closedFaceRects;
   final Offset? leftEye;
   final Offset? rightEye;
   final Offset? nose;
@@ -47,6 +48,7 @@ class OverlayData {
   final CompositionRule? activeRule;
 
   const OverlayData({
+    this.closedFaceRects = const [],
     this.leftEye,
     this.rightEye,
     this.nose,
@@ -75,6 +77,7 @@ class OverlayData {
   /// [activeRule]만 교체한 새 인스턴스 반환. 기존 필드는 그대로 유지.
   OverlayData copyWithRule(CompositionRule? rule) {
     return OverlayData(
+      closedFaceRects: closedFaceRects,
       leftEye: leftEye,
       rightEye: rightEye,
       nose: nose,
@@ -123,6 +126,7 @@ class PortraitOverlayPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     _drawCompositionGrid(canvas, size);
     _drawFaceGuide(canvas, size);
+    _drawClosedFaceWarnings(canvas, size);
     _drawBodyOutline(canvas, size);
     _drawKeypoints(canvas, size);
     _drawShoulderLine(canvas, size);
@@ -334,6 +338,42 @@ class PortraitOverlayPainter extends CustomPainter {
           ..color = const Color(0x33FFFFFF)
           ..strokeWidth = 1.0
           ..strokeCap = StrokeCap.round,
+      );
+    }
+  }
+
+  void _drawClosedFaceWarnings(Canvas canvas, Size size) {
+    if (data.closedFaceRects.isEmpty) return;
+
+    for (final rect in data.closedFaceRects) {
+      final r = Rect.fromLTWH(
+        rect.left * size.width,
+        rect.top * size.height,
+        rect.width * size.width,
+        rect.height * size.height,
+      );
+
+      final warningColor = _Colors.red;
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(r, const Radius.circular(10)),
+        Paint()
+          ..color = const Color(0x22EF4444)
+          ..style = PaintingStyle.fill,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(r, const Radius.circular(10)),
+        Paint()
+          ..color = warningColor
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.0,
+      );
+
+      final labelY = math.max(18.0, r.top - 14.0);
+      _drawLabel(
+        canvas,
+        '눈 감음',
+        Offset(r.center.dx, labelY),
+        warningColor,
       );
     }
   }

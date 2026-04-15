@@ -208,11 +208,13 @@ class _CameraScreenState extends State<CameraScreen> {
             final relativeDeg = absDeg - baseDeg;
             _sceneCoach.updateTilt(relativeDeg);
 
-            // 기기 방향이 바뀌면 네이티브 YOLOView에 전달 (180° 지원)
-            final newOrientation = _deviceOrientationDeg;
-            if (newOrientation != _lastSentOrientationDeg) {
-              _lastSentOrientationDeg = newOrientation;
-              _cameraController.setDeviceOrientation(newOrientation);
+            // 인물 모드에서만 네이티브 YOLOView 방향을 갱신합니다.
+            if (_isPortraitMode) {
+              final newOrientation = _deviceOrientationDeg;
+              if (newOrientation != _lastSentOrientationDeg) {
+                _lastSentOrientationDeg = newOrientation;
+                _cameraController.setDeviceOrientation(newOrientation);
+              }
             }
 
             setState(() {});

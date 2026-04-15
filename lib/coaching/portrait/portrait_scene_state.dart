@@ -106,6 +106,7 @@ class PortraitSceneState {
   final double secondPersonSizeRatio; // 두 번째 인물 크기 / 메인 인물 크기 (0~1)
   final int groupCroppedCount;        // 바운딩박스가 프레임 가장자리에 걸리는 인원 수
   final bool anyFaceEyesClosed;       // 감지된 얼굴 중 눈 감긴 사람이 있는지 (ML Kit)
+  final int closedFaceCount;          // 눈 감은 것으로 보이는 얼굴 수 (ML Kit)
 
   // 조명 데이터
   final LightingCondition lightingCondition;
@@ -170,6 +171,7 @@ class PortraitSceneState {
     this.secondPersonSizeRatio = 0.0,
     this.groupCroppedCount = 0,
     this.anyFaceEyesClosed = false,
+    this.closedFaceCount = 0,
     this.lightingCondition = LightingCondition.unknown,
     this.lightingConfidence = 0.0,
     this.leftWristPosition,
