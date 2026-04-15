@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -29,6 +29,8 @@ import 'package:pose_camera_app/coaching/portrait/portrait_scene_state.dart'
     as portrait;
 import 'package:pose_camera_app/coaching/subject/subject_detection.dart'
     show detectModelPath, detectionConfidenceThreshold;
+import 'package:pose_camera_app/feature/landscape/landscape_overlay_painter.dart';
+import 'package:pose_camera_app/screen/landscape_asset_test_screen.dart';
 import 'package:pose_camera_app/segmentation/composition_engine.dart';
 import 'package:pose_camera_app/segmentation/composition_resolver.dart';
 import 'package:pose_camera_app/segmentation/composition_summary.dart';
@@ -71,6 +73,7 @@ class _CameraScreenState extends State<CameraScreen> {
   final _landscapeCompositionEngine = CompositionEngine();
   final _landscapeResolver = const CompositionResolver();
   final _landscapeTemporalFilter = CompositionTemporalFilter();
+  final _landscapeAnalyzer = LandscapeAnalyzer();
 
   List<double> _zoomPresets = [1.0, 2.0];
   Size _previewSize = Size.zero;
@@ -128,6 +131,8 @@ class _CameraScreenState extends State<CameraScreen> {
   int _portraitLostFrames = 0;
   static const int _portraitLostFrameTolerance = 8;
   CompositionDecision? _landscapeDecision;
+  LandscapeOverlayAdvice _landscapeOverlayAdvice =
+      const LandscapeOverlayAdvice.none();
   SegmentationResult? _landscapeSegmentation;
 
   Timer? _countdownTimer;
@@ -792,6 +797,7 @@ class _CameraScreenState extends State<CameraScreen> {
     _sceneCoach.reset();
     _resetPortraitState();
     _landscapeTemporalFilter.reset();
+    _landscapeAnalyzer.reset();
 
     setState(() {
       _isFrontCamera = !_isFrontCamera;
@@ -806,6 +812,7 @@ class _CameraScreenState extends State<CameraScreen> {
       _gravX = 0.0;
       _gravY = 9.8;
       _landscapeDecision = null;
+      _landscapeOverlayAdvice = const LandscapeOverlayAdvice.none();
       _landscapeSegmentation = null;
     });
 
@@ -822,6 +829,7 @@ class _CameraScreenState extends State<CameraScreen> {
     _resetPortraitState();
     _landscapeCompositionEngine.reset();
     _landscapeTemporalFilter.reset();
+    _landscapeAnalyzer.reset();
 
     setState(() {
       _shootingMode = mode;
@@ -842,6 +850,7 @@ class _CameraScreenState extends State<CameraScreen> {
       _lockedTrackingDetection = null;
       _lockedLostFrames = 0;
       _landscapeDecision = null;
+      _landscapeOverlayAdvice = const LandscapeOverlayAdvice.none();
       _landscapeSegmentation = null;
     });
   }
@@ -1104,8 +1113,8 @@ class _CameraScreenState extends State<CameraScreen> {
   void _handleLandscapeFrame(FastScnnFrame frame) {
     if (!mounted || !_isLandscapeMode) return;
 
-    final raw = LandscapeAnalyzer.analyzeFeatures(frame.result);
-    final smoothed = _landscapeTemporalFilter.smooth(raw);
+    final analysis = _landscapeAnalyzer.analyze(frame.result);
+    final smoothed = _landscapeTemporalFilter.smooth(analysis.features);
     final decision = _landscapeTemporalFilter.stabilize(
       _landscapeResolver.resolve(smoothed),
     );
@@ -1114,6 +1123,7 @@ class _CameraScreenState extends State<CameraScreen> {
       decision: decision,
     );
     final landscapeSubGuidance =
+        analysis.advice.secondaryGuidance ??
         decision.secondaryGuidance ??
         (decision.primaryGuidance == summary.guideMessage
             ? null
@@ -1123,9 +1133,10 @@ class _CameraScreenState extends State<CameraScreen> {
     setState(() {
       _landscapeSegmentation = frame.result;
       _landscapeDecision = decision;
+      _landscapeOverlayAdvice = analysis.advice;
       _isFrontCamera = frame.isFrontCamera;
       _currentZoom = frame.zoomLevel;
-      _guidance = summary.guideMessage;
+      _guidance = analysis.advice.primaryGuidance;
       _subGuidance = landscapeSubGuidance;
       _coachingLevel = landscapeLevel;
     });
@@ -1157,7 +1168,6 @@ class _CameraScreenState extends State<CameraScreen> {
   Widget _buildCameraPreview() {
     if (_isLandscapeMode) {
       return FastScnnView(
-        key: ValueKey('fastscnn_${_isFrontCamera ? 'front' : 'back'}'),
         controller: _landscapeController,
         frameSkipLevel: 2,
         inferenceIntervalMs: 220,
@@ -1166,6 +1176,21 @@ class _CameraScreenState extends State<CameraScreen> {
         onZoomChanged: (zoomLevel) {
           if (!mounted) return;
           setState(() => _currentZoom = zoomLevel);
+        },
+        overlayBuilder: (context, frame) {
+          return IgnorePointer(
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                CustomPaint(
+                  painter: LandscapeSegmentationDotPainter(
+                    result: frame?.result ?? _landscapeSegmentation,
+                  ),
+                  size: Size.infinite,
+                ),
+              ],
+            ),
+          );
         },
       );
     }
@@ -1294,6 +1319,11 @@ class _CameraScreenState extends State<CameraScreen> {
                     ? PortraitOverlayPainter(
                         data: _portraitOverlayData.copyWithRule(_activeRule),
                       )
+                    : _isLandscapeMode
+                    ? LandscapeCompositionOverlayPainter(
+                        decision: _landscapeDecision,
+                        advice: _landscapeOverlayAdvice,
+                      )
                     : CompositionGridPainter(rule: _activeRule),
                 size: Size.infinite,
               ),
@@ -1408,6 +1438,30 @@ class _CameraScreenState extends State<CameraScreen> {
               ),
             ),
             // 구도 규칙 selector — 인물/객체 모드만. 풍경은 자동 감지 사용.
+            if (_isLandscapeMode)
+              Positioned(
+                top: 60,
+                left: 16,
+                child: FilledButton.tonalIcon(
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const LandscapeAssetTestScreen(),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.science_outlined, size: 18),
+                  label: const Text('샘플 테스트'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.black.withValues(alpha: 0.55),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
+                  ),
+                ),
+              ),
             if (!_isLandscapeMode)
               Positioned(
                 top: 60,
@@ -1436,8 +1490,6 @@ class _CameraScreenState extends State<CameraScreen> {
                 isShootReady: _isPortraitMode
                     ? _portraitCoaching.priority ==
                           portrait.CoachingPriority.perfect
-                    : _isLandscapeMode
-                    ? true
                     : _coachingLevel == CoachingLevel.good,
                 shotTypeLabel: _isPortraitMode ? _shotTypeLabel() : null,
                 onSelectZoom: _setZoom,
@@ -1448,15 +1500,16 @@ class _CameraScreenState extends State<CameraScreen> {
               ),
             ),
             // 수평 지시선 — 항상 화면 중앙에 표시
-            if (!_isLandscapeMode)
-              Center(
-                child: IgnorePointer(
-                  child: HorizonLevelIndicator(
-                    tiltDeg: _tiltX,
-                    isLevel: _relativeTilt.abs() < 2.0,
-                  ),
+            Center(
+              child: IgnorePointer(
+                child: HorizonLevelIndicator(
+                  tiltDeg: _tiltX,
+                  isLevel: _gravX.abs() > _gravY.abs()
+                      ? (_tiltX.abs() - 90.0).abs() < 2.0
+                      : _tiltX.abs() < 2.0,
                 ),
               ),
+            ),
             if (_countdown > 0)
               Center(
                 child: Text(

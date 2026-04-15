@@ -83,6 +83,8 @@ class _FastScnnViewState extends State<FastScnnView> {
   double _minZoom = 1.0;
   double _maxZoom = 2.0;
   FastScnnFrame? _latestFrame;
+  bool _isSwitchingCamera = false;
+  int _cameraSessionId = 0;
 
   @override
   void initState() {
@@ -127,38 +129,66 @@ class _FastScnnViewState extends State<FastScnnView> {
   }
 
   Future<void> _startCamera(int index) async {
+    final nextSessionId = ++_cameraSessionId;
     final old = _camera;
-    if (old != null) {
-      if (old.value.isStreamingImages) {
-        await old.stopImageStream();
+    _camera = null;
+    _isInitialized = false;
+    _isSwitchingCamera = true;
+    if (mounted) {
+      setState(() {});
+    }
+    try {
+      if (old != null) {
+        if (old.value.isStreamingImages) {
+          await old.stopImageStream();
+        }
+        await old.dispose();
       }
-      await old.dispose();
-    }
 
-    final controller = CameraController(
-      _cameras[index],
-      ResolutionPreset.max,
-      enableAudio: false,
-      imageFormatGroup: ImageFormatGroup.yuv420,
-    );
-    await controller.initialize();
-    _minZoom = await controller.getMinZoomLevel();
-    _maxZoom = await controller.getMaxZoomLevel();
-    _zoom = _zoom.clamp(_minZoom, _maxZoom);
-    await controller.setZoomLevel(_zoom);
-    await controller.startImageStream(_onImage);
-    if (!mounted) {
-      await controller.dispose();
-      return;
-    }
+      final controller = CameraController(
+        _cameras[index],
+        ResolutionPreset.max,
+        enableAudio: false,
+        imageFormatGroup: ImageFormatGroup.yuv420,
+      );
+      await controller.initialize();
+      if (!mounted || nextSessionId != _cameraSessionId) {
+        await controller.dispose();
+        return;
+      }
+      _minZoom = await controller.getMinZoomLevel();
+      _maxZoom = await controller.getMaxZoomLevel();
+      _zoom = _zoom.clamp(_minZoom, _maxZoom);
+      await controller.setZoomLevel(_zoom);
+      await controller.startImageStream(_onImage);
+      if (!mounted || nextSessionId != _cameraSessionId) {
+        await controller.dispose();
+        return;
+      }
 
-    _cameraIndex = index;
-    _camera = controller;
-    widget.onZoomChanged?.call(_zoom);
-    debugPrint(
-      '[FastSCNN][View] camera started index=$index '
-      'lens=${_cameras[index].lensDirection.name} zoom=${_zoom.toStringAsFixed(2)}',
-    );
+      _cameraIndex = index;
+      _camera = controller;
+      _isInitialized = controller.value.isInitialized;
+      widget.onZoomChanged?.call(_zoom);
+      if (mounted) {
+        setState(() {});
+      }
+      debugPrint(
+        '[FastSCNN][View] camera started index=$index '
+        'lens=${_cameras[index].lensDirection.name} zoom=${_zoom.toStringAsFixed(2)}',
+      );
+    } catch (error, stackTrace) {
+      debugPrint('[FastSCNN][View] startCamera failed index=$index error=$error');
+      debugPrintStack(stackTrace: stackTrace);
+      rethrow;
+    } finally {
+      if (nextSessionId == _cameraSessionId) {
+        _isSwitchingCamera = false;
+        if (mounted) {
+          setState(() {});
+        }
+      }
+    }
   }
 
   Future<void> _onImage(CameraImage image) async {
@@ -233,10 +263,9 @@ class _FastScnnViewState extends State<FastScnnView> {
   }
 
   Future<void> _switchCamera() async {
-    if (_cameras.length < 2) return;
+    if (_cameras.length < 2 || _isSwitchingCamera) return;
     final next = (_cameraIndex + 1) % _cameras.length;
     await _startCamera(next);
-    if (mounted) setState(() {});
     debugPrint('[FastSCNN][View] switch camera index=$next');
   }
 
@@ -267,14 +296,20 @@ class _FastScnnViewState extends State<FastScnnView> {
     }
   }
 
-  Future<void> _stop() async {
+  Future<void> _stop({bool notifyUi = true}) async {
+    _cameraSessionId++;
     final camera = _camera;
+    _camera = null;
+    _isInitialized = false;
+    _isSwitchingCamera = false;
+    if (notifyUi && mounted) {
+      setState(() {});
+    }
     if (camera != null) {
       if (camera.value.isStreamingImages) {
         await camera.stopImageStream();
       }
       await camera.dispose();
-      _camera = null;
     }
   }
 
@@ -291,7 +326,7 @@ class _FastScnnViewState extends State<FastScnnView> {
   void dispose() {
     widget.controller?._detach(this);
     _eventSub?.cancel();
-    unawaited(_stop());
+    unawaited(_stop(notifyUi: false));
     unawaited(_pipeline.dispose());
     super.dispose();
   }
@@ -299,7 +334,10 @@ class _FastScnnViewState extends State<FastScnnView> {
   @override
   Widget build(BuildContext context) {
     final camera = _camera;
-    if (!_isInitialized || camera == null || !camera.value.isInitialized) {
+    if (_isSwitchingCamera ||
+        !_isInitialized ||
+        camera == null ||
+        !camera.value.isInitialized) {
       return const ColoredBox(
         color: Colors.black,
         child: Center(child: CircularProgressIndicator()),
@@ -318,7 +356,19 @@ class _FastScnnViewState extends State<FastScnnView> {
         ? camera.value.aspectRatio
         : (1 / camera.value.aspectRatio);
 
-    Widget previewLayer = camera.buildPreview();
+    Widget previewLayer;
+    try {
+      previewLayer = camera.buildPreview();
+    } on CameraException catch (error) {
+      debugPrint(
+        '[FastSCNN][View] buildPreview failed '
+        'code=${error.code} description=${error.description}',
+      );
+      return const ColoredBox(
+        color: Colors.black,
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
       previewLayer = RotatedBox(
         quarterTurns: quarterTurns,
