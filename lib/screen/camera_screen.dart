@@ -138,6 +138,12 @@ class _CameraScreenState extends State<CameraScreen> {
   bool get _isLandscapeMode => _shootingMode == ShootingMode.landscape;
   bool get _isObjectMode => _shootingMode == ShootingMode.object;
 
+  /// 현재 기기 방향 기준 상대 기울기 (isLevel 판단 전용)
+  double get _relativeTilt {
+    final base = (_tiltX / 90.0).round() * 90.0;
+    return _tiltX - base;
+  }
+
   /// 사용자가 상단 selector에서 선택한 구도 규칙. 인물/객체 모드에서만 사용.
   CompositionRuleType _selectedRule = CompositionRuleType.none;
   CompositionRule get _activeRule => CompositionRuleRegistry.of(_selectedRule);
@@ -186,9 +192,17 @@ class _CameraScreenState extends State<CameraScreen> {
             _gravX = (_gravX * 0.7) + (event.x * 0.3);
             _gravY = (_gravY * 0.7) + (event.y * 0.3);
 
-            final rollDeg = math.atan2(_gravX, _gravY) * 180.0 / math.pi;
-            _tiltX = rollDeg;
-            _sceneCoach.updateTilt(_tiltX);
+            // 절대 각도: 시각 표현에 사용 (Flutter 캔버스 회전값)
+            // 유저가 가로로 들면 이 값이 ≈90°가 되어 선이 Flutter 상에서 "수직"이 되지만,
+            // 유저가 화면을 90° 회전해서 보므로 실제 눈에는 "수평"으로 보임 → 올바른 동작.
+            final absDeg = math.atan2(_gravX, _gravY) * 180.0 / math.pi;
+            _tiltX = absDeg;
+
+            // 상대 기울기: isLevel 판단 및 코칭 tilt에 사용
+            // 현재 방향(0/90/180/270°) 기준 편차 → 어느 방향이든 수평=0°
+            final baseDeg = (absDeg / 90.0).round() * 90.0;
+            final relativeDeg = absDeg - baseDeg;
+            _sceneCoach.updateTilt(relativeDeg);
             setState(() {});
           });
     } catch (_) {}
@@ -618,6 +632,7 @@ class _CameraScreenState extends State<CameraScreen> {
     }
     if (!mounted || !_isObjectMode) return;
     _latestRawDetections = results;
+    _sceneCoach.setOrientation(_deviceOrientationDeg);
     final filteredResults = _filterResultsForMode(results);
 
     List<YOLOResult> forCoaching;
@@ -712,13 +727,15 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
-  /// 가속도계 데이터(_gravX, _gravY)로 기기 방향을 0/90/270 중 하나로 반환합니다.
+  /// 가속도계 데이터(_gravX, _gravY)로 기기 방향을 0/90/180/270 중 하나로 반환합니다.
   int get _deviceOrientationDeg {
     // |gravX| > 5 m/s² 이면 가로 모드
     if (_gravX.abs() > 5.0) {
       return _gravX < 0 ? 90 : 270; // 왼쪽/오른쪽 가로
     }
-    return 0; // 세로
+    // gravY < -5 이면 거꾸로 든 세로 (180°)
+    if (_gravY < -5.0) return 180;
+    return 0; // 정방향 세로
   }
 
   int _yoloDebugPoseFrame = 0;
@@ -1436,9 +1453,7 @@ class _CameraScreenState extends State<CameraScreen> {
                 child: IgnorePointer(
                   child: HorizonLevelIndicator(
                     tiltDeg: _tiltX,
-                    isLevel: _gravX.abs() > _gravY.abs()
-                        ? (_tiltX.abs() - 90.0).abs() < 2.0
-                        : _tiltX.abs() < 2.0,
+                    isLevel: _relativeTilt.abs() < 2.0,
                   ),
                 ),
               ),
