@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:ultralytics_yolo/yolo.dart';
 
+import '../composition/composition_rule.dart';
+import '../composition/composition_rule_registry.dart';
 import 'coaching_result.dart';
 import 'object_image_analyzer.dart';
 
@@ -317,6 +319,14 @@ class _IssueAccumulator {
 }
 
 class _CoachingEngine {
+  /// 사용자가 선택한 구도 규칙. none이면 기본 imbalance 검사 사용.
+  CompositionRule _rule =
+      CompositionRuleRegistry.of(CompositionRuleType.none);
+
+  void setRule(CompositionRule rule) {
+    _rule = rule;
+  }
+
   static const _tiltWarnDeg = 12.0;
   static const _tiltCautionDeg = 7.0;
 
@@ -375,8 +385,14 @@ class _CoachingEngine {
     final smallSubject =
         s.numObjects >= 1 && s.areaRatio < smallSubjectThreshold;
 
-    final imbalanceThreshold = s.numObjects <= 2 ? 0.17 : 0.24;
-    final imbalance = (s.sceneCenterX - 0.5).abs() > imbalanceThreshold;
+    // 사용자가 구도 규칙을 선택했으면 그 규칙 기준으로 정렬 평가.
+    // 미선택(none)이면 기존 좌우 균형 휴리스틱.
+    final ruleActive = _rule.type != CompositionRuleType.none;
+    final subjectCenter = Offset(s.sceneCenterX, s.sceneCenterY);
+    final imbalance = ruleActive
+        ? _rule.scoreAlignment(subjectCenter) < 0.45
+        : (s.sceneCenterX - 0.5).abs() >
+            (s.numObjects <= 2 ? 0.17 : 0.24);
 
     final tightFramingSingle =
         s.numObjects <= 2 && s.unionMarginMin < 0.025 && s.areaRatio > 0.18;
@@ -467,6 +483,14 @@ class _CoachingEngine {
     }
 
     if (_acc.imbalance >= 0.58) {
+      if (ruleActive) {
+        // 선택한 구도 규칙에 맞춘 안내.
+        return CoachingResult(
+          guidance: '${_rule.label} 구도에 맞춰보세요',
+          subGuidance: _rule.guidance(subjectCenter),
+          level: CoachingLevel.caution,
+        );
+      }
       final moveRight = s.sceneCenterX < 0.5;
       return CoachingResult(
         guidance: moveRight
@@ -593,6 +617,11 @@ class ObjectCoach {
 
   void updateTilt(double tiltDeg) {
     _tiltDeg = tiltDeg;
+  }
+
+  /// 사용자가 상단 selector에서 선택한 구도 규칙을 반영.
+  void setRule(CompositionRule rule) {
+    _engine.setRule(rule);
   }
 
   CoachingResult updateDetections(

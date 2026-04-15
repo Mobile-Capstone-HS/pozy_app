@@ -9,8 +9,16 @@ import 'package:ultralytics_yolo/yolo.dart';
 import 'package:ultralytics_yolo/yolo_streaming_config.dart';
 import 'package:ultralytics_yolo/yolo_view.dart';
 
-import 'package:pose_camera_app/coaching/coaching_result.dart'
-    hide ShootingMode;
+import 'package:pose_camera_app/coaching/coaching_result.dart';
+import 'package:pose_camera_app/composition/composition_rule.dart';
+import 'package:pose_camera_app/composition/composition_rule_registry.dart';
+import 'package:pose_camera_app/screen/camera/shooting_mode.dart';
+import 'package:pose_camera_app/screen/camera/widgets/bottom_camera_controls.dart';
+import 'package:pose_camera_app/screen/camera/widgets/composition_grid_painter.dart';
+import 'package:pose_camera_app/screen/camera/widgets/composition_rule_selector.dart';
+import 'package:pose_camera_app/screen/camera/widgets/portrait_badge.dart';
+import 'package:pose_camera_app/screen/camera/widgets/roi_painter.dart';
+import 'package:pose_camera_app/screen/camera/widgets/top_camera_bar.dart';
 import 'package:pose_camera_app/widget/coaching_interface.dart';
 import 'package:pose_camera_app/widget/horizon_level_indicator.dart';
 import 'package:pose_camera_app/coaching/object_coach.dart';
@@ -30,15 +38,6 @@ import 'package:pose_camera_app/segmentation/landscape_analyzer.dart';
 
 const String poseModelPath = 'yolov8n-pose_float16.tflite';
 const double poseConfidenceThreshold = 0.25;
-
-enum ShootingMode {
-  person('\uC778\uBB3C'),
-  object('\uAC1D\uCCB4'),
-  landscape('\uD48D\uACBD');
-
-  final String label;
-  const ShootingMode(this.label);
-}
 
 class CameraScreen extends StatefulWidget {
   final ValueChanged<int> onMoveTab;
@@ -133,6 +132,10 @@ class _CameraScreenState extends State<CameraScreen> {
   bool get _isLandscapeMode => _shootingMode == ShootingMode.landscape;
   bool get _isObjectMode => _shootingMode == ShootingMode.object;
 
+  /// 사용자가 상단 selector에서 선택한 구도 규칙. 인물/객체 모드에서만 사용.
+  CompositionRuleType _selectedRule = CompositionRuleType.none;
+  CompositionRule get _activeRule => CompositionRuleRegistry.of(_selectedRule);
+
   @override
   void initState() {
     super.initState();
@@ -147,17 +150,19 @@ class _CameraScreenState extends State<CameraScreen> {
       if (!mounted) return;
 
       try {
-        debugPrint('[CameraScreen] restartCamera start');
+        debugPrint('[YOLO_DEBUG][startup] restartCamera start');
         await _cameraController.restartCamera();
-        debugPrint('[CameraScreen] restartCamera done');
+        debugPrint('[YOLO_DEBUG][startup] restartCamera done');
         await _cameraController.setZoomLevel(_selectedZoom);
-        debugPrint('[CameraScreen] setZoomLevel done zoom=$_selectedZoom');
+        debugPrint(
+          '[YOLO_DEBUG][startup] setZoomLevel done zoom=$_selectedZoom',
+        );
         await _configureZoomPresets();
         debugPrint(
-          '[CameraScreen] configureZoomPresets done presets=$_zoomPresets',
+          '[YOLO_DEBUG][startup] configureZoomPresets done presets=$_zoomPresets',
         );
       } catch (error, stackTrace) {
-        debugPrint('[CameraScreen] startup error: $error');
+        debugPrint('[YOLO_DEBUG][startup] startup error: $error');
         debugPrintStack(stackTrace: stackTrace);
       }
     });
@@ -597,7 +602,14 @@ class _CameraScreenState extends State<CameraScreen> {
     return bestMatch;
   }
 
+  int _yoloDebugObjFrame = 0;
   void _handleDetections(List<YOLOResult> results) {
+    if (++_yoloDebugObjFrame % 30 == 1) {
+      debugPrint(
+        '[YOLO_DEBUG][obj] cb#$_yoloDebugObjFrame results=${results.length} '
+        'mode=${_shootingMode.name} mounted=$mounted',
+      );
+    }
     if (!mounted || !_isObjectMode) return;
     _latestRawDetections = results;
     final filteredResults = _filterResultsForMode(results);
@@ -703,7 +715,17 @@ class _CameraScreenState extends State<CameraScreen> {
     return 0; // 세로
   }
 
+  int _yoloDebugPoseFrame = 0;
   void _handlePoseDetections(List<YOLOResult> results) {
+    if (++_yoloDebugPoseFrame % 30 == 1) {
+      final personCount = results
+          .where((r) => r.className.toLowerCase() == 'person')
+          .length;
+      debugPrint(
+        '[YOLO_DEBUG][pose] cb#$_yoloDebugPoseFrame results=${results.length} '
+        'persons=$personCount mode=${_shootingMode.name} mounted=$mounted',
+      );
+    }
     if (!mounted || !_isPortraitMode) return;
 
     _portraitHandler.deviceOrientationDeg = _deviceOrientationDeg;
@@ -1146,51 +1168,6 @@ class _CameraScreenState extends State<CameraScreen> {
     );
   }
 
-  Widget _buildPortraitTopBar() {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _GlassIconButton(
-          icon: Icons.arrow_back_ios_new_rounded,
-          onTap: widget.onBack,
-        ),
-        const Spacer(),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.45),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white24),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.person, color: Colors.amber, size: 18),
-              const SizedBox(width: 6),
-              const Text(
-                '\uC778\uBB3C',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '${_isFrontCamera ? 'Front' : 'Back'} | ${_currentZoom.toStringAsFixed(1)}x',
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
   CoachingLevel _portraitCoachingLevel() {
     return switch (_portraitCoaching.priority) {
       portrait.CoachingPriority.perfect => CoachingLevel.good,
@@ -1287,8 +1264,10 @@ class _CameraScreenState extends State<CameraScreen> {
             IgnorePointer(
               child: CustomPaint(
                 painter: _isPortraitMode
-                    ? PortraitOverlayPainter(data: _portraitOverlayData)
-                    : _ThirdsGridPainter(),
+                    ? PortraitOverlayPainter(
+                        data: _portraitOverlayData.copyWithRule(_activeRule),
+                      )
+                    : CompositionGridPainter(rule: _activeRule),
                 size: Size.infinite,
               ),
             ),
@@ -1314,7 +1293,7 @@ class _CameraScreenState extends State<CameraScreen> {
               Positioned.fill(
                 child: IgnorePointer(
                   child: CustomPaint(
-                    painter: _RoiPainter(
+                    painter: RoiPainter(
                       lockedRoi: _lockedRoi,
                       dragStart: _roiDragStart,
                       dragEnd: _roiDragCurrent,
@@ -1362,7 +1341,7 @@ class _CameraScreenState extends State<CameraScreen> {
                 ),
               ),
             Positioned(
-              top: 64,
+              top: 108,
               right: 12,
               child: IgnorePointer(
                 child: CoachingSpeechBubble(
@@ -1382,26 +1361,47 @@ class _CameraScreenState extends State<CameraScreen> {
               top: 8,
               left: 16,
               right: 16,
-              child: _isPortraitMode
-                  ? _buildPortraitTopBar()
-                  : _TopCameraBar(
-                      onBack: widget.onBack,
-                      torchOn: _torchOn,
-                      onToggleTorch: (_isFrontCamera || _isLandscapeMode)
-                          ? null
-                          : _toggleTorch,
-                      timerSeconds: _timerSeconds,
-                      onCycleTimer: _cycleTimer,
-                      isDrawingRoi: _isDrawingRoi,
-                      isRoiLocked: _lockedRoi != null,
-                      onToggleRoiLock: _isObjectMode ? _toggleRoiLock : null,
-                    ),
+              child: TopCameraBar(
+                onBack: widget.onBack,
+                torchOn: _torchOn,
+                onToggleTorch: (_isFrontCamera || _isLandscapeMode)
+                    ? null
+                    : _toggleTorch,
+                timerSeconds: _timerSeconds,
+                onCycleTimer: _cycleTimer,
+                isDrawingRoi: _isDrawingRoi,
+                isRoiLocked: _lockedRoi != null,
+                onToggleRoiLock: _isObjectMode ? _toggleRoiLock : null,
+                badge: _isPortraitMode
+                    ? PortraitBadge(
+                        isFrontCamera: _isFrontCamera,
+                        currentZoom: _currentZoom,
+                      )
+                    : null,
+              ),
             ),
+            // 구도 규칙 selector — 인물/객체 모드만. 풍경은 자동 감지 사용.
+            if (!_isLandscapeMode)
+              Positioned(
+                top: 60,
+                left: 0,
+                right: 0,
+                child: CompositionRuleSelector(
+                  selected: _selectedRule,
+                  onChanged: (type) {
+                    if (type == _selectedRule) return;
+                    setState(() => _selectedRule = type);
+                    // Phase 4에서 코칭 엔진에도 전달.
+                    _sceneCoach.setRule(_activeRule);
+                    _portraitHandler.setRule(_activeRule);
+                  },
+                ),
+              ),
             Positioned(
               left: 0,
               right: 0,
               bottom: MediaQuery.of(context).padding.bottom,
-              child: _BottomCameraControls(
+              child: BottomCameraControls(
                 zoomPresets: _zoomPresets,
                 selectedZoom: _selectedZoom,
                 isSaving: _isSaving,
@@ -1449,518 +1449,4 @@ class _CameraScreenState extends State<CameraScreen> {
       ),
     );
   }
-}
-
-class _TopCameraBar extends StatelessWidget {
-  final VoidCallback onBack;
-  final bool torchOn;
-  final VoidCallback? onToggleTorch;
-  final int timerSeconds;
-  final VoidCallback onCycleTimer;
-  final bool isDrawingRoi;
-  final bool isRoiLocked;
-  final VoidCallback? onToggleRoiLock;
-
-  const _TopCameraBar({
-    required this.onBack,
-    required this.torchOn,
-    required this.onToggleTorch,
-    required this.timerSeconds,
-    required this.onCycleTimer,
-    required this.isDrawingRoi,
-    required this.isRoiLocked,
-    required this.onToggleRoiLock,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final lockIcon = isRoiLocked
-        ? Icons.lock_rounded
-        : isDrawingRoi
-        ? Icons.close_rounded
-        : Icons.center_focus_weak_rounded;
-    final lockTint = isRoiLocked
-        ? const Color(0xFF38BDF8)
-        : isDrawingRoi
-        ? const Color(0xFFFBBF24)
-        : null;
-
-    return Row(
-      children: [
-        _GlassIconButton(icon: Icons.arrow_back_ios_new_rounded, onTap: onBack),
-        const Spacer(),
-        if (onToggleRoiLock != null) ...[
-          _GlassIconButton(
-            icon: lockIcon,
-            onTap: onToggleRoiLock!,
-            tint: lockTint,
-          ),
-          const SizedBox(width: 8),
-        ],
-        if (onToggleTorch != null) ...[
-          _GlassIconButton(
-            icon: torchOn ? Icons.flash_on_rounded : Icons.flash_off_rounded,
-            onTap: onToggleTorch!,
-            tint: torchOn ? const Color(0xFFFBBF24) : null,
-          ),
-          const SizedBox(width: 8),
-        ],
-        _GlassIconButton(
-          icon: Icons.timer_outlined,
-          onTap: onCycleTimer,
-          tint: timerSeconds > 0 ? const Color(0xFF38BDF8) : null,
-          label: timerSeconds > 0 ? '${timerSeconds}s' : null,
-        ),
-      ],
-    );
-  }
-}
-
-class _BottomCameraControls extends StatelessWidget {
-  final List<double> zoomPresets;
-  final double selectedZoom;
-  final bool isSaving;
-  final ShootingMode shootingMode;
-  final bool isShootReady;
-  final String? shotTypeLabel;
-  final ValueChanged<double> onSelectZoom;
-  final VoidCallback onGallery;
-  final Future<void> Function() onCapture;
-  final Future<void> Function() onFlipCamera;
-  final ValueChanged<ShootingMode> onModeChanged;
-
-  const _BottomCameraControls({
-    required this.zoomPresets,
-    required this.selectedZoom,
-    required this.isSaving,
-    required this.shootingMode,
-    required this.isShootReady,
-    required this.shotTypeLabel,
-    required this.onSelectZoom,
-    required this.onGallery,
-    required this.onCapture,
-    required this.onFlipCamera,
-    required this.onModeChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (shotTypeLabel != null && shotTypeLabel!.isNotEmpty) ...[
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.4),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              shotTypeLabel!,
-              style: const TextStyle(color: Colors.white70, fontSize: 12),
-            ),
-          ),
-          const SizedBox(height: 12),
-        ],
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: zoomPresets
-                    .map(
-                      (zoom) => Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        child: _ZoomPill(
-                          label:
-                              '${zoom.toStringAsFixed(zoom == zoom.truncateToDouble() ? 0 : 1)}x',
-                          selected: (selectedZoom - zoom).abs() < 0.05,
-                          onTap: () => onSelectZoom(zoom),
-                        ),
-                      ),
-                    )
-                    .toList(),
-              ),
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _GlassIconButton(
-                    icon: Icons.photo_library_outlined,
-                    onTap: onGallery,
-                    diameter: 48,
-                  ),
-                  const SizedBox(width: 48),
-                  _CaptureButton(
-                    isSaving: isSaving,
-                    isShootReady: isShootReady,
-                    onCapture: onCapture,
-                  ),
-                  const SizedBox(width: 48),
-                  _GlassIconButton(
-                    icon: Icons.flip_camera_ios_outlined,
-                    onTap: onFlipCamera,
-                    diameter: 48,
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        _ModeSwitcher(selected: shootingMode, onChanged: onModeChanged),
-        const SizedBox(height: 8),
-      ],
-    );
-  }
-}
-
-class _CaptureButton extends StatefulWidget {
-  final bool isSaving;
-  final bool isShootReady;
-  final Future<void> Function() onCapture;
-
-  const _CaptureButton({
-    required this.isSaving,
-    required this.isShootReady,
-    required this.onCapture,
-  });
-
-  @override
-  State<_CaptureButton> createState() => _CaptureButtonState();
-}
-
-class _CaptureButtonState extends State<_CaptureButton>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _pulseController;
-  late final Animation<double> _pulseAnim;
-
-  @override
-  void initState() {
-    super.initState();
-
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 900),
-    )..repeat(reverse: true);
-
-    _pulseAnim = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
-  }
-
-  @override
-  void dispose() {
-    _pulseController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: widget.isSaving ? null : widget.onCapture,
-      child: AnimatedBuilder(
-        animation: _pulseAnim,
-        builder: (context, child) {
-          final glow = widget.isShootReady ? _pulseAnim.value : 0.0;
-
-          return Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              color: widget.isShootReady
-                  ? const Color(0xFF4ADE80)
-                  : Colors.white,
-              shape: BoxShape.circle,
-              boxShadow: widget.isShootReady
-                  ? [
-                      BoxShadow(
-                        color: const Color(
-                          0xFF4ADE80,
-                        ).withValues(alpha: 0.35 + glow * 0.45),
-                        blurRadius: 12 + glow * 20,
-                        spreadRadius: 2 + glow * 8,
-                      ),
-                    ]
-                  : null,
-            ),
-            child: Center(
-              child: widget.isSaving
-                  ? const SizedBox(
-                      width: 28,
-                      height: 28,
-                      child: CircularProgressIndicator(strokeWidth: 3),
-                    )
-                  : Container(
-                      width: 64,
-                      height: 64,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: const Color(0x1A333333),
-                          width: 2,
-                        ),
-                      ),
-                    ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _ModeSwitcher extends StatelessWidget {
-  static const _availableModes = [
-    ShootingMode.person,
-    ShootingMode.object,
-    ShootingMode.landscape,
-  ];
-
-  final ShootingMode selected;
-  final ValueChanged<ShootingMode> onChanged;
-
-  const _ModeSwitcher({required this.selected, required this.onChanged});
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 36,
-      child: Row(
-        children: _availableModes.map((mode) {
-          final isSelected = selected == mode;
-          return Expanded(
-            child: GestureDetector(
-              onTap: () => onChanged(mode),
-              behavior: HitTestBehavior.opaque,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    mode.label,
-                    style: TextStyle(
-                      color: isSelected ? Colors.white : Colors.white54,
-                      fontSize: 13,
-                      fontWeight: isSelected
-                          ? FontWeight.w700
-                          : FontWeight.w400,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    width: isSelected ? 18 : 0,
-                    height: 2,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(1),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-}
-
-class _GlassIconButton extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onTap;
-  final double diameter;
-  final Color? tint;
-  final String? label;
-
-  const _GlassIconButton({
-    required this.icon,
-    required this.onTap,
-    this.diameter = 40,
-    this.tint,
-    this.label,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final bg = tint ?? const Color(0x66333333);
-    final iconColor = tint != null ? const Color(0xFF0F172A) : Colors.white;
-
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(999),
-      child: Container(
-        width: label != null ? null : diameter,
-        height: diameter,
-        padding: label != null
-            ? const EdgeInsets.symmetric(horizontal: 10)
-            : null,
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: tint ?? const Color(0x4DFFFFFF), width: 1),
-        ),
-        alignment: Alignment.center,
-        child: label != null
-            ? Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(icon, color: iconColor, size: diameter * 0.42),
-                  const SizedBox(width: 4),
-                  Text(
-                    label!,
-                    style: TextStyle(color: iconColor, fontSize: 11),
-                  ),
-                ],
-              )
-            : Icon(icon, color: iconColor, size: diameter * 0.45),
-      ),
-    );
-  }
-}
-
-class _ZoomPill extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _ZoomPill({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: selected ? 40 : 34,
-        height: selected ? 32 : 28,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: selected ? Colors.white : const Color(0x1AFFFFFF),
-          borderRadius: BorderRadius.circular(999),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: selected ? const Color(0xFF333333) : Colors.white,
-            fontSize: selected ? 11 : 10,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _RoiPainter extends CustomPainter {
-  final Rect? lockedRoi;
-  final Offset? dragStart;
-  final Offset? dragEnd;
-  final bool isDrawing;
-
-  const _RoiPainter({
-    this.lockedRoi,
-    this.dragStart,
-    this.dragEnd,
-    required this.isDrawing,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (isDrawing && dragStart != null && dragEnd != null) {
-      final rect = Rect.fromPoints(dragStart!, dragEnd!);
-      _drawDashedRect(canvas, rect, const Color(0xCCFFFFFF), strokeWidth: 1.5);
-      return;
-    }
-
-    if (lockedRoi != null) {
-      final r = lockedRoi!;
-      final rect = Rect.fromLTRB(
-        r.left * size.width,
-        r.top * size.height,
-        r.right * size.width,
-        r.bottom * size.height,
-      );
-      _drawLockedDetectionRect(canvas, rect, const Color(0xFF38BDF8));
-    }
-  }
-
-  void _drawLockedDetectionRect(Canvas canvas, Rect rect, Color color) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = 2.4
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-
-    canvas.drawRect(rect, paint);
-    canvas.drawRect(rect, Paint()..color = const Color(0x1438BDF8));
-  }
-
-  void _drawDashedRect(
-    Canvas canvas,
-    Rect rect,
-    Color color, {
-    double strokeWidth = 1.5,
-  }) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = strokeWidth
-      ..style = PaintingStyle.stroke;
-
-    const dash = 8.0;
-    const gap = 5.0;
-
-    void line(Offset a, Offset b) {
-      final total = (b - a).distance;
-      final dir = (b - a) / total;
-      var d = 0.0;
-      while (d < total) {
-        canvas.drawLine(
-          a + dir * d,
-          a + dir * (d + dash).clamp(0.0, total),
-          paint,
-        );
-        d += dash + gap;
-      }
-    }
-
-    line(rect.topLeft, rect.topRight);
-    line(rect.topRight, rect.bottomRight);
-    line(rect.bottomRight, rect.bottomLeft);
-    line(rect.bottomLeft, rect.topLeft);
-  }
-
-  @override
-  bool shouldRepaint(_RoiPainter old) =>
-      old.lockedRoi != lockedRoi ||
-      old.dragStart != dragStart ||
-      old.dragEnd != dragEnd ||
-      old.isDrawing != isDrawing;
-}
-
-class _ThirdsGridPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = const Color(0x33FFFFFF)
-      ..strokeWidth = 1;
-
-    final dx1 = size.width / 3;
-    final dx2 = size.width * 2 / 3;
-    final dy1 = size.height / 3;
-    final dy2 = size.height * 2 / 3;
-
-    canvas.drawLine(Offset(dx1, 0), Offset(dx1, size.height), paint);
-    canvas.drawLine(Offset(dx2, 0), Offset(dx2, size.height), paint);
-    canvas.drawLine(Offset(0, dy1), Offset(size.width, dy1), paint);
-    canvas.drawLine(Offset(0, dy2), Offset(size.width, dy2), paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
