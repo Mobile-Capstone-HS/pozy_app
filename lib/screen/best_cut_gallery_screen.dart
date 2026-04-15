@@ -191,12 +191,7 @@ class _BestCutGalleryScreenState extends State<BestCutGalleryScreen> {
   }
 
   Future<void> _openACutResultScreen() async {
-    if (_selectedAssetsById.length < 2) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('사진을 2장 이상 선택해 주세요.')),
-      );
-      return;
-    }
+    if (_selectedAssetsById.isEmpty) return;
 
     final selectedAssets = _selectedAssetsById.values.toList(growable: false);
 
@@ -477,17 +472,18 @@ class _BestCutSelectionActionBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final canAnalyze = selectedCount >= 2;
+    final canAnalyze = selectedCount >= 1;
     final title = switch (selectedCount) {
       0 => '사진 선택',
-      1 => '한 장 더 선택하면 랭킹 분석 가능',
+      1 => '1장 선택됨',
       _ => '$selectedCount장 선택됨',
     };
     final subtitle = switch (selectedCount) {
-      0 => '비교할 사진을 탭으로 2장 이상 선택해 주세요.',
-      1 => '현재는 비교할 사진이 부족해요.',
+      0 => '사진을 탭으로 선택해 주세요.',
+      1 => '1장 평가 또는 사진을 더 추가해 A컷 랭킹으로 비교하세요.',
       _ => '선택한 사진들로 베스트 컷 분석을 시작할 수 있어요.',
     };
+    final buttonLabel = selectedCount == 1 ? '사진 평가하기' : '베스트 컷 분석하기';
 
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 10, 18, 18),
@@ -544,9 +540,9 @@ class _BestCutSelectionActionBar extends StatelessWidget {
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              child: const Text(
-                '베스트 컷 분석하기',
-                style: TextStyle(fontWeight: FontWeight.w700),
+              child: Text(
+                buttonLabel,
+                style: const TextStyle(fontWeight: FontWeight.w700),
               ),
             ),
           ),

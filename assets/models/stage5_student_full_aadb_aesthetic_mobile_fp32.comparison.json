@@ -1,0 +1,221 @@
+{
+  "comparison_target": {
+    "target_column": "teacher_aesthetic_score",
+    "target_semantics": "teacher_aesthetic_score / stage5_production_aesthetic_target_v2. This is the project aesthetic target the student was trained to match."
+  },
+  "manifest_csv": "/home/omen_pc1/photo_score_project/outputs/distill_full_aadb/teacher_labels_trainval.csv",
+  "split": "val",
+  "num_samples": 846,
+  "leaderboard": [
+    {
+      "candidate": "aadb_mobile",
+      "spearman": 0.9092152689460565,
+      "pearson": 0.9144631356357416,
+      "mae": 0.04624897614121437,
+      "pairwise_accuracy": 0.9489,
+      "top_k_overlap": 0.6,
+      "tflite_size_bytes": 24096512
+    },
+    {
+      "candidate": "stage5_student_full_aadb",
+      "spearman": 0.8449182842885176,
+      "pearson": 0.8585953036413104,
+      "mae": 0.025955455377697945,
+      "pairwise_accuracy": 0.9084,
+      "top_k_overlap": 0.7,
+      "tflite_size_bytes": 3411060
+    },
+    {
+      "candidate": "rgnet_aadb_gpu",
+      "spearman": 0.797862180440135,
+      "pearson": 0.8078826435653526,
+      "mae": 0.03936932981014252,
+      "pairwise_accuracy": 0.87802,
+      "top_k_overlap": 0.4,
+      "tflite_size_bytes": 26085072
+    },
+    {
+      "candidate": "nima_mobile",
+      "spearman": 0.32381548408168964,
+      "pearson": 0.3367564567703661,
+      "mae": 0.04677451774477959,
+      "pairwise_accuracy": 0.6436,
+      "top_k_overlap": 0.1,
+      "tflite_size_bytes": 24765068
+    }
+  ],
+  "candidates": {
+    "stage5_student_full_aadb": {
+      "metrics": {
+        "num_samples": 846,
+        "mae": 0.025955455377697945,
+        "rmse": 0.03243439272046089,
+        "mse": 0.0010519898496568203,
+        "r2": 0.7180149811913596,
+        "pearson": 0.8585953036413104,
+        "spearman": 0.8449182842885176,
+        "pairwise_accuracy": 0.9084,
+        "pairwise_pairs_scored": 50000,
+        "top_k": 10,
+        "top_k_overlap": 0.7
+      },
+      "prediction_summary": {
+        "min": 0.3099016547203064,
+        "max": 0.7363425493240356,
+        "mean": 0.4839993417263031
+      },
+      "artifact": {
+        "tflite_path": "/home/omen_pc1/photo_score_project/exports/tflite/stage5_student_full_aadb_aesthetic_mobile_fp32.tflite",
+        "tflite_size_bytes": 3411060,
+        "input_size": 224,
+        "output_semantics": "scalar_[0,1]_stage5_aesthetic_component"
+      },
+      "metadata_excerpt": {
+        "display_name": null,
+        "task": null,
+        "export": {
+          "requested_export_source": "rebuild",
+          "used_export_source": "rebuild",
+          "requested_conversion_mode": "builtin",
+          "used_conversion_mode": "builtin",
+          "requires_select_tf_ops": false,
+          "quantization": "no_quant",
+          "tflite_path": "/home/omen_pc1/photo_score_project/exports/tflite/stage5_student_full_aadb_aesthetic_mobile_fp32.tflite",
+          "tflite_size_bytes": 3411060,
+          "attempts": [
+            {
+              "source": "rebuild",
+              "status": "success",
+              "used_conversion_mode": "builtin",
+              "requires_select_tf_ops": false,
+              "builtin_failure": null
+            }
+          ]
+        }
+      }
+    },
+    "aadb_mobile": {
+      "metrics": {
+        "num_samples": 846,
+        "mae": 0.04624897614121437,
+        "rmse": 0.05702507868409157,
+        "mse": 0.003251859685406089,
+        "r2": 0.12834165256626118,
+        "pearson": 0.9144631356357416,
+        "spearman": 0.9092152689460565,
+        "pairwise_accuracy": 0.9489,
+        "pairwise_pairs_scored": 50000,
+        "top_k": 10,
+        "top_k_overlap": 0.6
+      },
+      "prediction_summary": {
+        "min": 0.19921875,
+        "max": 0.89453125,
+        "mean": 0.4923156201839447
+      },
+      "artifact": {
+        "tflite_path": "/home/omen_pc1/photo_score_project/exports/tflite/aadb_mobile.tflite",
+        "tflite_size_bytes": 24096512,
+        "input_size": 224,
+        "output_semantics": "scalar_[0,1]"
+      },
+      "metadata_excerpt": {
+        "display_name": "AADB Aesthetic Regressor",
+        "task": "aesthetic_regression",
+        "export": {
+          "requested_export_source": "rebuild",
+          "used_export_source": "rebuild",
+          "rebuild_failure": null,
+          "requested_conversion_mode": "builtin",
+          "used_conversion_mode": "builtin",
+          "requires_select_tf_ops": false,
+          "tflite_path": "exports/tflite/aadb_mobile.tflite",
+          "tflite_size_bytes": 24096512,
+          "builtin_failure": null
+        }
+      }
+    },
+    "nima_mobile": {
+      "metrics": {
+        "num_samples": 846,
+        "mae": 0.04677451774477959,
+        "rmse": 0.05906803160905838,
+        "mse": 0.003489032154902816,
+        "r2": 0.06476779108067743,
+        "pearson": 0.3367564567703661,
+        "spearman": 0.32381548408168964,
+        "pairwise_accuracy": 0.6436,
+        "pairwise_pairs_scored": 50000,
+        "top_k": 10,
+        "top_k_overlap": 0.1
+      },
+      "prediction_summary": {
+        "min": 0.40172943472862244,
+        "max": 0.6082921028137207,
+        "mean": 0.4997129738330841
+      },
+      "artifact": {
+        "tflite_path": "/home/omen_pc1/photo_score_project/exports/tflite/nima_mobile.tflite",
+        "tflite_size_bytes": 24765068,
+        "input_size": 224,
+        "output_semantics": "distribution_mean_normalized_to_[0,1]"
+      },
+      "metadata_excerpt": {
+        "display_name": "NIMA Distribution Model",
+        "task": "aesthetic_distribution_regression",
+        "export": {
+          "requested_export_source": "rebuild",
+          "used_export_source": "rebuild",
+          "rebuild_failure": null,
+          "requested_conversion_mode": "builtin",
+          "used_conversion_mode": "builtin",
+          "requires_select_tf_ops": false,
+          "tflite_path": "exports/tflite/nima_mobile.tflite",
+          "tflite_size_bytes": 24765068,
+          "builtin_failure": null
+        }
+      }
+    },
+    "rgnet_aadb_gpu": {
+      "metrics": {
+        "num_samples": 846,
+        "mae": 0.03936932981014252,
+        "rmse": 0.04988376423716545,
+        "mse": 0.0024883898440748453,
+        "r2": 0.3329891169974707,
+        "pearson": 0.8078826435653526,
+        "spearman": 0.797862180440135,
+        "pairwise_accuracy": 0.87802,
+        "pairwise_pairs_scored": 50000,
+        "top_k": 10,
+        "top_k_overlap": 0.4
+      },
+      "prediction_summary": {
+        "min": 0.24606463313102722,
+        "max": 0.7855709791183472,
+        "mean": 0.48809584975242615
+      },
+      "artifact": {
+        "tflite_path": "/home/omen_pc1/photo_score_project/exports/tflite/rgnet_aadb_gpu.tflite",
+        "tflite_size_bytes": 26085072,
+        "input_size": 256,
+        "output_semantics": "scalar_[0,1]"
+      },
+      "metadata_excerpt": {
+        "display_name": "RGNet AADB Regressor",
+        "task": "aesthetic_regression",
+        "export": {
+          "requested_export_source": "rebuild",
+          "used_export_source": "rebuild",
+          "rebuild_failure": null,
+          "requested_conversion_mode": "builtin",
+          "used_conversion_mode": "builtin",
+          "requires_select_tf_ops": false,
+          "tflite_path": "exports/tflite/rgnet_aadb_gpu.tflite",
+          "tflite_size_bytes": 26085072,
+          "builtin_failure": null
+        }
+      }
+    }
+  }
+}

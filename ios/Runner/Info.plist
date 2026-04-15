@@ -24,6 +24,10 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>촬영 스팟 지도에서 현재 위치를 표시하고 가까운 명소를 안내하기 위해 위치 정보가 필요합니다.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>촬영 스팟 지도에서 현재 위치를 표시하고 가까운 명소를 안내하기 위해 위치 정보가 필요합니다.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>This app needs camera access for real-time object detection</string>
 	<key>NSPhotoLibraryUsageDescription</key>
