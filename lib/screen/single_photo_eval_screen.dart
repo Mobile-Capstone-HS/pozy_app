@@ -2,8 +2,8 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../feature/a_cut/layer/evaluation/hybrid_photo_evaluation_service.dart';
 import '../feature/a_cut/layer/evaluation/photo_evaluation_service.dart';
-import '../services/gemini_analysis_service.dart';
 import '../feature/a_cut/model/model_score_detail.dart';
 import '../feature/a_cut/model/photo_evaluation_result.dart';
 import '../firebase/history_service.dart';
@@ -41,7 +41,7 @@ class _SinglePhotoEvalScreenState extends State<SinglePhotoEvalScreen> {
   void initState() {
     super.initState();
     _evaluationService =
-        widget.evaluationService ?? GeminiPhotoEvaluationService();
+        widget.evaluationService ?? HybridPhotoEvaluationService();
     _evaluate();
   }
 
@@ -99,6 +99,43 @@ class _SinglePhotoEvalScreenState extends State<SinglePhotoEvalScreen> {
                     : null,
               ),
             ),
+            if (_loading) ...[
+              const SizedBox(height: 12),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Text('분석 진행: 0/1', style: AppTextStyles.body13),
+                        const Spacer(),
+                        const Text(
+                          '0%',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.primaryText,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(999),
+                      child: const LinearProgressIndicator(
+                        minHeight: 8,
+                        value: null,
+                        backgroundColor: AppColors.track,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          AppColors.primaryText,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+            ],
             Expanded(
               child: _loading
                   ? _LoadingView(fileName: widget.fileName)
@@ -124,20 +161,42 @@ class _LoadingView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const CircularProgressIndicator(
-            strokeWidth: 2.5,
-            color: AppColors.primaryText,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            boxShadow: AppShadows.card,
           ),
-          const SizedBox(height: 20),
-          Text('사진을 평가하는 중이에요', style: AppTextStyles.title16),
-          if (fileName != null) ...[
-            const SizedBox(height: 6),
-            Text(fileName!, style: AppTextStyles.body13),
-          ],
-        ],
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(
+                strokeWidth: 2.5,
+                color: AppColors.primaryText,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                '사진을 평가하는 중이에요',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.primaryText,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                fileName ?? 'AI가 구도, 밝기, 미적 완성도를 분석하고 있어요.',
+                style: AppTextStyles.body13,
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -238,9 +297,13 @@ class _ResultView extends StatelessWidget {
               text: '현재 단일 사진 평가는 온디바이스 품질 결과를 중심으로 간단히 요약해 보여줘요.',
             ),
           ],
-          if (result.detailedExplanation != null && result.detailedExplanation!.isNotEmpty) ...[
+          if ((result.shortExplanation?.isNotEmpty ?? false) ||
+              (result.detailedExplanation?.isNotEmpty ?? false)) ...[
             const SizedBox(height: 16),
-            _ExplanationSection(text: result.detailedExplanation!),
+            _ExplanationSection(
+              shortText: result.shortExplanation,
+              detailedText: result.detailedExplanation,
+            ),
           ],
           if (result.scoreDetails.isNotEmpty) ...[
             const SizedBox(height: 16),
@@ -791,9 +854,10 @@ class _ChipSection extends StatelessWidget {
 }
 
 class _ExplanationSection extends StatelessWidget {
-  final String text;
+  const _ExplanationSection({this.shortText, this.detailedText});
 
-  const _ExplanationSection({required this.text});
+  final String? shortText;
+  final String? detailedText;
 
   @override
   Widget build(BuildContext context) {
@@ -808,9 +872,13 @@ class _ExplanationSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: const [
-              Icon(Icons.auto_awesome_rounded, size: 16, color: Color(0xFF4F46E5)),
+          const Row(
+            children: [
+              Icon(
+                Icons.auto_awesome_rounded,
+                size: 16,
+                color: Color(0xFF4F46E5),
+              ),
               SizedBox(width: 6),
               Text(
                 'AI 상세 분석',
@@ -822,16 +890,29 @@ class _ExplanationSection extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          Text(
-            text,
-            style: const TextStyle(
-              fontSize: 14,
-              height: 1.6,
-              fontWeight: FontWeight.w600,
-              color: AppColors.primaryText,
+          if (shortText?.isNotEmpty ?? false) ...[
+            const SizedBox(height: 10),
+            Text(
+              shortText!,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                color: AppColors.primaryText,
+              ),
             ),
-          ),
+          ],
+          if (detailedText?.isNotEmpty ?? false) ...[
+            const SizedBox(height: 8),
+            Text(
+              detailedText!,
+              style: const TextStyle(
+                fontSize: 14,
+                height: 1.6,
+                fontWeight: FontWeight.w600,
+                color: AppColors.primaryText,
+              ),
+            ),
+          ],
         ],
       ),
     );
