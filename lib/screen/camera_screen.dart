@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:gal/gal.dart';
@@ -44,11 +45,16 @@ class CameraScreen extends StatefulWidget {
   final VoidCallback onBack;
   final ShootingMode initialMode;
 
+  /// 평가 모드에서 촬영 완료 시 호출됩니다.
+  /// 설정되면 갤러리 저장을 건너뛰고 bytes를 콜백으로 전달합니다.
+  final Future<void> Function(Uint8List bytes)? onCapture;
+
   const CameraScreen({
     super.key,
     required this.onMoveTab,
     required this.onBack,
     this.initialMode = ShootingMode.object,
+    this.onCapture,
   });
 
   @override
@@ -1048,18 +1054,22 @@ class _CameraScreenState extends State<CameraScreen> {
         });
       }
 
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      Gal.putImageBytes(bytes, name: 'pozy_$timestamp').then((_) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                '\uC0AC\uC9C4\uC744 \uAC24\uB7EC\uB9AC\uC5D0 \uC800\uC7A5\uD588\uC5B4\uC694.',
+      if (widget.onCapture != null) {
+        await widget.onCapture!(bytes);
+      } else {
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        Gal.putImageBytes(bytes, name: 'pozy_$timestamp').then((_) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  '\uC0AC\uC9C4\uC744 \uAC24\uB7EC\uB9AC\uC5D0 \uC800\uC7A5\uD588\uC5B4\uC694.',
+                ),
               ),
-            ),
-          );
-        }
-      });
+            );
+          }
+        });
+      }
     } catch (e) {
       if (mounted) {
         setState(() => _isSaving = false);
