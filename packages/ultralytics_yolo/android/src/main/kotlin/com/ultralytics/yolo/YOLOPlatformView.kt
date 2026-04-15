@@ -500,6 +500,15 @@ class YOLOPlatformView(
                     yoloView.setLockedRoi(left, top, right, bottom)
                     result.success(null)
                 }
+                "setDeviceOrientation" -> {
+                    val degrees = call.argument<Int>("degrees")
+                    if (degrees != null) {
+                        yoloView.setDeviceOrientation(degrees)
+                        result.success(null)
+                    } else {
+                        result.error("invalid_args", "degrees is required", null)
+                    }
+                }
                 else -> {
                     result.notImplemented()
                 }

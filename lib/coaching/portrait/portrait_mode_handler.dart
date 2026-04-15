@@ -79,7 +79,7 @@ class PortraitModeHandler {
   // ─── 분석 주기 (최적화: 기존 15/10 → 30/20으로 늘림) ────
   static const double _posePointAlpha = 0.38;
   static const int _lightingEveryN = 30;
-  static const int _faceEveryN = 20;
+  static const int _faceEveryN = 8;
   static const double _lightingMinConf = 0.5;
 
   // ─── 메시지 안정화 ────────────────────────────────
@@ -95,6 +95,15 @@ class PortraitModeHandler {
 
   // ─── 사람 감지 안정화 ──────────────────────────────
   int _personStreak = 0;
+
+  // ─── 그룹샷 안정화 (히스테리시스) ─────────────────
+  // 진입: 2프레임 연속 2명 이상 → 그룹샷 확정
+  // 이탈: 5프레임 연속 1명 이하 → 그룹샷 해제
+  bool _isGroupShotStable = false;
+  int _groupStreak = 0;
+  int _stablePersonCount = 1;
+  static const int _groupEnterThreshold = 2;
+  static const int _groupExitThreshold = 5;
 
   // ─── 분석 프레임 카운터 ────────────────────────────
   int _frameCount = 0;
@@ -118,13 +127,25 @@ class PortraitModeHandler {
   /// 그룹샷 전용: ML Kit으로 감지한 모든 얼굴 중 눈 감긴 사람이 있는지 여부
   bool _anyFaceEyesClosed = false;
 
+  // ─── 눈 감김 정밀 추적 ────────────────────────────
+  int _eyeClosedStreak = 0;          // 연속 눈 감김 프레임 수 (네이티브 raw 기반)
+  int _anyEyeClosedStreak = 0;       // 그룹 눈 감김 연속 프레임
+  static const int _eyeConfirmFrames = 2; // 확정에 필요한 연속 프레임
+
+  // ─── 카메라 안정성 추적 ───────────────────────────
+  double _cameraStability = 0.0;
+  final List<double> _recentDeltas = [];
+  final Map<String, Offset> _prevKeypoints = {};
+  static const int _stabilityWindow = 10;
+  static const double _stabilityMaxDelta = 0.025;
+
   static const double _faceMetricAlpha = 0.3;
   static const double _faceRectAlpha = 0.35;
 
   // ─── 외부 설정 ────────────────────────────────────
   bool isFrontCamera = false;
 
-  /// 기기 방향 (0=세로, 90=가로 왼쪽, 270=가로 오른쪽)
+  /// 기기 방향 (0=세로, 90=가로 왼쪽, 180=거꾸로, 270=가로 오른쪽)
   /// camera_screen.dart에서 가속도계 기반으로 갱신합니다.
   int deviceOrientationDeg = 0;
 
@@ -162,6 +183,11 @@ class PortraitModeHandler {
     _smoothedFaceRect = null;
     _smoothedPosePoints.clear();
     _anyFaceEyesClosed = false;
+    _eyeClosedStreak = 0;
+    _anyEyeClosedStreak = 0;
+    _cameraStability = 0.0;
+    _recentDeltas.clear();
+    _prevKeypoints.clear();
     stableMessage = '카메라를 사람에게 향해주세요';
     _pendingMessage = '';
     _pendingCount = 0;
@@ -186,6 +212,12 @@ class PortraitModeHandler {
       final tmp = rawYaw;
       rawYaw = -rawRoll;
       rawRoll = tmp;
+    } else if (deviceOrientationDeg == 180 &&
+        rawYaw != null &&
+        rawRoll != null) {
+      // 거꾸로(180°): yaw 부호 반전, roll 부호 반전
+      rawYaw = -rawYaw;
+      rawRoll = -rawRoll;
     } else if (deviceOrientationDeg == 270 &&
         rawYaw != null &&
         rawRoll != null) {
@@ -197,11 +229,20 @@ class PortraitModeHandler {
     _faceYaw = _smoothMetric(_faceYaw, rawYaw);
     _facePitch = _smoothMetric(_facePitch, rawPitch);
     _faceRoll = _smoothMetric(_faceRoll, rawRoll);
-    _leftEyeOpen = _smoothMetric(_leftEyeOpen, metrics['portraitLeftEyeOpen']);
-    _rightEyeOpen = _smoothMetric(
+    _leftEyeOpen = _smoothEyeMetric(_leftEyeOpen, metrics['portraitLeftEyeOpen']);
+    _rightEyeOpen = _smoothEyeMetric(
       _rightEyeOpen,
       metrics['portraitRightEyeOpen'],
     );
+
+    // 눈 감김 스트릭 추적 (원본 값 기반, 스무딩 무관)
+    final rawL = metrics['portraitLeftEyeOpen'];
+    final rawR = metrics['portraitRightEyeOpen'];
+    if (rawL != null && rawR != null && rawL < 0.35 && rawR < 0.35) {
+      _eyeClosedStreak++;
+    } else {
+      _eyeClosedStreak = 0;
+    }
     _smileProb = _smoothMetric(_smileProb, metrics['portraitSmileProbability']);
 
     final lightingCode = metrics['portraitLightingCode'];
@@ -260,9 +301,29 @@ class PortraitModeHandler {
     final main = _selectMainPerson(persons);
 
     // ─── 다중 인물 메트릭 ─────────────────────────────
-    final isGroupShot = persons.length >= 2;
+    // 그룹샷 안정화: 진입은 빠르게, 이탈은 느리게 (깜빡임 방지)
+    if (persons.length >= 2) {
+      _groupStreak = (_groupStreak + 1).clamp(0, _groupExitThreshold);
+    } else {
+      _groupStreak = (_groupStreak - 1).clamp(0, _groupExitThreshold);
+    }
+    if (!_isGroupShotStable && _groupStreak >= _groupEnterThreshold) {
+      _isGroupShotStable = true;
+    } else if (_isGroupShotStable && _groupStreak <= 0) {
+      _isGroupShotStable = false;
+    }
+    final isGroupShot = _isGroupShotStable;
+    // 인원수도 안정화: 그룹샷 모드일 때만 갱신
+    if (isGroupShot) {
+      _stablePersonCount = persons.length;
+    } else {
+      _stablePersonCount = persons.isEmpty ? 0 : 1;
+    }
     double secondPersonSizeRatio = 0.0;
     int groupCroppedCount = 0;
+    int faceHiddenCount = 0;
+    double spacingUnevenness = 0.0;
+    double heightVariation = 0.0;
 
     if (isGroupShot) {
       // 면적 기준으로 정렬해 메인 다음으로 큰 인물과 크기 비율 계산
@@ -286,6 +347,45 @@ class PortraitModeHandler {
           groupCroppedCount++;
         }
       }
+
+      // ── 얼굴 가시성: 코 키포인트 없으면 얼굴이 안 보이는 것 ──
+      // confidence가 낮은 감지(0.3 미만)는 키포인트가 부실할 수 있으므로 제외
+      for (final p in persons) {
+        if (p.confidence < 0.3) continue;
+        final noseKp = _kp(p, PoseKeypointIndex.nose);
+        if (noseKp == null) faceHiddenCount++;
+      }
+
+      // ── 간격 균등성 (3명 이상) ────────────────────────────
+      if (persons.length >= 3) {
+        final centerXs = persons
+            .map((p) => (p.normalizedBox.left + p.normalizedBox.right) / 2)
+            .toList()
+          ..sort();
+        final gaps = <double>[];
+        for (int i = 1; i < centerXs.length; i++) {
+          gaps.add(centerXs[i] - centerXs[i - 1]);
+        }
+        if (gaps.isNotEmpty) {
+          final avgGap = gaps.reduce((a, b) => a + b) / gaps.length;
+          if (avgGap > 0.01) {
+            spacingUnevenness = gaps
+                    .map((g) => (g - avgGap).abs())
+                    .reduce((a, b) => a + b) /
+                gaps.length /
+                avgGap;
+          }
+        }
+      }
+
+      // ── 키 차이 (bbox top Y 범위) ─────────────────────────
+      final topYs = persons.map((p) => p.normalizedBox.top).toList();
+      double minTop = topYs.first, maxTop = topYs.first;
+      for (final y in topYs) {
+        if (y < minTop) minTop = y;
+        if (y > maxTop) maxTop = y;
+      }
+      heightVariation = maxTop - minTop;
     }
 
     // 키포인트 추출
@@ -308,14 +408,24 @@ class PortraitModeHandler {
     );
     final lHip = _smoothedKp(main, PoseKeypointIndex.leftHip, minConf: 0.3);
     final rHip = _smoothedKp(main, PoseKeypointIndex.rightHip, minConf: 0.3);
-    final lKnee = _smoothedKp(main, PoseKeypointIndex.leftKnee, minConf: 0.3);
-    final rKnee = _smoothedKp(main, PoseKeypointIndex.rightKnee, minConf: 0.3);
-    final lAnkle = _smoothedKp(main, PoseKeypointIndex.leftAnkle, minConf: 0.3);
+    final lKnee = _smoothedKp(main, PoseKeypointIndex.leftKnee, minConf: 0.05);
+    final rKnee = _smoothedKp(main, PoseKeypointIndex.rightKnee, minConf: 0.05);
+    final lAnkle =
+        _smoothedKp(main, PoseKeypointIndex.leftAnkle, minConf: 0.05);
     final rAnkle = _smoothedKp(
       main,
       PoseKeypointIndex.rightAnkle,
-      minConf: 0.3,
+      minConf: 0.05,
     );
+
+    // ─── 카메라 안정성 계산 ──────────────────────────────
+    _updateStability({
+      'nose': nose,
+      'lEye': lEye,
+      'rEye': rEye,
+      'lShoulder': lShoulder,
+      'rShoulder': rShoulder,
+    });
 
     // ─── 비동기 분석 (조명 + 얼굴, captureFrame 공유) ─────
     // 어깨 각도
@@ -383,16 +493,43 @@ class PortraitModeHandler {
     double headroom = 0, footSpace = 0;
 
     // 인물 bbox 비율 계산
+    // 그룹샷: 모든 인물을 포함하는 전체 영역 비율 사용
     final mainBox = main.normalizedBox;
-    final bboxRatio = mainBox.width * mainBox.height;
-    final centerX = (mainBox.left + mainBox.right) / 2;
+    final double bboxRatio;
+    if (isGroupShot) {
+      double gLeft = double.infinity, gTop = double.infinity;
+      double gRight = double.negativeInfinity, gBottom = double.negativeInfinity;
+      for (final p in persons) {
+        final b = p.normalizedBox;
+        if (b.left < gLeft) gLeft = b.left;
+        if (b.top < gTop) gTop = b.top;
+        if (b.right > gRight) gRight = b.right;
+        if (b.bottom > gBottom) gBottom = b.bottom;
+      }
+      bboxRatio = (gRight - gLeft) * (gBottom - gTop);
+    } else {
+      bboxRatio = mainBox.width * mainBox.height;
+    }
+    // 그룹샷: 그룹 전체 중심 사용, 솔로: 메인 인물 중심
+    final double centerX;
+    if (isGroupShot) {
+      double sumCx = 0;
+      for (final p in persons) {
+        sumCx += (p.normalizedBox.left + p.normalizedBox.right) / 2;
+      }
+      centerX = sumCx / persons.length;
+    } else {
+      centerX = (mainBox.left + mainBox.right) / 2;
+    }
 
     final hasAnkle = lAnkle != null || rAnkle != null;
     final hasKnee = lKnee != null || rKnee != null;
     final hasHip = lHip != null || rHip != null;
     final hasShoulder = lShoulder != null || rShoulder != null;
 
-    if (bboxRatio < 0.35) {
+    if (isGroupShot) {
+      shot = ShotType.groupShot;
+    } else if (bboxRatio < 0.35) {
       shot = ShotType.environmental;
     } else if (maxY > minY) {
       final h = maxY - minY;
@@ -416,6 +553,19 @@ class PortraitModeHandler {
       }
       headroom = minY;
       footSpace = 1.0 - maxY;
+    }
+
+    // 그룹샷: headroom을 전체 인물 중 가장 위쪽(키 큰 사람) 기준으로 보정
+    if (isGroupShot) {
+      double groupMinTop = double.infinity;
+      for (final p in persons) {
+        if (p.normalizedBox.top < groupMinTop) {
+          groupMinTop = p.normalizedBox.top;
+        }
+      }
+      if (groupMinTop < headroom) {
+        headroom = groupMinTop;
+      }
     }
 
     // 관절 크로핑 (샷 타입에 따라 체크 관절 구분)
@@ -453,8 +603,38 @@ class PortraitModeHandler {
     _smoothedFaceRect = _smoothRect(_smoothedFaceRect, rawFaceRect);
     final faceRect = _smoothedFaceRect ?? rawFaceRect;
 
+    // ─── 발 간격 비율 (어깨 너비 대비) ──────────────────────
+    double? ankleSpacing;
+    if (lAnkle != null && rAnkle != null && lShoulder != null && rShoulder != null) {
+      final shoulderW = (rShoulder.dx - lShoulder.dx).abs();
+      if (shoulderW > 0.02) {
+        ankleSpacing = (rAnkle.dx - lAnkle.dx).abs() / shoulderW;
+      }
+    }
+
+    // ─── 프레임 하단에 가장 가까운 관절 감지 ────────────────
+    // 관절에서 자르면 어색 → 관절이 화면 하단 12% 안에 있으면 경고
+    String? bottomJoint;
+    double? bottomJointY;
+    const bottomZone = 0.85;
+    final jointCandidates = <String, double?>{
+      'knee': _maxY(lKnee, rKnee),
+      'ankle': _maxY(lAnkle, rAnkle),
+      'wrist': _maxY(lWrist, rWrist),
+      'hip': _maxY(lHip, rHip),
+    };
+    for (final entry in jointCandidates.entries) {
+      final y = entry.value;
+      if (y != null && y > bottomZone) {
+        if (bottomJointY == null || y > bottomJointY) {
+          bottomJoint = entry.key;
+          bottomJointY = y;
+        }
+      }
+    }
+
     final state = PortraitSceneState(
-      personCount: persons.length,
+      personCount: _stablePersonCount,
       shotType: shot,
       faceYaw: _faceYaw,
       facePitch: _facePitch,
@@ -495,12 +675,19 @@ class PortraitModeHandler {
       rightHipPosition: rHip,
       leftKneePosition: lKnee,
       rightKneePosition: rKnee,
+      ankleSpacingRatio: ankleSpacing,
+      bottomJoint: bottomJoint,
+      bottomJointY: bottomJointY,
+      isFrontCamera: isFrontCamera,
+      cameraStability: _cameraStability,
+      eyeClosedConfirmed: _eyeClosedStreak >= _eyeConfirmFrames,
+      faceHiddenCount: faceHiddenCount,
+      spacingUnevenness: spacingUnevenness,
+      heightVariation: heightVariation,
     );
 
-    final coaching = _stabilize(_coachEngine.evaluate(state));
-
-    // ─── 그룹샷 전용: 모든 얼굴 눈 감김 비동기 검사 ───────────
-    // captureFrameCallback이 연결된 경우에만 실행 (_faceEveryN 프레임마다)
+    // ─── 그룹샷: 모든 얼굴 눈 감김 비동기 검사 ───────────────
+    // 코칭 평가 전에 트리거하여 다음 프레임부터 바로 반영
     _frameCount++;
     if (isGroupShot &&
         captureFrameCallback != null &&
@@ -519,6 +706,8 @@ class PortraitModeHandler {
       }());
     }
 
+    final coaching = _stabilize(_coachEngine.evaluate(state));
+
     final overlay = OverlayData(
       leftEye: lEye,
       rightEye: rEye,
@@ -531,6 +720,10 @@ class PortraitModeHandler {
       rightWrist: rWrist,
       leftHip: lHip,
       rightHip: rHip,
+      leftKnee: lKnee,
+      rightKnee: rKnee,
+      leftAnkle: lAnkle,
+      rightAnkle: rAnkle,
       coaching: coaching,
       shotType: shot,
       eyeConfidence: eyeConf,
@@ -544,7 +737,7 @@ class PortraitModeHandler {
       coaching: coaching,
       overlayData: overlay,
       shotType: shot,
-      personCount: persons.length,
+      personCount: _stablePersonCount,
       hasPersonStable: true,
     );
   }
@@ -684,7 +877,9 @@ class PortraitModeHandler {
       final faces = await _faceDetector.processImage(input);
 
       if (faces.isNotEmpty) {
-        // 가장 큰 얼굴을 메인으로 사용
+        // ─── 메인 얼굴: yaw/pitch/roll/smile만 보조 업데이트 ────
+        // 눈 데이터는 네이티브 메트릭 스트림이 primary source
+        // (여기서 덮어쓰면 비대칭 스무딩이 깨지고 값이 점프함)
         final mainFace = faces.length == 1
             ? faces.first
             : faces.reduce(
@@ -695,22 +890,27 @@ class PortraitModeHandler {
                     : b,
               );
 
-        _faceYaw = mainFace.headEulerAngleY;
-        _facePitch = mainFace.headEulerAngleX;
-        _faceRoll = mainFace.headEulerAngleZ;
-        _leftEyeOpen = mainFace.leftEyeOpenProbability;
-        _rightEyeOpen = mainFace.rightEyeOpenProbability;
-        _smileProb = mainFace.smilingProbability;
+        _faceYaw = _smoothMetric(_faceYaw, mainFace.headEulerAngleY);
+        _facePitch = _smoothMetric(_facePitch, mainFace.headEulerAngleX);
+        _faceRoll = _smoothMetric(_faceRoll, mainFace.headEulerAngleZ);
+        _smileProb = _smoothMetric(_smileProb, mainFace.smilingProbability);
 
-        // ─── 그룹샷: 감지된 모든 얼굴에서 눈 감김 검사 ────────
-        // enableClassification: true 이므로 eyeOpenProbability가 제공됨
-        _anyFaceEyesClosed = faces.any((f) {
+        // ─── 모든 얼굴: 눈 감김 검사 (그룹샷 + 싱글 보조) ────
+        // 비동기 주기가 8프레임(~0.27초)이므로 streak 1이면 확정
+        final anyEyesClosed = faces.any((f) {
           final l = f.leftEyeOpenProbability ?? 1.0;
           final r = f.rightEyeOpenProbability ?? 1.0;
           return l < 0.3 && r < 0.3;
         });
+        if (anyEyesClosed) {
+          _anyEyeClosedStreak++;
+        } else {
+          _anyEyeClosedStreak = 0;
+        }
+        _anyFaceEyesClosed = _anyEyeClosedStreak >= 1;
       } else {
         _anyFaceEyesClosed = false;
+        _anyEyeClosedStreak = 0;
       }
     } catch (e) {
       debugPrint('[FACE] error=$e');
@@ -914,6 +1114,7 @@ class PortraitModeHandler {
         return 0.29;
       case ShotType.environmental:
         return 0.30;
+      case ShotType.groupShot:
       case ShotType.unknown:
         return null;
     }
@@ -937,6 +1138,7 @@ class PortraitModeHandler {
         return 0.08;
       case ShotType.environmental:
         return 0.10;
+      case ShotType.groupShot:
       case ShotType.unknown:
         return null;
     }
@@ -1046,5 +1248,47 @@ class PortraitModeHandler {
         p.dx > 1 - margin ||
         p.dy < margin ||
         p.dy > 1 - margin;
+  }
+
+  /// 두 키포인트 중 더 큰 y값을 반환 (프레임 하단에 가까운 쪽)
+  double? _maxY(Offset? a, Offset? b) {
+    if (a == null && b == null) return null;
+    if (a == null) return b!.dy;
+    if (b == null) return a.dy;
+    return a.dy > b.dy ? a.dy : b.dy;
+  }
+
+  /// 눈 전용 비대칭 스무딩: 감는 방향은 빠르게, 뜨는 방향은 느리게
+  double? _smoothEyeMetric(double? previous, double? next) {
+    if (next == null || next.isNaN) return previous;
+    if (previous == null || previous.isNaN) return next;
+    // 눈 감는 중 (값 하락): alpha 0.6 → 2프레임이면 반응
+    // 눈 뜨는 중 (값 상승): alpha 0.2 → 플리커 방지
+    final alpha = next < previous ? 0.6 : 0.2;
+    return previous + (next - previous) * alpha;
+  }
+
+  /// 키포인트 프레임 간 이동량으로 카메라 안정성을 계산합니다.
+  void _updateStability(Map<String, Offset?> current) {
+    double totalDelta = 0;
+    int count = 0;
+    for (final entry in current.entries) {
+      if (entry.value == null) continue;
+      final prev = _prevKeypoints[entry.key];
+      if (prev != null) {
+        totalDelta += (entry.value! - prev).distance;
+        count++;
+      }
+      _prevKeypoints[entry.key] = entry.value!;
+    }
+    if (count >= 2) {
+      final avgDelta = totalDelta / count;
+      _recentDeltas.add(avgDelta);
+      if (_recentDeltas.length > _stabilityWindow) {
+        _recentDeltas.removeAt(0);
+      }
+      final avg = _recentDeltas.reduce((a, b) => a + b) / _recentDeltas.length;
+      _cameraStability = (1.0 - (avg / _stabilityMaxDelta)).clamp(0.0, 1.0);
+    }
   }
 }

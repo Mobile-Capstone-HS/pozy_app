@@ -27,6 +27,10 @@ class OverlayData {
   final Offset? rightWrist;
   final Offset? leftHip;
   final Offset? rightHip;
+  final Offset? leftKnee;
+  final Offset? rightKnee;
+  final Offset? leftAnkle;
+  final Offset? rightAnkle;
 
   final CoachingResult coaching;
   final ShotType shotType;
@@ -48,6 +52,10 @@ class OverlayData {
     this.rightWrist,
     this.leftHip,
     this.rightHip,
+    this.leftKnee,
+    this.rightKnee,
+    this.leftAnkle,
+    this.rightAnkle,
     required this.coaching,
     this.shotType = ShotType.unknown,
     this.eyeConfidence = 0.0,
@@ -136,6 +144,14 @@ class PortraitOverlayPainter extends CustomPainter {
       data.leftElbow, data.rightElbow,
       data.leftWrist, data.rightWrist,
       data.leftHip, data.rightHip,
+    ]) {
+      _drawGlowPoint(canvas, size, pt, radius: 3.5, isMain: false);
+    }
+
+    // 하체 포인트 (무릎~발목) — 작은 글로우
+    for (final pt in [
+      data.leftKnee, data.rightKnee,
+      data.leftAnkle, data.rightAnkle,
     ]) {
       _drawGlowPoint(canvas, size, pt, radius: 3.5, isMain: false);
     }
@@ -437,6 +453,12 @@ class PortraitOverlayPainter extends CustomPainter {
     drawBone(data.leftShoulder, data.leftHip);
     drawBone(data.rightShoulder, data.rightHip);
     drawBone(data.leftHip, data.rightHip);
+
+    // 하체
+    drawBone(data.leftHip, data.leftKnee);
+    drawBone(data.leftKnee, data.leftAnkle);
+    drawBone(data.rightHip, data.rightKnee);
+    drawBone(data.rightKnee, data.rightAnkle);
   }
 
   // ─── 라벨 헬퍼 ───────────────────────────────────

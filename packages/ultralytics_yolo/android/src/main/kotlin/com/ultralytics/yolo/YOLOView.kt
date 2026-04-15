@@ -162,7 +162,11 @@ class YOLOView @JvmOverloads constructor(
     private var frameSkipCount: Int = 0 // Current frame skip counter
     private var targetSkipFrames: Int = 0 // Number of frames to skip between inferences
     private val portraitNativeAnalyzer = PortraitNativeAnalyzer(context)
-    private val poseDetectionHoldFrames = 3
+    private val poseDetectionHoldFrames = 5
+
+    // Device orientation from Flutter accelerometer (0, 90, 180, 270)
+    @Volatile
+    private var deviceOrientationDeg: Int = 0
 
     // Image metrics analysis — callback set by YOLOPlatformView
     var onImageMetrics: ((Map<String, Any>) -> Unit)? = null
@@ -399,6 +403,11 @@ class YOLOView @JvmOverloads constructor(
     
     fun setShowOverlays(show: Boolean) {
         showOverlays = show
+    }
+
+    fun setDeviceOrientation(degrees: Int) {
+        deviceOrientationDeg = degrees
+        Log.d(TAG, "Device orientation set to $degrees°")
     }
     
     fun setShowUIControls(show: Boolean) {
@@ -894,14 +903,16 @@ class YOLOView @JvmOverloads constructor(
                 (p as? BasePredictor)?.isFrontCamera = isFrontCamera
 
                 val shouldNormalizePoseRotation = task == YOLOTask.POSE
+                // 180° 거꾸로 들었을 때 추가 회전 적용
+                val additionalRotation = if (shouldNormalizePoseRotation && deviceOrientationDeg == 180) 180 else 0
                 val inferenceBitmap = if (shouldNormalizePoseRotation) {
-                    ImageUtils.rotateBitmap(bitmap, rotationDegrees)
+                    ImageUtils.rotateBitmap(bitmap, rotationDegrees + additionalRotation)
                 } else {
                     bitmap
                 }
                 val rotatedFrameSwapsAxes = rotationDegrees == 90 || rotationDegrees == 270
 
-                val result = if (shouldNormalizePoseRotation) {
+                var result = if (shouldNormalizePoseRotation) {
                     p.predict(
                         inferenceBitmap,
                         inferenceBitmap.width,
@@ -920,7 +931,12 @@ class YOLOView @JvmOverloads constructor(
                         isLandscape = isLandscape,
                     )
                 }
-                
+
+                // 180° 추가 회전한 경우 좌표를 미러링하여 프리뷰와 일치시킴
+                if (additionalRotation == 180) {
+                    result = flipResult180(result)
+                }
+
                 // Apply originalImage if streaming config requires it
                 val resultWithOriginalImage = if (streamConfig?.includeOriginalImage == true) {
                     result.copy(originalImage = bitmap)  // Reuse bitmap from ImageProxy conversion
@@ -2052,6 +2068,35 @@ class YOLOView @JvmOverloads constructor(
     private fun resetPoseStreamStability() {
         lastStablePoseDetections = emptyList()
         consecutiveEmptyPoseFrames = 0
+    }
+
+    /**
+     * 180° 추가 회전으로 추론한 결과의 좌표를 뒤집어 카메라 프리뷰와 일치시킵니다.
+     * (x, y) → (W-x, H-y), normalized (x, y) → (1-x, 1-y)
+     */
+    private fun flipResult180(result: YOLOResult): YOLOResult {
+        val w = result.origShape.width.toFloat()
+        val h = result.origShape.height.toFloat()
+
+        val flippedBoxes = result.boxes.map { box ->
+            Box(
+                index = box.index,
+                cls = box.cls,
+                conf = box.conf,
+                xywh = RectF(w - box.xywh.right, h - box.xywh.bottom, w - box.xywh.left, h - box.xywh.top),
+                xywhn = RectF(1f - box.xywhn.right, 1f - box.xywhn.bottom, 1f - box.xywhn.left, 1f - box.xywhn.top),
+            )
+        }
+
+        val flippedKeypoints = result.keypointsList.map { kp ->
+            Keypoints(
+                xyn = kp.xyn.map { (x, y) -> (1f - x) to (1f - y) },
+                xy = kp.xy.map { (x, y) -> (w - x) to (h - y) },
+                conf = kp.conf,
+            )
+        }
+
+        return result.copy(boxes = flippedBoxes, keypointsList = flippedKeypoints)
     }
 
     private fun computeAppearanceSignature(
