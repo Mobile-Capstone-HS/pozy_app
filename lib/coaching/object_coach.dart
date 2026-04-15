@@ -610,6 +610,10 @@ class ObjectCoach {
   bool _subjectLocked = false;
   bool _subjectInFrame = true;
 
+  /// 기기 방향(0/90/180/270). 180° = 거꾸로 든 세로.
+  int _deviceOrientationDeg = 0;
+  void setOrientation(int deg) => _deviceOrientationDeg = deg;
+
   CoachingResult _currentResult = const CoachingResult(
     guidance: '구도를 잡는 중...',
     level: CoachingLevel.caution,
@@ -644,7 +648,25 @@ class ObjectCoach {
       return _currentResult;
     }
 
-    final geometry = _extractor.extract(results);
+    var geometry = _extractor.extract(results);
+    // 거꾸로 든 경우(180°) 감지 좌표 반전 보정
+    if (_deviceOrientationDeg == 180) {
+      geometry = SceneGeometry(
+        numObjects: geometry.numObjects,
+        areaRatio: geometry.areaRatio,
+        sceneCenterX: 1.0 - geometry.sceneCenterX,
+        sceneCenterY: 1.0 - geometry.sceneCenterY,
+        unionMarginMin: geometry.unionMarginMin,
+        unionRoi: geometry.unionRoi == null
+            ? null
+            : Rect.fromLTRB(
+                1.0 - geometry.unionRoi!.right,
+                1.0 - geometry.unionRoi!.bottom,
+                1.0 - geometry.unionRoi!.left,
+                1.0 - geometry.unionRoi!.top,
+              ),
+      );
+    }
     _latestGeometry = geometry;
     _smoother.updateGeometry(geometry);
     final current = _smoother.current;

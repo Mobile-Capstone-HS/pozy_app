@@ -1,2 +1,4 @@
 #include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"
 #include "Generated.xcconfig"
+// API 키는 ios/Flutter/Secrets.xcconfig 파일을 만들어 MAPS_API_KEY=AIzaSy... 형태로 입력하세요.
+#include? "Secrets.xcconfig"
