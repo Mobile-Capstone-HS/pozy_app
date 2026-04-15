@@ -12,6 +12,9 @@ library;
 
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+
+import '../../composition/composition_rule.dart';
+import '../../composition/composition_rule_registry.dart';
 import 'portrait_scene_state.dart';
 
 /// 오버레이에 필요한 포즈/얼굴 데이터
@@ -40,6 +43,9 @@ class OverlayData {
   final double? targetEyeLineY;
   final double? targetHeadroomTop;
 
+  /// 사용자가 선택한 구도 규칙. null이면 기본 3분할.
+  final CompositionRule? activeRule;
+
   const OverlayData({
     this.leftEye,
     this.rightEye,
@@ -63,7 +69,33 @@ class OverlayData {
     this.faceGuideRect,
     this.targetEyeLineY,
     this.targetHeadroomTop,
+    this.activeRule,
   });
+
+  /// [activeRule]만 교체한 새 인스턴스 반환. 기존 필드는 그대로 유지.
+  OverlayData copyWithRule(CompositionRule? rule) {
+    return OverlayData(
+      leftEye: leftEye,
+      rightEye: rightEye,
+      nose: nose,
+      leftShoulder: leftShoulder,
+      rightShoulder: rightShoulder,
+      leftElbow: leftElbow,
+      rightElbow: rightElbow,
+      leftWrist: leftWrist,
+      rightWrist: rightWrist,
+      leftHip: leftHip,
+      rightHip: rightHip,
+      coaching: coaching,
+      shotType: shotType,
+      eyeConfidence: eyeConfidence,
+      shoulderConfidence: shoulderConfidence,
+      faceGuideRect: faceGuideRect,
+      targetEyeLineY: targetEyeLineY,
+      targetHeadroomTop: targetHeadroomTop,
+      activeRule: rule,
+    );
+  }
 }
 
 // ─── 색상 팔레트 ──────────────────────────────────────
@@ -89,7 +121,7 @@ class PortraitOverlayPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    _drawThirdsGrid(canvas, size);
+    _drawCompositionGrid(canvas, size);
     _drawFaceGuide(canvas, size);
     _drawBodyOutline(canvas, size);
     _drawKeypoints(canvas, size);
@@ -97,37 +129,17 @@ class PortraitOverlayPainter extends CustomPainter {
     _drawEyeGuide(canvas, size);
   }
 
-  // ─── 삼분할 그리드 ────────────────────────────────
+  // ─── 구도 그리드 (사용자 선택 규칙 기반) ───────────
 
-  void _drawThirdsGrid(Canvas canvas, Size size) {
-    final gridPaint = Paint()
-      ..color = _Colors.white
-      ..strokeWidth = 0.5;
-
-    final dx1 = size.width / 3;
-    final dx2 = size.width * 2 / 3;
-    final dy1 = size.height / 3;
-    final dy2 = size.height * 2 / 3;
-
-    canvas.drawLine(Offset(dx1, 0), Offset(dx1, size.height), gridPaint);
-    canvas.drawLine(Offset(dx2, 0), Offset(dx2, size.height), gridPaint);
-    canvas.drawLine(Offset(0, dy1), Offset(size.width, dy1), gridPaint);
-    canvas.drawLine(Offset(0, dy2), Offset(size.width, dy2), gridPaint);
-
-    // 교차점 타겟 (미니멀한 +)
-    final targetPaint = Paint()
-      ..color = _Colors.whiteMed
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0
-      ..strokeCap = StrokeCap.round;
-
-    for (final pt in [
-      Offset(dx1, dy1), Offset(dx2, dy1),
-      Offset(dx1, dy2), Offset(dx2, dy2),
-    ]) {
-      canvas.drawLine(pt + const Offset(-10, 0), pt + const Offset(10, 0), targetPaint);
-      canvas.drawLine(pt + const Offset(0, -10), pt + const Offset(0, 10), targetPaint);
-    }
+  void _drawCompositionGrid(Canvas canvas, Size size) {
+    final rule = data.activeRule ??
+        CompositionRuleRegistry.of(CompositionRuleType.ruleOfThirds);
+    rule.paintOverlay(
+      canvas,
+      Offset.zero & size,
+      color: _Colors.whiteMed,
+      strokeWidth: 0.8,
+    );
   }
 
   // ─── 키포인트 (글로우 + 링) ───────────────────────

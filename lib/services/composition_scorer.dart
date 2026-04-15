@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../composition/composition_rule.dart';
+import '../composition/composition_rule_registry.dart';
 import '../models/composition_candidate.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -60,7 +62,13 @@ abstract class CompositionScorerBase {
 /// ### Future replacement
 /// Implement [CompositionScorerBase] and inject it in [_CameraScreenState].
 class HeuristicCompositionScorer implements CompositionScorerBase {
-  const HeuristicCompositionScorer();
+  /// 사용자가 선택한 구도 규칙. 미지정 시 기존 3분할로 대체.
+  final CompositionRule? rule;
+
+  const HeuristicCompositionScorer({this.rule});
+
+  CompositionRule get _effectiveRule =>
+      rule ?? CompositionRuleRegistry.of(CompositionRuleType.ruleOfThirds);
 
   @override
   List<CompositionCandidate> score({
@@ -138,24 +146,12 @@ class HeuristicCompositionScorer implements CompositionScorerBase {
       }
     }
 
-    // --- Thirds placement (0.25) --------------------------------
+    // --- Rule alignment (0.25) — 사용자가 선택한 구도 규칙(기본 3분할) -----
     if (r.width > 0 && r.height > 0) {
       final sx = (subject.center.dx - r.left) / r.width;
       final sy = (subject.center.dy - r.top) / r.height;
-      const thirdsPoints = [
-        Offset(1 / 3, 1 / 3),
-        Offset(1 / 3, 2 / 3),
-        Offset(2 / 3, 1 / 3),
-        Offset(2 / 3, 2 / 3),
-      ];
-      double bestThirds = 0;
-      for (final tp in thirdsPoints) {
-        final dist = math.sqrt(
-          (sx - tp.dx) * (sx - tp.dx) + (sy - tp.dy) * (sy - tp.dy),
-        );
-        bestThirds = math.max(bestThirds, (1.0 - dist * 3.0).clamp(0.0, 1.0));
-      }
-      score += 0.25 * bestThirds;
+      final alignment = _effectiveRule.scoreAlignment(Offset(sx, sy));
+      score += 0.25 * alignment;
     }
 
     // --- Visual centre balance (0.15) ---------------------------

@@ -35,6 +35,8 @@ class CompositionTemporalFilter {
 
     final smoothed = raw.copyWith(
       skyRatio: ema(prev.skyRatio, raw.skyRatio),
+      skyOnlyRatio: ema(prev.skyOnlyRatio, raw.skyOnlyRatio),
+      topOpenAreaRatio: ema(prev.topOpenAreaRatio, raw.topOpenAreaRatio),
       vegRatio: ema(prev.vegRatio, raw.vegRatio),
       terrainRatio: ema(prev.terrainRatio, raw.terrainRatio),
       roadRatio: ema(prev.roadRatio, raw.roadRatio),
@@ -46,24 +48,19 @@ class CompositionTemporalFilter {
         raw.landscapeConfidence,
       ),
       horizonConfidence: ema(prev.horizonConfidence, raw.horizonConfidence),
+      horizonStability: ema(prev.horizonStability, raw.horizonStability),
       vegLeftRatio: ema(prev.vegLeftRatio, raw.vegLeftRatio),
       vegRightRatio: ema(prev.vegRightRatio, raw.vegRightRatio),
       foregroundRatio: ema(prev.foregroundRatio, raw.foregroundRatio),
-      horizonTiltDeg: raw.horizonTiltDeg == null
-          ? prev.horizonTiltDeg
-          : (prev.horizonTiltDeg == null
-                ? raw.horizonTiltDeg
-                : ema(prev.horizonTiltDeg!, raw.horizonTiltDeg!)),
-      horizonPosition: raw.horizonPosition == null
-          ? prev.horizonPosition
-          : (prev.horizonPosition == null
-                ? raw.horizonPosition
-                : ema(prev.horizonPosition!, raw.horizonPosition!)),
-      horizonThirdDistance: raw.horizonThirdDistance == null
-          ? prev.horizonThirdDistance
-          : (prev.horizonThirdDistance == null
-                ? raw.horizonThirdDistance
-                : ema(prev.horizonThirdDistance!, raw.horizonThirdDistance!)),
+      horizonTiltDeg: raw.horizonTiltDeg,
+      horizonPosition: raw.horizonPosition,
+      horizonThirdDistance: raw.horizonThirdDistance,
+      horizonDetected: raw.horizonDetected,
+      horizonType: raw.horizonType,
+      horizonSource: raw.horizonSource,
+      horizonValidity: raw.horizonValidity,
+      tiltDirection: raw.tiltDirection,
+      boundaryPoints: raw.boundaryPoints,
     );
 
     _smoothed = smoothed;

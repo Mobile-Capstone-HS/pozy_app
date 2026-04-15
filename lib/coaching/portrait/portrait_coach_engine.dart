@@ -1,9 +1,21 @@
 library;
 
+import 'package:flutter/material.dart';
+
+import '../../composition/composition_rule.dart';
+import '../../composition/composition_rule_registry.dart';
 import 'portrait_scene_state.dart';
 
 class PortraitCoachEngine {
   static const double _minConf = 0.5;
+
+  /// 사용자가 선택한 구도 규칙. none이면 기존 하드코딩 3분할 휴리스틱.
+  CompositionRule _rule =
+      CompositionRuleRegistry.of(CompositionRuleType.none);
+
+  void setRule(CompositionRule rule) {
+    _rule = rule;
+  }
 
   CoachingResult evaluate(PortraitSceneState s) {
     if (s.personCount == 0) {
@@ -377,18 +389,29 @@ class PortraitCoachEngine {
       if (result != null) return result;
     }
 
-    // ─── 6. 삼분할 구도 (전신/환경) ──────────────────────────
-    if ((s.shotType == ShotType.fullBody ||
-            s.shotType == ShotType.environmental ||
-            s.shotType == ShotType.kneeShot) &&
-        s.personCenterX > 0.42 &&
-        s.personCenterX < 0.58) {
-      return const CoachingResult(
-        message: '인물을 화면 가운데에서 살짝 옮겨보세요.',
-        priority: CoachingPriority.composition,
-        confidence: 0.65,
-        reason: '한쪽으로 살짝 비켜야 자연스러워요',
-      );
+    // ─── 6. 전신 발 아래 공간 ─────────────────────────────────
+    if (s.shotType == ShotType.fullBody) {
+      if (s.footSpaceRatio < 0.05) {
+        return const CoachingResult(
+          message: '발 아래 공간을 더 넣어주세요.',
+          priority: CoachingPriority.composition,
+          confidence: 0.8,
+        );
+      }
+      if (s.footSpaceRatio > 0.10) {
+        return const CoachingResult(
+          message: '인물에 조금 더 가까이 가보세요.',
+          priority: CoachingPriority.composition,
+          confidence: 0.68,
+        );
+      }
+    }
+
+    // ─── 구도 규칙 정렬 (전신/환경) ─────────────────────────
+    if (s.shotType == ShotType.fullBody ||
+        s.shotType == ShotType.environmental) {
+      final ruleResult = _checkRuleAlignment(s);
+      if (ruleResult != null) return ruleResult;
     }
 
     // ─── 7. 리딩룸 (시선 방향 여백) ──────────────────────────
@@ -572,6 +595,35 @@ class PortraitCoachEngine {
     }
 
     return null;
+  }
+
+  /// 사용자가 선택한 구도 규칙에 인물 중심이 정렬되어 있는지 확인.
+  /// 규칙 미선택(none)이면 기존 좌우 이동 휴리스틱 유지.
+  CoachingResult? _checkRuleAlignment(PortraitSceneState s) {
+    // 인물의 대표 y좌표: 눈 중점 → 얼굴 중심 → 0.5 fallback.
+    final subjectY = s.eyeMidpoint?.dy ??
+        (s.hasFace ? s.faceCenterY : 0.5);
+    final subject = Offset(s.personCenterX, subjectY);
+    if (_rule.type == CompositionRuleType.none) {
+      // 기존 휴리스틱: 중앙(0.42~0.58) 안에 있으면 좌우 한쪽으로 이동 권장.
+      if (s.personCenterX > 0.42 && s.personCenterX < 0.58) {
+        return const CoachingResult(
+          message: '인물을 좌우 한쪽으로 이동해보세요.',
+          priority: CoachingPriority.composition,
+          confidence: 0.65,
+          reason: '삼분할 구도가 안정적이에요',
+        );
+      }
+      return null;
+    }
+    final score = _rule.scoreAlignment(subject);
+    if (score >= 0.75) return null;
+    return CoachingResult(
+      message: _rule.guidance(subject),
+      priority: CoachingPriority.composition,
+      confidence: 0.7,
+      reason: '${_rule.label} 구도에 맞춰보세요',
+    );
   }
 
   CoachingResult? _checkEyePosition(double eyeY, ShotType shot) {

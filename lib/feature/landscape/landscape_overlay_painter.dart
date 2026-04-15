@@ -1,34 +1,88 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:pose_camera_app/composition/composition_rule.dart';
+import 'package:pose_camera_app/composition/composition_rule_registry.dart';
 import 'package:pose_camera_app/segmentation/composition_resolver.dart';
 import 'package:pose_camera_app/segmentation/fastscnn_segmentor.dart';
+import 'package:pose_camera_app/segmentation/landscape_analyzer.dart';
 
 class LandscapeCompositionOverlayPainter extends CustomPainter {
   final CompositionDecision? decision;
+  final LandscapeOverlayAdvice advice;
+  final double? leadingEntryX;
+  final double? leadingTargetX;
 
-  const LandscapeCompositionOverlayPainter({required this.decision});
+  const LandscapeCompositionOverlayPainter({
+    required this.decision,
+    this.advice = const LandscapeOverlayAdvice.none(),
+    this.leadingEntryX,
+    this.leadingTargetX,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
-    final gridPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.82)
-      ..strokeWidth = 1.6
-      ..strokeCap = StrokeCap.round;
+    final bounds = Offset.zero & size;
+    final thirdsRule =
+        CompositionRuleRegistry.of(CompositionRuleType.ruleOfThirds);
+    thirdsRule.paintOverlay(
+      canvas,
+      bounds,
+      color: const Color(0x33FFFFFF),
+      strokeWidth: 1.0,
+    );
 
-    final dx1 = size.width / 3;
-    final dx2 = size.width * 2 / 3;
-    final dy1 = size.height / 3;
-    final dy2 = size.height * 2 / 3;
-    canvas.drawLine(Offset(dx1, 0), Offset(dx1, size.height), gridPaint);
-    canvas.drawLine(Offset(dx2, 0), Offset(dx2, size.height), gridPaint);
-    canvas.drawLine(Offset(0, dy1), Offset(size.width, dy1), gridPaint);
-    canvas.drawLine(Offset(0, dy2), Offset(size.width, dy2), gridPaint);
+    if (advice.showHorizonGuide && advice.targetHorizonY != null) {
+      final guideY = size.height * advice.targetHorizonY!;
+      final guidePaint = Paint()
+        ..color = _guideColorForState(advice.overlayState)
+        ..strokeWidth = 1.8
+        ..strokeCap = StrokeCap.round;
+      canvas.drawLine(Offset(0, guideY), Offset(size.width, guideY), guidePaint);
+    }
+
+    if (leadingEntryX != null && leadingTargetX != null) {
+      final start = Offset(
+        size.width * leadingEntryX!,
+        size.height * 0.92,
+      );
+      final end = Offset(
+        size.width * leadingTargetX!,
+        size.height * 0.32,
+      );
+      final linePaint = Paint()
+        ..color = const Color(0xAA7DD3FC)
+        ..strokeWidth = 2.6
+        ..strokeCap = StrokeCap.round;
+      final anchorPaint = Paint()..color = const Color(0xCC7DD3FC);
+
+      canvas.drawLine(start, end, linePaint);
+      canvas.drawCircle(start, 5.0, anchorPaint);
+      canvas.drawCircle(end, 4.2, anchorPaint);
+    }
+  }
+
+  Color _guideColorForState(OverlayGuidanceState state) {
+    switch (state) {
+      case OverlayGuidanceState.aligned:
+        return const Color(0xAA76E39B);
+      case OverlayGuidanceState.adjustUp:
+      case OverlayGuidanceState.adjustDown:
+        return const Color(0xAAFFD76A);
+      case OverlayGuidanceState.unstable:
+      case OverlayGuidanceState.searching:
+        return const Color(0x88FFFFFF);
+      case OverlayGuidanceState.hidden:
+        return const Color(0x00FFFFFF);
+    }
   }
 
   @override
   bool shouldRepaint(covariant LandscapeCompositionOverlayPainter oldDelegate) {
-    return oldDelegate.decision != decision;
+    return oldDelegate.decision != decision ||
+        oldDelegate.advice != advice ||
+        oldDelegate.leadingEntryX != leadingEntryX ||
+        oldDelegate.leadingTargetX != leadingTargetX;
   }
 }
 

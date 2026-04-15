@@ -19,6 +19,7 @@ import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:image/image.dart' as img;
 import 'package:ultralytics_yolo/yolo.dart';
 
+import '../../composition/composition_rule.dart';
 import 'lighting_classifier.dart';
 import 'portrait_coach_engine.dart';
 import 'portrait_overlay_painter.dart';
@@ -162,6 +163,11 @@ class PortraitModeHandler {
     );
   }
 
+  /// 사용자가 상단 selector에서 선택한 구도 규칙을 코칭 엔진에 전달.
+  void setRule(CompositionRule rule) {
+    _coachEngine.setRule(rule);
+  }
+
   void dispose() {
     _lightingClassifier.dispose();
     _faceDetector.close();
@@ -257,6 +263,7 @@ class PortraitModeHandler {
 
   // ─── 메인 처리 ────────────────────────────────────
 
+  int _portraitDebugFrame = 0;
   PortraitAnalysisResult processResults(List<YOLOResult> results) {
     final persons = results
         .where((r) => r.className.toLowerCase() == 'person')
@@ -266,6 +273,12 @@ class PortraitModeHandler {
     _personStreak = (persons.isNotEmpty ? _personStreak + 1 : _personStreak - 1)
         .clamp(0, 5);
     final stable = _personStreak >= 2;
+    if (++_portraitDebugFrame % 30 == 1) {
+      debugPrint(
+        '[YOLO_DEBUG][handler] frame#$_portraitDebugFrame results=${results.length} '
+        'persons=${persons.length} streak=$_personStreak stable=$stable',
+      );
+    }
 
     if (!stable) {
       final c = _coachEngine.evaluate(const PortraitSceneState(personCount: 0));

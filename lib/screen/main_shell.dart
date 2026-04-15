@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../widget/app_bottom_nav.dart';
 import 'best_cut_screen.dart';
+import 'camera/shooting_mode.dart';
 import 'camera_screen.dart';
 import 'editor_screen.dart';
 import 'gallery_screen.dart';

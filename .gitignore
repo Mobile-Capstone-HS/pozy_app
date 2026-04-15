@@ -47,6 +47,10 @@ app.*.map.json
 ai_env/
 __pycache__/
 .env
+
+# API 키 시크릿 파일 (절대 git에 올리지 않음)
+android/local.properties
+ios/Flutter/Secrets.xcconfig
 .claude/
 docs/code_snapshots/
 claude.md
@@ -59,3 +63,4 @@ packages/ultralytics_yolo/android/.cxx/
 packages/ultralytics_yolo/example/android/.gradle/
 packages/ultralytics_yolo/example/android/local.properties
 /.gradle-user/
+functions/node_modules/
