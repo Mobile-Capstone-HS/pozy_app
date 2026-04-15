@@ -889,7 +889,7 @@ class PortraitCoachEngine {
   // ─── 카메라 안정성 코칭 ──────────────────────────────
 
   CoachingResult? _evaluateStability(PortraitSceneState s) {
-    if (s.cameraStability > 0.3) return null;
+    if (s.cameraStability > 0.22) return null;
     return CoachingResult(
       message: s.isFrontCamera
           ? '흔들려요. 팔꿈치를 몸에 붙여보세요.'

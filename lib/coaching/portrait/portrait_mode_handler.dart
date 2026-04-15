@@ -103,6 +103,8 @@ class PortraitModeHandler {
   bool _isGroupShotStable = false;
   int _groupStreak = 0;
   int _stablePersonCount = 1;
+  int _candidatePersonCount = 1;
+  int _candidatePersonCountStreak = 0;
   static const int _groupEnterThreshold = 2;
   static const int _groupExitThreshold = 5;
 
@@ -139,9 +141,12 @@ class PortraitModeHandler {
   // ─── 카메라 안정성 추적 ───────────────────────────
   double _cameraStability = 1.0;
   final List<double> _recentDeltas = [];
-  final Map<String, Offset> _prevKeypoints = {};
+  Offset? _prevStabilityCenter;
+  double? _prevShoulderWidth;
+  double? _prevEyeWidth;
+  double? _prevShoulderAngle;
   static const int _stabilityWindow = 10;
-  static const double _stabilityMaxDelta = 0.025;
+  static const double _stabilityMaxDelta = 0.018;
 
   static const double _faceMetricAlpha = 0.3;
   static const double _faceRectAlpha = 0.35;
@@ -181,6 +186,8 @@ class PortraitModeHandler {
     _isGroupShotStable = false;
     _groupStreak = 0;
     _stablePersonCount = 1;
+    _candidatePersonCount = 1;
+    _candidatePersonCountStreak = 0;
     _frameCount = 0;
     _isAnalyzing = false;
     _isFaceAnalyzing = false;
@@ -202,7 +209,10 @@ class PortraitModeHandler {
     _anyEyeClosedStreak = 0;
     _cameraStability = 1.0;
     _recentDeltas.clear();
-    _prevKeypoints.clear();
+    _prevStabilityCenter = null;
+    _prevShoulderWidth = null;
+    _prevEyeWidth = null;
+    _prevShoulderAngle = null;
     stableMessage = '카메라를 사람에게 향해주세요';
     _pendingMessage = '';
     _pendingCount = 0;
@@ -333,9 +343,14 @@ class PortraitModeHandler {
           ..sort((a, b) => b.compareTo(a));
     final mainArea = main.normalizedBox.width * main.normalizedBox.height;
     final secondArea = areas.length > 1 ? areas[1] : 0.0;
+    final thirdArea = areas.length > 2 ? areas[2] : 0.0;
     final avgPersonArea =
         areas.isEmpty ? 0.0 : areas.reduce((a, b) => a + b) / areas.length;
     double secondPersonSizeRatio = mainArea > 0 ? secondArea / mainArea : 0.0;
+    final thirdPersonSizeRatio = mainArea > 0 ? thirdArea / mainArea : 0.0;
+    final significantPersonCount = mainArea > 0
+        ? areas.where((area) => area / mainArea >= 0.14).length
+        : persons.length;
 
     double groupLeft = double.infinity;
     double groupTop = double.infinity;
@@ -359,8 +374,10 @@ class PortraitModeHandler {
     final groupShotCandidate = _shouldTreatAsGroupShot(
       persons,
       secondPersonSizeRatio,
+      thirdPersonSizeRatio,
       groupBboxRatio,
       avgPersonArea,
+      significantPersonCount,
     );
 
     // ─── 다중 인물 메트릭 ─────────────────────────────
@@ -377,20 +394,17 @@ class PortraitModeHandler {
     }
     final isGroupShot = _isGroupShotStable;
     // 인원수도 안정화: 그룹샷 모드일 때만 갱신
-    if (isGroupShot) {
-      _stablePersonCount = persons.length;
-    } else {
-      _stablePersonCount = persons.length;
-    }
+    _updateStablePersonCount(persons.length, groupShotCandidate);
     int groupCroppedCount = 0;
     int faceHiddenCount = 0;
     double spacingUnevenness = 0.0;
     double heightVariation = 0.0;
 
     if (isGroupShot) {
+      final metricPersons = _selectGroupMetricPersons(persons, mainArea);
       // 모든 인물의 바운딩박스가 프레임 가장자리에 걸리는지 검사
       const edgeMgn = 0.03;
-      for (final p in persons) {
+      for (final p in metricPersons) {
         final b = p.normalizedBox;
         if (b.left < edgeMgn ||
             b.right > 1.0 - edgeMgn ||
@@ -402,15 +416,15 @@ class PortraitModeHandler {
 
       // ── 얼굴 가시성: 코 키포인트 없으면 얼굴이 안 보이는 것 ──
       // confidence가 낮은 감지(0.3 미만)는 키포인트가 부실할 수 있으므로 제외
-      for (final p in persons) {
+      for (final p in metricPersons) {
         if (p.confidence < 0.3) continue;
         final noseKp = _kp(p, PoseKeypointIndex.nose);
         if (noseKp == null) faceHiddenCount++;
       }
 
       // ── 간격 균등성 (3명 이상) ────────────────────────────
-      if (persons.length >= 3) {
-        final centerXs = persons
+      if (metricPersons.length >= 3) {
+        final centerXs = metricPersons
             .map((p) => (p.normalizedBox.left + p.normalizedBox.right) / 2)
             .toList()
           ..sort();
@@ -431,7 +445,7 @@ class PortraitModeHandler {
       }
 
       // ── 키 차이 (bbox top Y 범위) ─────────────────────────
-      final topYs = persons.map((p) => p.normalizedBox.top).toList();
+      final topYs = metricPersons.map((p) => p.normalizedBox.top).toList();
       double minTop = topYs.first, maxTop = topYs.first;
       for (final y in topYs) {
         if (y < minTop) minTop = y;
@@ -471,14 +485,6 @@ class PortraitModeHandler {
     );
 
     // ─── 카메라 안정성 계산 ──────────────────────────────
-    _updateStability({
-      'nose': nose,
-      'lEye': lEye,
-      'rEye': rEye,
-      'lShoulder': lShoulder,
-      'rShoulder': rShoulder,
-    });
-
     // ─── 비동기 분석 (조명 + 얼굴, captureFrame 공유) ─────
     // 어깨 각도
     final sConf = math.min(
@@ -523,6 +529,25 @@ class PortraitModeHandler {
     if (lEye != null && rEye != null) {
       eyeMid = Offset((lEye.dx + rEye.dx) / 2, (lEye.dy + rEye.dy) / 2);
     }
+    final shoulderWidth = (lShoulder != null && rShoulder != null)
+        ? (rShoulder.dx - lShoulder.dx).abs()
+        : null;
+    final eyeWidth = (lEye != null && rEye != null)
+        ? (rEye.dx - lEye.dx).abs()
+        : null;
+
+    _updateStability(
+      current: {
+        'nose': nose,
+        'lEye': lEye,
+        'rEye': rEye,
+        'lShoulder': lShoulder,
+        'rShoulder': rShoulder,
+      },
+      shoulderAngle: shoulderAngle,
+      shoulderWidth: shoulderWidth,
+      eyeWidth: eyeWidth,
+    );
 
     // 샷 타입
     final all = <Offset?>[
@@ -1169,14 +1194,21 @@ class PortraitModeHandler {
   bool _shouldTreatAsGroupShot(
     List<YOLOResult> persons,
     double secondPersonSizeRatio,
+    double thirdPersonSizeRatio,
     double groupBboxRatio,
     double avgPersonArea,
+    int significantPersonCount,
   ) {
     if (persons.length < 2) return false;
 
     if (persons.length >= 3) {
-      return groupBboxRatio >= 0.22 &&
-          (avgPersonArea >= 0.022 || secondPersonSizeRatio >= 0.22);
+      final hasEnoughSignificantPeople = significantPersonCount >= 3;
+      final sizeGate = persons.length >= 4
+          ? (avgPersonArea >= 0.018 || thirdPersonSizeRatio >= 0.14)
+          : (avgPersonArea >= 0.02 || thirdPersonSizeRatio >= 0.18);
+      return hasEnoughSignificantPeople &&
+          groupBboxRatio >= 0.22 &&
+          sizeGate;
     }
 
     return groupBboxRatio >= 0.18 && secondPersonSizeRatio >= 0.28;
@@ -1446,31 +1478,100 @@ class PortraitModeHandler {
   }
 
   /// 키포인트 프레임 간 이동량으로 카메라 안정성을 계산합니다.
-  void _updateStability(Map<String, Offset?> current) {
-    double totalDelta = 0;
-    int count = 0;
-    for (final entry in current.entries) {
-      if (entry.value == null) continue;
-      final prev = _prevKeypoints[entry.key];
-      if (prev != null) {
-        totalDelta += (entry.value! - prev).distance;
-        count++;
-      }
-      _prevKeypoints[entry.key] = entry.value!;
-    }
-    if (count >= 2) {
-      final avgDelta = totalDelta / count;
-      _recentDeltas.add(avgDelta);
-      if (_recentDeltas.length > _stabilityWindow) {
-        _recentDeltas.removeAt(0);
-      }
-      if (_recentDeltas.length < 3) {
-        _cameraStability = 1.0;
-        return;
-      }
+  void _updateStability({
+    required Map<String, Offset?> current,
+    double? shoulderAngle,
+    double? shoulderWidth,
+    double? eyeWidth,
+  }) {
+    final visiblePoints = current.values.whereType<Offset>().toList(growable: false);
+    if (visiblePoints.length < 2) return;
 
-      final avg = _recentDeltas.reduce((a, b) => a + b) / _recentDeltas.length;
-      _cameraStability = (1.0 - (avg / _stabilityMaxDelta)).clamp(0.0, 1.0);
+    final currentCenter = Offset(
+      visiblePoints.map((p) => p.dx).reduce((a, b) => a + b) / visiblePoints.length,
+      visiblePoints.map((p) => p.dy).reduce((a, b) => a + b) / visiblePoints.length,
+    );
+
+    if (_prevStabilityCenter == null) {
+      _prevStabilityCenter = currentCenter;
+      _prevShoulderWidth = shoulderWidth;
+      _prevEyeWidth = eyeWidth;
+      _prevShoulderAngle = shoulderAngle;
+      _cameraStability = 1.0;
+      return;
     }
+
+    final centerDelta = (currentCenter - _prevStabilityCenter!).distance;
+    final widthDelta = _normalizedMetricDelta(_prevShoulderWidth, shoulderWidth);
+    final eyeDelta = _normalizedMetricDelta(_prevEyeWidth, eyeWidth);
+    final angleDelta = _angleDelta(_prevShoulderAngle, shoulderAngle) / 24.0;
+    final poseChangeScore = math.max(widthDelta, math.max(eyeDelta, angleDelta));
+
+    _prevStabilityCenter = currentCenter;
+    _prevShoulderWidth = shoulderWidth ?? _prevShoulderWidth;
+    _prevEyeWidth = eyeWidth ?? _prevEyeWidth;
+    _prevShoulderAngle = shoulderAngle ?? _prevShoulderAngle;
+
+    if (poseChangeScore > 0.22) {
+      _cameraStability = math.min(1.0, _cameraStability + 0.06);
+      return;
+    }
+
+    _recentDeltas.add(centerDelta);
+    if (_recentDeltas.length > _stabilityWindow) {
+      _recentDeltas.removeAt(0);
+    }
+    if (_recentDeltas.length < 3) {
+      _cameraStability = 1.0;
+      return;
+    }
+
+    final avg = _recentDeltas.reduce((a, b) => a + b) / _recentDeltas.length;
+    _cameraStability = (1.0 - (avg / _stabilityMaxDelta)).clamp(0.0, 1.0);
+  }
+
+  void _updateStablePersonCount(int detectedCount, bool groupShotCandidate) {
+    if (detectedCount == _candidatePersonCount) {
+      _candidatePersonCountStreak++;
+    } else {
+      _candidatePersonCount = detectedCount;
+      _candidatePersonCountStreak = 1;
+    }
+
+    final confirmFrames = detectedCount >= 3
+        ? 3
+        : detectedCount == 2
+        ? 2
+        : (_isGroupShotStable || groupShotCandidate)
+        ? 3
+        : 2;
+
+    if (_candidatePersonCountStreak >= confirmFrames) {
+      _stablePersonCount = _candidatePersonCount;
+    }
+  }
+
+  List<YOLOResult> _selectGroupMetricPersons(List<YOLOResult> persons, double mainArea) {
+    if (persons.length <= 2 || mainArea <= 0) return persons;
+
+    final filtered = persons.where((person) {
+      final area = person.normalizedBox.width * person.normalizedBox.height;
+      final areaRatio = area / mainArea;
+      return areaRatio >= 0.14 || (person.confidence >= 0.45 && areaRatio >= 0.08);
+    }).toList(growable: false);
+
+    return filtered.length >= 2 ? filtered : persons;
+  }
+
+  double _normalizedMetricDelta(double? previous, double? current) {
+    if (previous == null || current == null || previous <= 0.0 || current <= 0.0) {
+      return 0.0;
+    }
+    return ((current - previous).abs() / previous).clamp(0.0, 1.0);
+  }
+
+  double _angleDelta(double? previous, double? current) {
+    if (previous == null || current == null) return 0.0;
+    return (current - previous).abs();
   }
 }
