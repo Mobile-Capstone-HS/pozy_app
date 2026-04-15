@@ -137,6 +137,7 @@ class _LandscapeCameraScreenState extends State<LandscapeCameraScreen> {
               child: CustomPaint(
                 painter: LandscapeCompositionOverlayPainter(
                   decision: _uiState.decision,
+                  advice: _uiState.overlayAdvice,
                 ),
                 size: Size.infinite,
               ),

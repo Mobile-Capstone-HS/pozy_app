@@ -56,14 +56,18 @@ class CompositionGuideResolver {
   static const double kRatioHighThreshold = 0.84;
   static const double kSkyThirdAlignedDistance = 0.18;
   static const double kAlignedScoreThreshold = 0.78;
+  static const bool kUseLegacySkyRatioTargeting = false;
+  static const double kHorizonGoodDistance = 0.16;
 
   const CompositionGuideResolver();
 
   CompositionGuideResult resolve(CompositionGuideInput i) {
     if (i.horizonValid && i.horizonNeedsAdjust) {
-      final desired = i.skyRatio >= kSkyRatioGuideMin
-          ? _preferredHorizonTarget(i.skyRatio)
-          : _nearestThirdTarget(i.horizonYNorm);
+      final desired = _selectHorizonTarget(
+        horizonY: i.horizonYNorm,
+        skyRatio: i.skyRatio,
+        topOpenRatio: i.features.topOpenAreaRatio,
+      );
       final current = i.horizonYNorm ?? desired;
       if (current > desired) {
         return const CompositionGuideResult(
@@ -74,6 +78,13 @@ class CompositionGuideResolver {
       return const CompositionGuideResult(
         state: CompositionGuideState.moveUp,
         message: '카메라를 조금 들어주세요',
+      );
+    }
+
+    if (i.horizonValid && i.bestHorizonThirdDistance <= kHorizonGoodDistance) {
+      return const CompositionGuideResult(
+        state: CompositionGuideState.aligned,
+        message: '좋아요. 이미 가까운 3분할선에 충분히 맞는 구도예요.',
       );
     }
 
@@ -112,10 +123,35 @@ class CompositionGuideResolver {
     );
   }
 
-  double _preferredHorizonTarget(double skyRatio) {
-    if (skyRatio > 0.58) return 1.0 / 3.0;
-    if (skyRatio < 0.34) return 2.0 / 3.0;
-    return 1.0 / 3.0;
+  double _selectHorizonTarget({
+    required double? horizonY,
+    required double skyRatio,
+    required double topOpenRatio,
+  }) {
+    if (horizonY == null) {
+      return kUseLegacySkyRatioTargeting
+          ? _legacySkyRatioTarget(skyRatio, topOpenRatio)
+          : 1.0 / 3.0;
+    }
+    if (kUseLegacySkyRatioTargeting) {
+      return _legacySkyRatioTarget(skyRatio, topOpenRatio);
+    }
+
+    final nearest = _nearestThirdTarget(horizonY);
+    final preferred = _legacySkyRatioTarget(skyRatio, topOpenRatio);
+    final nearestDistance = (horizonY - nearest).abs();
+    final preferredDistance = (horizonY - preferred).abs();
+    final distancesAreClose = (nearestDistance - preferredDistance).abs() <= 0.04;
+    if (!distancesAreClose) return nearest;
+
+    final strongSkyPreference = skyRatio >= 0.62 || skyRatio <= 0.26;
+    return strongSkyPreference ? preferred : nearest;
+  }
+
+  double _legacySkyRatioTarget(double skyRatio, double topOpenRatio) {
+    if (skyRatio > 0.58) return 2.0 / 3.0;
+    if (skyRatio < 0.34) return 1.0 / 3.0;
+    return topOpenRatio > 0.36 ? 2.0 / 3.0 : 1.0 / 3.0;
   }
 
   double _nearestThirdTarget(double? horizonY) {
