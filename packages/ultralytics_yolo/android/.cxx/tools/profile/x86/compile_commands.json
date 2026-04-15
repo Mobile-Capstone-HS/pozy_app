@@ -1,7 +1,7 @@
 [
 {
-  "directory": "C:/Users/sjw04/Desktop/pozy_app/packages/ultralytics_yolo/android/.cxx/Debug/716v55ly/x86",
-  "command": "C:\\Users\\sjw04\\AppData\\Local\\Android\\Sdk\\ndk\\28.2.13676358\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\clang++.exe --target=i686-none-linux-android21 --sysroot=C:/Users/sjw04/AppData/Local/Android/Sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/sysroot -Dultralytics_EXPORTS -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -mstackrealign -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security -frtti -fexceptions -std=c++17 -fexceptions -frtti -fno-limit-debug-info  -fPIC -fexceptions -frtti -std=c++17 -o CMakeFiles\\ultralytics.dir\\native-lib.cpp.o -c C:\\Users\\sjw04\\Desktop\\pozy_app\\packages\\ultralytics_yolo\\android\\src\\main\\cpp\\native-lib.cpp",
-  "file": "C:\\Users\\sjw04\\Desktop\\pozy_app\\packages\\ultralytics_yolo\\android\\src\\main\\cpp\\native-lib.cpp"
+  "directory": "C:/Users/cjsqhrdl/pozy_0413/pozy_app/packages/ultralytics_yolo/android/.cxx/Debug/d3jg3q30/x86",
+  "command": "C:\\Users\\cjsqhrdl\\AppData\\Local\\Android\\Sdk\\ndk\\28.2.13676358\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\clang++.exe --target=i686-none-linux-android21 --sysroot=C:/Users/cjsqhrdl/AppData/Local/Android/Sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/sysroot -Dultralytics_EXPORTS -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -mstackrealign -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security -frtti -fexceptions -std=c++17 -fexceptions -frtti -fno-limit-debug-info  -fPIC -fexceptions -frtti -std=c++17 -o CMakeFiles\\ultralytics.dir\\native-lib.cpp.o -c C:\\Users\\cjsqhrdl\\pozy_0413\\pozy_app\\packages\\ultralytics_yolo\\android\\src\\main\\cpp\\native-lib.cpp",
+  "file": "C:\\Users\\cjsqhrdl\\pozy_0413\\pozy_app\\packages\\ultralytics_yolo\\android\\src\\main\\cpp\\native-lib.cpp"
 }
 ]

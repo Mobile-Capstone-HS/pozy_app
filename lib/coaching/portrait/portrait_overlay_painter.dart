@@ -19,6 +19,7 @@ import 'portrait_scene_state.dart';
 
 /// 오버레이에 필요한 포즈/얼굴 데이터
 class OverlayData {
+  final List<Rect> closedFaceRects;
   final Offset? leftEye;
   final Offset? rightEye;
   final Offset? nose;
@@ -30,6 +31,10 @@ class OverlayData {
   final Offset? rightWrist;
   final Offset? leftHip;
   final Offset? rightHip;
+  final Offset? leftKnee;
+  final Offset? rightKnee;
+  final Offset? leftAnkle;
+  final Offset? rightAnkle;
 
   final CoachingResult coaching;
   final ShotType shotType;
@@ -43,6 +48,7 @@ class OverlayData {
   final CompositionRule? activeRule;
 
   const OverlayData({
+    this.closedFaceRects = const [],
     this.leftEye,
     this.rightEye,
     this.nose,
@@ -54,6 +60,10 @@ class OverlayData {
     this.rightWrist,
     this.leftHip,
     this.rightHip,
+    this.leftKnee,
+    this.rightKnee,
+    this.leftAnkle,
+    this.rightAnkle,
     required this.coaching,
     this.shotType = ShotType.unknown,
     this.eyeConfidence = 0.0,
@@ -67,6 +77,7 @@ class OverlayData {
   /// [activeRule]만 교체한 새 인스턴스 반환. 기존 필드는 그대로 유지.
   OverlayData copyWithRule(CompositionRule? rule) {
     return OverlayData(
+      closedFaceRects: closedFaceRects,
       leftEye: leftEye,
       rightEye: rightEye,
       nose: nose,
@@ -78,6 +89,10 @@ class OverlayData {
       rightWrist: rightWrist,
       leftHip: leftHip,
       rightHip: rightHip,
+      leftKnee: leftKnee,
+      rightKnee: rightKnee,
+      leftAnkle: leftAnkle,
+      rightAnkle: rightAnkle,
       coaching: coaching,
       shotType: shotType,
       eyeConfidence: eyeConfidence,
@@ -115,6 +130,7 @@ class PortraitOverlayPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     _drawCompositionGrid(canvas, size);
     _drawFaceGuide(canvas, size);
+    _drawClosedFaceWarnings(canvas, size);
     _drawBodyOutline(canvas, size);
     _drawKeypoints(canvas, size);
     _drawShoulderLine(canvas, size);
@@ -148,6 +164,14 @@ class PortraitOverlayPainter extends CustomPainter {
       data.leftElbow, data.rightElbow,
       data.leftWrist, data.rightWrist,
       data.leftHip, data.rightHip,
+    ]) {
+      _drawGlowPoint(canvas, size, pt, radius: 3.5, isMain: false);
+    }
+
+    // 하체 포인트 (무릎~발목) — 작은 글로우
+    for (final pt in [
+      data.leftKnee, data.rightKnee,
+      data.leftAnkle, data.rightAnkle,
     ]) {
       _drawGlowPoint(canvas, size, pt, radius: 3.5, isMain: false);
     }
@@ -322,6 +346,42 @@ class PortraitOverlayPainter extends CustomPainter {
     }
   }
 
+  void _drawClosedFaceWarnings(Canvas canvas, Size size) {
+    if (data.closedFaceRects.isEmpty) return;
+
+    for (final rect in data.closedFaceRects) {
+      final r = Rect.fromLTWH(
+        rect.left * size.width,
+        rect.top * size.height,
+        rect.width * size.width,
+        rect.height * size.height,
+      );
+
+      final warningColor = _Colors.red;
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(r, const Radius.circular(10)),
+        Paint()
+          ..color = const Color(0x22EF4444)
+          ..style = PaintingStyle.fill,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(r, const Radius.circular(10)),
+        Paint()
+          ..color = warningColor
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.0,
+      );
+
+      final labelY = math.max(18.0, r.top - 14.0);
+      _drawLabel(
+        canvas,
+        '눈 감음',
+        Offset(r.center.dx, labelY),
+        warningColor,
+      );
+    }
+  }
+
   void _drawCheckMark(Canvas canvas, Offset center) {
     // 글로우 원
     canvas.drawCircle(
@@ -449,6 +509,12 @@ class PortraitOverlayPainter extends CustomPainter {
     drawBone(data.leftShoulder, data.leftHip);
     drawBone(data.rightShoulder, data.rightHip);
     drawBone(data.leftHip, data.rightHip);
+
+    // 하체
+    drawBone(data.leftHip, data.leftKnee);
+    drawBone(data.leftKnee, data.leftAnkle);
+    drawBone(data.rightHip, data.rightKnee);
+    drawBone(data.rightKnee, data.rightAnkle);
   }
 
   // ─── 라벨 헬퍼 ───────────────────────────────────

@@ -80,7 +80,7 @@ class PortraitModeHandler {
   // ─── 분석 주기 (최적화: 기존 15/10 → 30/20으로 늘림) ────
   static const double _posePointAlpha = 0.38;
   static const int _lightingEveryN = 30;
-  static const int _faceEveryN = 20;
+  static const int _faceEveryN = 5;
   static const double _lightingMinConf = 0.5;
 
   // ─── 메시지 안정화 ────────────────────────────────
@@ -97,9 +97,21 @@ class PortraitModeHandler {
   // ─── 사람 감지 안정화 ──────────────────────────────
   int _personStreak = 0;
 
+  // ─── 그룹샷 안정화 (히스테리시스) ─────────────────
+  // 진입: 2프레임 연속 2명 이상 → 그룹샷 확정
+  // 이탈: 5프레임 연속 1명 이하 → 그룹샷 해제
+  bool _isGroupShotStable = false;
+  int _groupStreak = 0;
+  int _stablePersonCount = 1;
+  int _candidatePersonCount = 1;
+  int _candidatePersonCountStreak = 0;
+  static const int _groupEnterThreshold = 2;
+  static const int _groupExitThreshold = 5;
+
   // ─── 분석 프레임 카운터 ────────────────────────────
   int _frameCount = 0;
   bool _isAnalyzing = false; // captureFrame 기반 분석 잠금
+  bool _isFaceAnalyzing = false;
 
   // ─── 조명 결과 ────────────────────────────────────
   LightingCondition lastLighting = LightingCondition.unknown;
@@ -118,6 +130,23 @@ class PortraitModeHandler {
 
   /// 그룹샷 전용: ML Kit으로 감지한 모든 얼굴 중 눈 감긴 사람이 있는지 여부
   bool _anyFaceEyesClosed = false;
+  int _closedFaceCount = 0;
+  List<Rect> _closedFaceRects = const [];
+
+  // ─── 눈 감김 정밀 추적 ────────────────────────────
+  int _eyeClosedStreak = 0;          // 연속 눈 감김 프레임 수 (네이티브 raw 기반)
+  int _anyEyeClosedStreak = 0;       // 그룹 눈 감김 연속 프레임
+  static const int _eyeConfirmFrames = 2; // 확정에 필요한 연속 프레임
+
+  // ─── 카메라 안정성 추적 ───────────────────────────
+  double _cameraStability = 1.0;
+  final List<double> _recentDeltas = [];
+  Offset? _prevStabilityCenter;
+  double? _prevShoulderWidth;
+  double? _prevEyeWidth;
+  double? _prevShoulderAngle;
+  static const int _stabilityWindow = 10;
+  static const double _stabilityMaxDelta = 0.018;
 
   static const double _faceMetricAlpha = 0.3;
   static const double _faceRectAlpha = 0.35;
@@ -125,7 +154,7 @@ class PortraitModeHandler {
   // ─── 외부 설정 ────────────────────────────────────
   bool isFrontCamera = false;
 
-  /// 기기 방향 (0=세로, 90=가로 왼쪽, 270=가로 오른쪽)
+  /// 기기 방향 (0=세로, 90=가로 왼쪽, 180=거꾸로, 270=가로 오른쪽)
   /// camera_screen.dart에서 가속도계 기반으로 갱신합니다.
   int deviceOrientationDeg = 0;
 
@@ -154,8 +183,14 @@ class PortraitModeHandler {
 
   void reset() {
     _personStreak = 0;
+    _isGroupShotStable = false;
+    _groupStreak = 0;
+    _stablePersonCount = 1;
+    _candidatePersonCount = 1;
+    _candidatePersonCountStreak = 0;
     _frameCount = 0;
     _isAnalyzing = false;
+    _isFaceAnalyzing = false;
     lastLighting = LightingCondition.unknown;
     lastLightingConf = 0.0;
     _faceYaw = null;
@@ -168,6 +203,16 @@ class PortraitModeHandler {
     _smoothedFaceRect = null;
     _smoothedPosePoints.clear();
     _anyFaceEyesClosed = false;
+    _closedFaceCount = 0;
+    _closedFaceRects = const [];
+    _eyeClosedStreak = 0;
+    _anyEyeClosedStreak = 0;
+    _cameraStability = 1.0;
+    _recentDeltas.clear();
+    _prevStabilityCenter = null;
+    _prevShoulderWidth = null;
+    _prevEyeWidth = null;
+    _prevShoulderAngle = null;
     stableMessage = '카메라를 사람에게 향해주세요';
     _pendingMessage = '';
     _pendingCount = 0;
@@ -192,6 +237,12 @@ class PortraitModeHandler {
       final tmp = rawYaw;
       rawYaw = -rawRoll;
       rawRoll = tmp;
+    } else if (deviceOrientationDeg == 180 &&
+        rawYaw != null &&
+        rawRoll != null) {
+      // 거꾸로(180°): yaw 부호 반전, roll 부호 반전
+      rawYaw = -rawYaw;
+      rawRoll = -rawRoll;
     } else if (deviceOrientationDeg == 270 &&
         rawYaw != null &&
         rawRoll != null) {
@@ -203,11 +254,20 @@ class PortraitModeHandler {
     _faceYaw = _smoothMetric(_faceYaw, rawYaw);
     _facePitch = _smoothMetric(_facePitch, rawPitch);
     _faceRoll = _smoothMetric(_faceRoll, rawRoll);
-    _leftEyeOpen = _smoothMetric(_leftEyeOpen, metrics['portraitLeftEyeOpen']);
-    _rightEyeOpen = _smoothMetric(
+    _leftEyeOpen = _smoothEyeMetric(_leftEyeOpen, metrics['portraitLeftEyeOpen']);
+    _rightEyeOpen = _smoothEyeMetric(
       _rightEyeOpen,
       metrics['portraitRightEyeOpen'],
     );
+
+    // 눈 감김 스트릭 추적 (원본 값 기반, 스무딩 무관)
+    final rawL = metrics['portraitLeftEyeOpen'];
+    final rawR = metrics['portraitRightEyeOpen'];
+    if (rawL != null && rawR != null && rawL < 0.35 && rawR < 0.35) {
+      _eyeClosedStreak++;
+    } else {
+      _eyeClosedStreak = 0;
+    }
     _smileProb = _smoothMetric(_smileProb, metrics['portraitSmileProbability']);
 
     final lightingCode = metrics['portraitLightingCode'];
@@ -224,9 +284,10 @@ class PortraitModeHandler {
 
   int _portraitDebugFrame = 0;
   PortraitAnalysisResult processResults(List<YOLOResult> results) {
-    final persons = results
+    final rawPersons = results
         .where((r) => r.className.toLowerCase() == 'person')
         .toList();
+    final persons = _dedupePersons(rawPersons);
 
     // 사람 안정화
     _personStreak = (persons.isNotEmpty ? _personStreak + 1 : _personStreak - 1)
@@ -235,7 +296,8 @@ class PortraitModeHandler {
     if (++_portraitDebugFrame % 30 == 1) {
       debugPrint(
         '[YOLO_DEBUG][handler] frame#$_portraitDebugFrame results=${results.length} '
-        'persons=${persons.length} streak=$_personStreak stable=$stable',
+        'personsRaw=${rawPersons.length} persons=${persons.length} '
+        'streak=$_personStreak stable=$stable',
       );
     }
 
@@ -245,6 +307,7 @@ class PortraitModeHandler {
       return PortraitAnalysisResult(
         coaching: stableCoaching,
         overlayData: OverlayData(
+          closedFaceRects: const [],
           coaching: stableCoaching,
           shotType: ShotType.unknown,
         ),
@@ -261,6 +324,7 @@ class PortraitModeHandler {
       return PortraitAnalysisResult(
         coaching: stableCoaching,
         overlayData: OverlayData(
+          closedFaceRects: const [],
           coaching: stableCoaching,
           shotType: ShotType.unknown,
         ),
@@ -272,25 +336,75 @@ class PortraitModeHandler {
 
     final main = _selectMainPerson(persons);
 
+    final areas =
+        persons
+            .map((p) => p.normalizedBox.width * p.normalizedBox.height)
+            .toList()
+          ..sort((a, b) => b.compareTo(a));
+    final mainArea = main.normalizedBox.width * main.normalizedBox.height;
+    final secondArea = areas.length > 1 ? areas[1] : 0.0;
+    final thirdArea = areas.length > 2 ? areas[2] : 0.0;
+    final avgPersonArea =
+        areas.isEmpty ? 0.0 : areas.reduce((a, b) => a + b) / areas.length;
+    double secondPersonSizeRatio = mainArea > 0 ? secondArea / mainArea : 0.0;
+    final thirdPersonSizeRatio = mainArea > 0 ? thirdArea / mainArea : 0.0;
+    final significantPersonCount = mainArea > 0
+        ? areas.where((area) => area / mainArea >= 0.14).length
+        : persons.length;
+
+    double groupLeft = double.infinity;
+    double groupTop = double.infinity;
+    double groupRight = double.negativeInfinity;
+    double groupBottom = double.negativeInfinity;
+    for (final p in persons) {
+      final b = p.normalizedBox;
+      if (b.left < groupLeft) groupLeft = b.left;
+      if (b.top < groupTop) groupTop = b.top;
+      if (b.right > groupRight) groupRight = b.right;
+      if (b.bottom > groupBottom) groupBottom = b.bottom;
+    }
+    final groupBboxRatio =
+        groupLeft.isFinite &&
+            groupTop.isFinite &&
+            groupRight.isFinite &&
+            groupBottom.isFinite
+        ? (groupRight - groupLeft) * (groupBottom - groupTop)
+        : mainArea;
+
+    final groupShotCandidate = _shouldTreatAsGroupShot(
+      persons,
+      secondPersonSizeRatio,
+      thirdPersonSizeRatio,
+      groupBboxRatio,
+      avgPersonArea,
+      significantPersonCount,
+    );
+
     // ─── 다중 인물 메트릭 ─────────────────────────────
-    final isGroupShot = persons.length >= 2;
-    double secondPersonSizeRatio = 0.0;
+    // 그룹샷 안정화: 진입은 빠르게, 이탈은 느리게 (깜빡임 방지)
+    if (groupShotCandidate) {
+      _groupStreak = (_groupStreak + 1).clamp(0, _groupExitThreshold);
+    } else {
+      _groupStreak = (_groupStreak - 1).clamp(0, _groupExitThreshold);
+    }
+    if (!_isGroupShotStable && _groupStreak >= _groupEnterThreshold) {
+      _isGroupShotStable = true;
+    } else if (_isGroupShotStable && _groupStreak <= 0) {
+      _isGroupShotStable = false;
+    }
+    final isGroupShot = _isGroupShotStable;
+    // 인원수도 안정화: 그룹샷 모드일 때만 갱신
+    _updateStablePersonCount(persons.length, groupShotCandidate);
     int groupCroppedCount = 0;
+    int faceHiddenCount = 0;
+    double spacingUnevenness = 0.0;
+    double heightVariation = 0.0;
 
     if (isGroupShot) {
-      // 면적 기준으로 정렬해 메인 다음으로 큰 인물과 크기 비율 계산
-      final areas =
-          persons
-              .map((p) => p.normalizedBox.width * p.normalizedBox.height)
-              .toList()
-            ..sort((a, b) => b.compareTo(a));
-      final mainArea = main.normalizedBox.width * main.normalizedBox.height;
-      final secondArea = areas.length > 1 ? areas[1] : 0.0;
-      secondPersonSizeRatio = mainArea > 0 ? secondArea / mainArea : 0.0;
-
+      final metricPersons = _selectGroupMetricPersons(persons, mainArea);
       // 모든 인물의 바운딩박스가 프레임 가장자리에 걸리는지 검사
       const edgeMgn = 0.03;
-      for (final p in persons) {
+      for (final p in metricPersons) {
         final b = p.normalizedBox;
         if (b.left < edgeMgn ||
             b.right > 1.0 - edgeMgn ||
@@ -299,6 +413,45 @@ class PortraitModeHandler {
           groupCroppedCount++;
         }
       }
+
+      // ── 얼굴 가시성: 코 키포인트 없으면 얼굴이 안 보이는 것 ──
+      // confidence가 낮은 감지(0.3 미만)는 키포인트가 부실할 수 있으므로 제외
+      for (final p in metricPersons) {
+        if (p.confidence < 0.3) continue;
+        final noseKp = _kp(p, PoseKeypointIndex.nose);
+        if (noseKp == null) faceHiddenCount++;
+      }
+
+      // ── 간격 균등성 (3명 이상) ────────────────────────────
+      if (metricPersons.length >= 3) {
+        final centerXs = metricPersons
+            .map((p) => (p.normalizedBox.left + p.normalizedBox.right) / 2)
+            .toList()
+          ..sort();
+        final gaps = <double>[];
+        for (int i = 1; i < centerXs.length; i++) {
+          gaps.add(centerXs[i] - centerXs[i - 1]);
+        }
+        if (gaps.isNotEmpty) {
+          final avgGap = gaps.reduce((a, b) => a + b) / gaps.length;
+          if (avgGap > 0.01) {
+            spacingUnevenness = gaps
+                    .map((g) => (g - avgGap).abs())
+                    .reduce((a, b) => a + b) /
+                gaps.length /
+                avgGap;
+          }
+        }
+      }
+
+      // ── 키 차이 (bbox top Y 범위) ─────────────────────────
+      final topYs = metricPersons.map((p) => p.normalizedBox.top).toList();
+      double minTop = topYs.first, maxTop = topYs.first;
+      for (final y in topYs) {
+        if (y < minTop) minTop = y;
+        if (y > maxTop) maxTop = y;
+      }
+      heightVariation = maxTop - minTop;
     }
 
     // 키포인트 추출
@@ -321,20 +474,30 @@ class PortraitModeHandler {
     );
     final lHip = _smoothedKp(main, PoseKeypointIndex.leftHip, minConf: 0.3);
     final rHip = _smoothedKp(main, PoseKeypointIndex.rightHip, minConf: 0.3);
-    final lKnee = _smoothedKp(main, PoseKeypointIndex.leftKnee, minConf: 0.3);
-    final rKnee = _smoothedKp(main, PoseKeypointIndex.rightKnee, minConf: 0.3);
-    final lAnkle = _smoothedKp(main, PoseKeypointIndex.leftAnkle, minConf: 0.3);
+    final lKnee = _smoothedKp(main, PoseKeypointIndex.leftKnee, minConf: 0.05);
+    final rKnee = _smoothedKp(main, PoseKeypointIndex.rightKnee, minConf: 0.05);
+    final lAnkle =
+        _smoothedKp(main, PoseKeypointIndex.leftAnkle, minConf: 0.05);
     final rAnkle = _smoothedKp(
       main,
       PoseKeypointIndex.rightAnkle,
-      minConf: 0.3,
+      minConf: 0.05,
     );
 
+    // ─── 카메라 안정성 계산 ──────────────────────────────
     // ─── 비동기 분석 (조명 + 얼굴, captureFrame 공유) ─────
     // 어깨 각도
     final sConf = math.min(
       _conf(main, PoseKeypointIndex.leftShoulder),
       _conf(main, PoseKeypointIndex.rightShoulder),
+    );
+    final kneeConf = math.max(
+      _conf(main, PoseKeypointIndex.leftKnee),
+      _conf(main, PoseKeypointIndex.rightKnee),
+    );
+    final ankleConf = math.max(
+      _conf(main, PoseKeypointIndex.leftAnkle),
+      _conf(main, PoseKeypointIndex.rightAnkle),
     );
     double? shoulderAngle;
     if (lShoulder != null && rShoulder != null && sConf > 0.5) {
@@ -366,6 +529,25 @@ class PortraitModeHandler {
     if (lEye != null && rEye != null) {
       eyeMid = Offset((lEye.dx + rEye.dx) / 2, (lEye.dy + rEye.dy) / 2);
     }
+    final shoulderWidth = (lShoulder != null && rShoulder != null)
+        ? (rShoulder.dx - lShoulder.dx).abs()
+        : null;
+    final eyeWidth = (lEye != null && rEye != null)
+        ? (rEye.dx - lEye.dx).abs()
+        : null;
+
+    _updateStability(
+      current: {
+        'nose': nose,
+        'lEye': lEye,
+        'rEye': rEye,
+        'lShoulder': lShoulder,
+        'rShoulder': rShoulder,
+      },
+      shoulderAngle: shoulderAngle,
+      shoulderWidth: shoulderWidth,
+      eyeWidth: eyeWidth,
+    );
 
     // 샷 타입
     final all = <Offset?>[
@@ -396,16 +578,47 @@ class PortraitModeHandler {
     double headroom = 0, footSpace = 0;
 
     // 인물 bbox 비율 계산
+    // 그룹샷: 모든 인물을 포함하는 전체 영역 비율 사용
     final mainBox = main.normalizedBox;
-    final bboxRatio = mainBox.width * mainBox.height;
-    final centerX = (mainBox.left + mainBox.right) / 2;
+    final double bboxRatio;
+    if (isGroupShot) {
+      bboxRatio = groupBboxRatio;
+    } else {
+      bboxRatio = mainBox.width * mainBox.height;
+    }
+    // 그룹샷: 그룹 전체 중심 사용, 솔로: 메인 인물 중심
+    final double centerX;
+    if (isGroupShot) {
+      double sumCx = 0;
+      for (final p in persons) {
+        sumCx += (p.normalizedBox.left + p.normalizedBox.right) / 2;
+      }
+      centerX = sumCx / persons.length;
+    } else {
+      centerX = (mainBox.left + mainBox.right) / 2;
+    }
 
     final hasAnkle = lAnkle != null || rAnkle != null;
     final hasKnee = lKnee != null || rKnee != null;
     final hasHip = lHip != null || rHip != null;
     final hasShoulder = lShoulder != null || rShoulder != null;
 
-    if (bboxRatio < 0.35) {
+    if (isGroupShot) {
+      shot = ShotType.groupShot;
+      double groupMinTop = double.infinity;
+      double groupMaxBottom = double.negativeInfinity;
+      for (final p in persons) {
+        final b = p.normalizedBox;
+        if (b.top < groupMinTop) groupMinTop = b.top;
+        if (b.bottom > groupMaxBottom) groupMaxBottom = b.bottom;
+      }
+      if (groupMinTop.isFinite) {
+        headroom = groupMinTop;
+      }
+      if (groupMaxBottom.isFinite) {
+        footSpace = 1.0 - groupMaxBottom;
+      }
+    } else if (bboxRatio < 0.35) {
       shot = ShotType.environmental;
     } else if (maxY > minY) {
       final h = maxY - minY;
@@ -442,10 +655,11 @@ class PortraitModeHandler {
       if (_isAtEdge(lWrist) || _isAtEdge(rWrist)) croppedList.add('wrist');
       if (_isAtEdge(lElbow) || _isAtEdge(rElbow)) croppedList.add('elbow');
     }
-    if (shot == ShotType.kneeShot || shot == ShotType.fullBody) {
+    if ((shot == ShotType.kneeShot || shot == ShotType.fullBody) &&
+        kneeConf >= 0.15) {
       if (_isAtEdge(lKnee) || _isAtEdge(rKnee)) croppedList.add('knee');
     }
-    if (shot == ShotType.fullBody) {
+    if (shot == ShotType.fullBody && ankleConf >= 0.15) {
       if (_isAtEdge(lAnkle) || _isAtEdge(rAnkle)) croppedList.add('ankle');
     }
 
@@ -466,8 +680,43 @@ class PortraitModeHandler {
     _smoothedFaceRect = _smoothRect(_smoothedFaceRect, rawFaceRect);
     final faceRect = _smoothedFaceRect ?? rawFaceRect;
 
+    // ─── 발 간격 비율 (어깨 너비 대비) ──────────────────────
+    double? ankleSpacing;
+    if (lAnkle != null &&
+        rAnkle != null &&
+        lShoulder != null &&
+        rShoulder != null &&
+        ankleConf >= 0.15 &&
+        sConf >= 0.35) {
+      final shoulderW = (rShoulder.dx - lShoulder.dx).abs();
+      if (shoulderW > 0.02) {
+        ankleSpacing = (rAnkle.dx - lAnkle.dx).abs() / shoulderW;
+      }
+    }
+
+    // ─── 프레임 하단에 가장 가까운 관절 감지 ────────────────
+    // 관절에서 자르면 어색 → 관절이 화면 하단 12% 안에 있으면 경고
+    String? bottomJoint;
+    double? bottomJointY;
+    const bottomZone = 0.85;
+    final jointCandidates = <String, double?>{
+      'knee': kneeConf >= 0.15 ? _maxY(lKnee, rKnee) : null,
+      'ankle': ankleConf >= 0.15 ? _maxY(lAnkle, rAnkle) : null,
+      'wrist': _maxY(lWrist, rWrist),
+      'hip': _maxY(lHip, rHip),
+    };
+    for (final entry in jointCandidates.entries) {
+      final y = entry.value;
+      if (y != null && y > bottomZone) {
+        if (bottomJointY == null || y > bottomJointY) {
+          bottomJoint = entry.key;
+          bottomJointY = y;
+        }
+      }
+    }
+
     final state = PortraitSceneState(
-      personCount: persons.length,
+      personCount: _stablePersonCount,
       shotType: shot,
       faceYaw: _faceYaw,
       facePitch: _facePitch,
@@ -490,10 +739,13 @@ class PortraitModeHandler {
       shoulderConfidence: sConf,
       elbowConfidence: eConf,
       eyeConfidence: eyeConf,
+      kneeConfidence: kneeConf,
+      ankleConfidence: ankleConf,
       isGroupShot: isGroupShot,
       secondPersonSizeRatio: secondPersonSizeRatio,
       groupCroppedCount: groupCroppedCount,
       anyFaceEyesClosed: _anyFaceEyesClosed,
+      closedFaceCount: _closedFaceCount,
       lightingCondition: lastLighting,
       lightingConfidence: lastLightingConf,
       visibleKeypointCount: all.where((p) => p != null).length,
@@ -508,18 +760,25 @@ class PortraitModeHandler {
       rightHipPosition: rHip,
       leftKneePosition: lKnee,
       rightKneePosition: rKnee,
+      ankleSpacingRatio: ankleSpacing,
+      bottomJoint: bottomJoint,
+      bottomJointY: bottomJointY,
+      isFrontCamera: isFrontCamera,
+      cameraStability: _cameraStability,
+      eyeClosedConfirmed: _eyeClosedStreak >= _eyeConfirmFrames,
+      faceHiddenCount: faceHiddenCount,
+      spacingUnevenness: spacingUnevenness,
+      heightVariation: heightVariation,
     );
 
-    final coaching = _stabilize(_coachEngine.evaluate(state));
-
-    // ─── 그룹샷 전용: 모든 얼굴 눈 감김 비동기 검사 ───────────
-    // captureFrameCallback이 연결된 경우에만 실행 (_faceEveryN 프레임마다)
+    // ─── 그룹샷: 모든 얼굴 눈 감김 비동기 검사 ───────────────
+    // 코칭 평가 전에 트리거하여 다음 프레임부터 바로 반영
     _frameCount++;
     if (isGroupShot &&
         captureFrameCallback != null &&
-        !_isAnalyzing &&
+        !_isFaceAnalyzing &&
         _frameCount % _faceEveryN == 0) {
-      _isAnalyzing = true;
+      _isFaceAnalyzing = true;
       unawaited(() async {
         try {
           final bytes = await captureFrameCallback!();
@@ -527,12 +786,15 @@ class PortraitModeHandler {
             await _analyzeFace(bytes);
           }
         } finally {
-          _isAnalyzing = false;
+          _isFaceAnalyzing = false;
         }
       }());
     }
 
+    final coaching = _stabilize(_coachEngine.evaluate(state));
+
     final overlay = OverlayData(
+      closedFaceRects: _closedFaceRects,
       leftEye: lEye,
       rightEye: rEye,
       nose: nose,
@@ -544,6 +806,10 @@ class PortraitModeHandler {
       rightWrist: rWrist,
       leftHip: lHip,
       rightHip: rHip,
+      leftKnee: lKnee,
+      rightKnee: rKnee,
+      leftAnkle: lAnkle,
+      rightAnkle: rAnkle,
       coaching: coaching,
       shotType: shot,
       eyeConfidence: eyeConf,
@@ -557,7 +823,7 @@ class PortraitModeHandler {
       coaching: coaching,
       overlayData: overlay,
       shotType: shot,
-      personCount: persons.length,
+      personCount: _stablePersonCount,
       hasPersonStable: true,
     );
   }
@@ -691,13 +957,18 @@ class PortraitModeHandler {
 
   Future<void> _analyzeFace(Uint8List bytes) async {
     try {
+      final decoded = img.decodeImage(bytes);
+      if (decoded == null) return;
+
       final tempFile = File('${Directory.systemTemp.path}/pozy_face.jpg');
       await tempFile.writeAsBytes(bytes);
       final input = InputImage.fromFilePath(tempFile.path);
       final faces = await _faceDetector.processImage(input);
 
       if (faces.isNotEmpty) {
-        // 가장 큰 얼굴을 메인으로 사용
+        // ─── 메인 얼굴: yaw/pitch/roll/smile만 보조 업데이트 ────
+        // 눈 데이터는 네이티브 메트릭 스트림이 primary source
+        // (여기서 덮어쓰면 비대칭 스무딩이 깨지고 값이 점프함)
         final mainFace = faces.length == 1
             ? faces.first
             : faces.reduce(
@@ -708,22 +979,42 @@ class PortraitModeHandler {
                     : b,
               );
 
-        _faceYaw = mainFace.headEulerAngleY;
-        _facePitch = mainFace.headEulerAngleX;
-        _faceRoll = mainFace.headEulerAngleZ;
-        _leftEyeOpen = mainFace.leftEyeOpenProbability;
-        _rightEyeOpen = mainFace.rightEyeOpenProbability;
-        _smileProb = mainFace.smilingProbability;
+        _faceYaw = _smoothMetric(_faceYaw, mainFace.headEulerAngleY);
+        _facePitch = _smoothMetric(_facePitch, mainFace.headEulerAngleX);
+        _faceRoll = _smoothMetric(_faceRoll, mainFace.headEulerAngleZ);
+        _smileProb = _smoothMetric(_smileProb, mainFace.smilingProbability);
 
-        // ─── 그룹샷: 감지된 모든 얼굴에서 눈 감김 검사 ────────
-        // enableClassification: true 이므로 eyeOpenProbability가 제공됨
-        _anyFaceEyesClosed = faces.any((f) {
-          final l = f.leftEyeOpenProbability ?? 1.0;
-          final r = f.rightEyeOpenProbability ?? 1.0;
-          return l < 0.3 && r < 0.3;
-        });
-      } else {
+        // ─── 모든 얼굴: 눈 감김 검사 (그룹샷 + 싱글 보조) ────
+        final visibleFaces = faces.where(_hasUsableEyeData).toList();
+        final closedFaces =
+            visibleFaces.where(_isFaceLikelyEyesClosed).toList();
+        final closedFaceCount = closedFaces.length;
+        _closedFaceRects = closedFaces
+            .map((face) => _normalizeFaceRect(face.boundingBox, decoded.width, decoded.height))
+            .whereType<Rect>()
+            .toList(growable: false);
+
+        if (closedFaceCount > 0) {
+          _anyEyeClosedStreak++;
+          _closedFaceCount = math.max(_closedFaceCount, closedFaceCount);
+        } else if (visibleFaces.length >= 2 || _stablePersonCount <= 1) {
+          _anyEyeClosedStreak = 0;
+          _closedFaceCount = 0;
+          _closedFaceRects = const [];
+        } else {
+          // 다중 인물에서는 한 프레임 얼굴 누락이 잦아서 즉시 초기화하지 않습니다.
+          _anyEyeClosedStreak = math.max(0, _anyEyeClosedStreak - 1);
+          if (_anyEyeClosedStreak == 0) {
+            _closedFaceCount = 0;
+            _closedFaceRects = const [];
+          }
+        }
+        _anyFaceEyesClosed = _anyEyeClosedStreak >= 1;
+      } else if (_stablePersonCount <= 1) {
         _anyFaceEyesClosed = false;
+        _closedFaceCount = 0;
+        _closedFaceRects = const [];
+        _anyEyeClosedStreak = 0;
       }
     } catch (e) {
       debugPrint('[FACE] error=$e');
@@ -816,6 +1107,111 @@ class PortraitModeHandler {
     final list = confs is List ? confs : <dynamic>[];
     if (idx >= list.length) return 0.0;
     return (list[idx] as num).toDouble();
+  }
+
+  List<YOLOResult> _dedupePersons(List<YOLOResult> persons) {
+    if (persons.length <= 1) return persons;
+
+    final sorted = [...persons]..sort((a, b) {
+      final aScore = a.confidence * a.normalizedBox.width * a.normalizedBox.height;
+      final bScore = b.confidence * b.normalizedBox.width * b.normalizedBox.height;
+      return bScore.compareTo(aScore);
+    });
+
+    final kept = <YOLOResult>[];
+    for (final person in sorted) {
+      if (person.confidence < 0.12) continue;
+
+      final isDuplicate = kept.any((other) => _looksLikeSamePerson(other, person));
+      if (!isDuplicate) {
+        kept.add(person);
+      }
+    }
+
+    return kept.isEmpty ? [sorted.first] : kept;
+  }
+
+  bool _looksLikeSamePerson(YOLOResult a, YOLOResult b) {
+    final boxA = a.normalizedBox;
+    final boxB = b.normalizedBox;
+
+    final intersectionArea = _intersectionArea(boxA, boxB);
+    final areaA = boxA.width * boxA.height;
+    final areaB = boxB.width * boxB.height;
+    final minArea = math.min(areaA, areaB);
+    final maxArea = math.max(areaA, areaB);
+    final overlapOnSmaller = minArea <= 0 ? 0.0 : intersectionArea / minArea;
+    final areaRatio = maxArea <= 0 ? 0.0 : minArea / maxArea;
+    final centerDistance = (boxA.center - boxB.center).distance;
+    final iou = _intersectionOverUnion(boxA, boxB);
+
+    if (isFrontCamera) {
+      return iou > 0.52 ||
+          overlapOnSmaller > 0.82 ||
+          (centerDistance < 0.05 && areaRatio > 0.72);
+    }
+
+    return iou > 0.55 ||
+        overlapOnSmaller > 0.75 ||
+        (centerDistance < 0.06 && areaRatio > 0.55);
+  }
+
+  double _intersectionArea(Rect a, Rect b) {
+    final intersection = a.intersect(b);
+    if (intersection.isEmpty) return 0.0;
+    return intersection.width * intersection.height;
+  }
+
+  bool _hasUsableEyeData(Face face) {
+    return face.leftEyeOpenProbability != null || face.rightEyeOpenProbability != null;
+  }
+
+  bool _isFaceLikelyEyesClosed(Face face) {
+    final l = face.leftEyeOpenProbability;
+    final r = face.rightEyeOpenProbability;
+
+    if (l != null && r != null) {
+      final avg = (l + r) / 2;
+      return (l < 0.38 && r < 0.38) || (avg < 0.32 && (l < 0.45 || r < 0.45));
+    }
+
+    if (l != null) return l < 0.18;
+    if (r != null) return r < 0.18;
+    return false;
+  }
+
+  Rect? _normalizeFaceRect(Rect rect, int imageWidth, int imageHeight) {
+    if (imageWidth <= 0 || imageHeight <= 0) return null;
+
+    final left = (rect.left / imageWidth).clamp(0.0, 1.0);
+    final top = (rect.top / imageHeight).clamp(0.0, 1.0);
+    final right = (rect.right / imageWidth).clamp(0.0, 1.0);
+    final bottom = (rect.bottom / imageHeight).clamp(0.0, 1.0);
+    if (right <= left || bottom <= top) return null;
+    return Rect.fromLTRB(left, top, right, bottom);
+  }
+
+  bool _shouldTreatAsGroupShot(
+    List<YOLOResult> persons,
+    double secondPersonSizeRatio,
+    double thirdPersonSizeRatio,
+    double groupBboxRatio,
+    double avgPersonArea,
+    int significantPersonCount,
+  ) {
+    if (persons.length < 2) return false;
+
+    if (persons.length >= 3) {
+      final hasEnoughSignificantPeople = significantPersonCount >= 3;
+      final sizeGate = persons.length >= 4
+          ? (avgPersonArea >= 0.018 || thirdPersonSizeRatio >= 0.14)
+          : (avgPersonArea >= 0.02 || thirdPersonSizeRatio >= 0.18);
+      return hasEnoughSignificantPeople &&
+          groupBboxRatio >= 0.22 &&
+          sizeGate;
+    }
+
+    return groupBboxRatio >= 0.18 && secondPersonSizeRatio >= 0.28;
   }
 
   // ─── 얼굴 영역 추정 ───────────────────────────────
@@ -927,6 +1323,7 @@ class PortraitModeHandler {
         return 0.29;
       case ShotType.environmental:
         return 0.30;
+      case ShotType.groupShot:
       case ShotType.unknown:
         return null;
     }
@@ -950,6 +1347,7 @@ class PortraitModeHandler {
         return 0.08;
       case ShotType.environmental:
         return 0.10;
+      case ShotType.groupShot:
       case ShotType.unknown:
         return null;
     }
@@ -1059,5 +1457,121 @@ class PortraitModeHandler {
         p.dx > 1 - margin ||
         p.dy < margin ||
         p.dy > 1 - margin;
+  }
+
+  /// 두 키포인트 중 더 큰 y값을 반환 (프레임 하단에 가까운 쪽)
+  double? _maxY(Offset? a, Offset? b) {
+    if (a == null && b == null) return null;
+    if (a == null) return b!.dy;
+    if (b == null) return a.dy;
+    return a.dy > b.dy ? a.dy : b.dy;
+  }
+
+  /// 눈 전용 비대칭 스무딩: 감는 방향은 빠르게, 뜨는 방향은 느리게
+  double? _smoothEyeMetric(double? previous, double? next) {
+    if (next == null || next.isNaN) return previous;
+    if (previous == null || previous.isNaN) return next;
+    // 눈 감는 중 (값 하락): alpha 0.6 → 2프레임이면 반응
+    // 눈 뜨는 중 (값 상승): alpha 0.2 → 플리커 방지
+    final alpha = next < previous ? 0.6 : 0.2;
+    return previous + (next - previous) * alpha;
+  }
+
+  /// 키포인트 프레임 간 이동량으로 카메라 안정성을 계산합니다.
+  void _updateStability({
+    required Map<String, Offset?> current,
+    double? shoulderAngle,
+    double? shoulderWidth,
+    double? eyeWidth,
+  }) {
+    final visiblePoints = current.values.whereType<Offset>().toList(growable: false);
+    if (visiblePoints.length < 2) return;
+
+    final currentCenter = Offset(
+      visiblePoints.map((p) => p.dx).reduce((a, b) => a + b) / visiblePoints.length,
+      visiblePoints.map((p) => p.dy).reduce((a, b) => a + b) / visiblePoints.length,
+    );
+
+    if (_prevStabilityCenter == null) {
+      _prevStabilityCenter = currentCenter;
+      _prevShoulderWidth = shoulderWidth;
+      _prevEyeWidth = eyeWidth;
+      _prevShoulderAngle = shoulderAngle;
+      _cameraStability = 1.0;
+      return;
+    }
+
+    final centerDelta = (currentCenter - _prevStabilityCenter!).distance;
+    final widthDelta = _normalizedMetricDelta(_prevShoulderWidth, shoulderWidth);
+    final eyeDelta = _normalizedMetricDelta(_prevEyeWidth, eyeWidth);
+    final angleDelta = _angleDelta(_prevShoulderAngle, shoulderAngle) / 24.0;
+    final poseChangeScore = math.max(widthDelta, math.max(eyeDelta, angleDelta));
+
+    _prevStabilityCenter = currentCenter;
+    _prevShoulderWidth = shoulderWidth ?? _prevShoulderWidth;
+    _prevEyeWidth = eyeWidth ?? _prevEyeWidth;
+    _prevShoulderAngle = shoulderAngle ?? _prevShoulderAngle;
+
+    if (poseChangeScore > 0.22) {
+      _cameraStability = math.min(1.0, _cameraStability + 0.06);
+      return;
+    }
+
+    _recentDeltas.add(centerDelta);
+    if (_recentDeltas.length > _stabilityWindow) {
+      _recentDeltas.removeAt(0);
+    }
+    if (_recentDeltas.length < 3) {
+      _cameraStability = 1.0;
+      return;
+    }
+
+    final avg = _recentDeltas.reduce((a, b) => a + b) / _recentDeltas.length;
+    _cameraStability = (1.0 - (avg / _stabilityMaxDelta)).clamp(0.0, 1.0);
+  }
+
+  void _updateStablePersonCount(int detectedCount, bool groupShotCandidate) {
+    if (detectedCount == _candidatePersonCount) {
+      _candidatePersonCountStreak++;
+    } else {
+      _candidatePersonCount = detectedCount;
+      _candidatePersonCountStreak = 1;
+    }
+
+    final confirmFrames = detectedCount >= 3
+        ? 3
+        : detectedCount == 2
+        ? 2
+        : (_isGroupShotStable || groupShotCandidate)
+        ? 3
+        : 2;
+
+    if (_candidatePersonCountStreak >= confirmFrames) {
+      _stablePersonCount = _candidatePersonCount;
+    }
+  }
+
+  List<YOLOResult> _selectGroupMetricPersons(List<YOLOResult> persons, double mainArea) {
+    if (persons.length <= 2 || mainArea <= 0) return persons;
+
+    final filtered = persons.where((person) {
+      final area = person.normalizedBox.width * person.normalizedBox.height;
+      final areaRatio = area / mainArea;
+      return areaRatio >= 0.14 || (person.confidence >= 0.45 && areaRatio >= 0.08);
+    }).toList(growable: false);
+
+    return filtered.length >= 2 ? filtered : persons;
+  }
+
+  double _normalizedMetricDelta(double? previous, double? current) {
+    if (previous == null || current == null || previous <= 0.0 || current <= 0.0) {
+      return 0.0;
+    }
+    return ((current - previous).abs() / previous).clamp(0.0, 1.0);
+  }
+
+  double _angleDelta(double? previous, double? current) {
+    if (previous == null || current == null) return 0.0;
+    return (current - previous).abs();
   }
 }

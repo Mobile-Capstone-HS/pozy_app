@@ -40,7 +40,8 @@ import 'package:pose_camera_app/segmentation/fastscnn_view.dart';
 import 'package:pose_camera_app/segmentation/landscape_analyzer.dart';
 
 const String poseModelPath = 'yolov8n-pose_float16.tflite';
-const double poseConfidenceThreshold = 0.25;
+const double poseConfidenceThreshold = 0.15;
+const double poseIouThreshold = 0.65;
 
 class CameraScreen extends StatefulWidget {
   final ValueChanged<int> onMoveTab;
@@ -114,6 +115,7 @@ class _CameraScreenState extends State<CameraScreen> {
   double _tiltX = 0.0;
   double _gravX = 0.0;
   double _gravY = 9.8;
+  int _lastSentOrientationDeg = 0;
 
   portrait.CoachingResult _portraitCoaching = const portrait.CoachingResult(
     message:
@@ -198,16 +200,22 @@ class _CameraScreenState extends State<CameraScreen> {
             _gravY = (_gravY * 0.7) + (event.y * 0.3);
 
             // 절대 각도: 시각 표현에 사용 (Flutter 캔버스 회전값)
-            // 유저가 가로로 들면 이 값이 ≈90°가 되어 선이 Flutter 상에서 "수직"이 되지만,
-            // 유저가 화면을 90° 회전해서 보므로 실제 눈에는 "수평"으로 보임 → 올바른 동작.
             final absDeg = math.atan2(_gravX, _gravY) * 180.0 / math.pi;
             _tiltX = absDeg;
 
             // 상대 기울기: isLevel 판단 및 코칭 tilt에 사용
-            // 현재 방향(0/90/180/270°) 기준 편차 → 어느 방향이든 수평=0°
             final baseDeg = (absDeg / 90.0).round() * 90.0;
             final relativeDeg = absDeg - baseDeg;
             _sceneCoach.updateTilt(relativeDeg);
+
+            // 인물 모드에서만 네이티브 YOLOView 방향을 갱신합니다.
+            if (_isPortraitMode) {
+              final newOrientation = _deviceOrientationDeg;
+              if (newOrientation != _lastSentOrientationDeg) {
+                _lastSentOrientationDeg = newOrientation;
+                _cameraController.setDeviceOrientation(newOrientation);
+              }
+            }
             setState(() {});
           });
     } catch (_) {}
@@ -1208,6 +1216,7 @@ class _CameraScreenState extends State<CameraScreen> {
       confidenceThreshold: _isPortraitMode
           ? poseConfidenceThreshold
           : detectionConfidenceThreshold,
+      iouThreshold: _isPortraitMode ? poseIouThreshold : 0.45,
       streamingConfig: _isPortraitMode
           ? const YOLOStreamingConfig.withPoses()
           : const YOLOStreamingConfig.minimal(),
@@ -1258,7 +1267,9 @@ class _CameraScreenState extends State<CameraScreen> {
       case portrait.ShotType.fullBody:
         return '\uC804\uC2E0';
       case portrait.ShotType.environmental:
-        return '\uD658\uACBD \uC778\uBB3C';
+        return '환경 인물';
+      case portrait.ShotType.groupShot:
+        return '그룹샷';
       case portrait.ShotType.unknown:
         return '\uC778\uBB3C \uCF54\uCE6D \uD65C\uC131';
     }
