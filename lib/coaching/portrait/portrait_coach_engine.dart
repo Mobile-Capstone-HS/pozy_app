@@ -486,6 +486,11 @@ class PortraitCoachEngine {
     final joint = s.bottomJoint!;
     final y = s.bottomJointY!;
 
+    if ((joint == 'knee' && !s.hasReliableKnees) ||
+        (joint == 'ankle' && !s.hasReliableAnkles)) {
+      return null;
+    }
+
     // 관절이 프레임 하단 12% 안에 있는 경우만 (y > 0.85)
     // 매우 하단(y > 0.93)은 거의 프레임 밖이므로 더 강한 경고
     final isVeryBottom = y > 0.93;
@@ -526,7 +531,7 @@ class PortraitCoachEngine {
   /// 전신 촬영 전용 구도 체크
   CoachingResult? _checkFullBodyComposition(PortraitSceneState s) {
     // (1) 양발 가시성: 전신인데 한쪽 발만 보이면 경고
-    if (s.hasAnyAnkle && !s.hasBothAnkles) {
+    if (s.hasReliableAnkles && !s.hasReliableBothAnkles && s.personBboxRatio >= 0.16) {
       return const CoachingResult(
         message: '양발이 모두 보이게 맞춰주세요.',
         priority: CoachingPriority.composition,
@@ -536,7 +541,7 @@ class PortraitCoachEngine {
     }
 
     // (2) 발 아래 공간
-    if (s.footSpaceRatio < 0.04) {
+    if (s.hasReliableAnkles && s.footSpaceRatio < 0.04) {
       return const CoachingResult(
         message: '발끝 아래에 여유 공간을 더 넣어주세요.',
         priority: CoachingPriority.composition,
@@ -544,7 +549,7 @@ class PortraitCoachEngine {
         reason: '발이 프레임에 붙으면 답답해 보여요',
       );
     }
-    if (s.footSpaceRatio > 0.12) {
+    if (s.hasReliableAnkles && s.footSpaceRatio > 0.12) {
       return const CoachingResult(
         message: '인물에 조금 더 가까이 가보세요.',
         priority: CoachingPriority.composition,
@@ -572,6 +577,8 @@ class PortraitCoachEngine {
 
   /// 무릎샷 전용 구도 체크
   CoachingResult? _checkKneeShotComposition(PortraitSceneState s) {
+    if (!s.hasReliableKnees) return null;
+
     // 무릎이 프레임 하단 가까이에 있으면 관절 커팅 위험
     final lk = s.leftKneePosition?.dy;
     final rk = s.rightKneePosition?.dy;
@@ -589,7 +596,7 @@ class PortraitCoachEngine {
     }
 
     // 발 아래 공간이 너무 없으면 (무릎샷에서 약간의 여유는 필요)
-    if (s.footSpaceRatio < 0.03) {
+    if (s.hasReliableAnkles && s.footSpaceRatio < 0.03) {
       return const CoachingResult(
         message: '아래쪽이 좁아요. 살짝 뒤로 가보세요.',
         priority: CoachingPriority.composition,
@@ -794,6 +801,7 @@ class PortraitCoachEngine {
 
     // fullBody/kneeShot: 발 간격 체크 (어깨 너비 대비)
     if ((s.shotType == ShotType.fullBody || s.shotType == ShotType.kneeShot) &&
+        s.hasReliableBothAnkles &&
         s.ankleSpacingRatio != null) {
       if (s.ankleSpacingRatio! < 0.3) {
         return const CoachingResult(
@@ -814,8 +822,9 @@ class PortraitCoachEngine {
 
     // fullBody: 콘트라포스토 체크
     if (s.shotType == ShotType.fullBody &&
+        s.hasReliableKnees &&
         !s.hasContrapposto &&
-        s.hasAnyAnkle) {
+        s.hasReliableAnkles) {
       return const CoachingResult(
         message: '한쪽 다리에 무게를 실어보세요.',
         priority: CoachingPriority.pose,

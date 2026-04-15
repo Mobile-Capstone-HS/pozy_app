@@ -485,6 +485,14 @@ class PortraitModeHandler {
       _conf(main, PoseKeypointIndex.leftShoulder),
       _conf(main, PoseKeypointIndex.rightShoulder),
     );
+    final kneeConf = math.max(
+      _conf(main, PoseKeypointIndex.leftKnee),
+      _conf(main, PoseKeypointIndex.rightKnee),
+    );
+    final ankleConf = math.max(
+      _conf(main, PoseKeypointIndex.leftAnkle),
+      _conf(main, PoseKeypointIndex.rightAnkle),
+    );
     double? shoulderAngle;
     if (lShoulder != null && rShoulder != null && sConf > 0.5) {
       shoulderAngle =
@@ -622,10 +630,11 @@ class PortraitModeHandler {
       if (_isAtEdge(lWrist) || _isAtEdge(rWrist)) croppedList.add('wrist');
       if (_isAtEdge(lElbow) || _isAtEdge(rElbow)) croppedList.add('elbow');
     }
-    if (shot == ShotType.kneeShot || shot == ShotType.fullBody) {
+    if ((shot == ShotType.kneeShot || shot == ShotType.fullBody) &&
+        kneeConf >= 0.15) {
       if (_isAtEdge(lKnee) || _isAtEdge(rKnee)) croppedList.add('knee');
     }
-    if (shot == ShotType.fullBody) {
+    if (shot == ShotType.fullBody && ankleConf >= 0.15) {
       if (_isAtEdge(lAnkle) || _isAtEdge(rAnkle)) croppedList.add('ankle');
     }
 
@@ -648,7 +657,12 @@ class PortraitModeHandler {
 
     // ─── 발 간격 비율 (어깨 너비 대비) ──────────────────────
     double? ankleSpacing;
-    if (lAnkle != null && rAnkle != null && lShoulder != null && rShoulder != null) {
+    if (lAnkle != null &&
+        rAnkle != null &&
+        lShoulder != null &&
+        rShoulder != null &&
+        ankleConf >= 0.15 &&
+        sConf >= 0.35) {
       final shoulderW = (rShoulder.dx - lShoulder.dx).abs();
       if (shoulderW > 0.02) {
         ankleSpacing = (rAnkle.dx - lAnkle.dx).abs() / shoulderW;
@@ -661,8 +675,8 @@ class PortraitModeHandler {
     double? bottomJointY;
     const bottomZone = 0.85;
     final jointCandidates = <String, double?>{
-      'knee': _maxY(lKnee, rKnee),
-      'ankle': _maxY(lAnkle, rAnkle),
+      'knee': kneeConf >= 0.15 ? _maxY(lKnee, rKnee) : null,
+      'ankle': ankleConf >= 0.15 ? _maxY(lAnkle, rAnkle) : null,
       'wrist': _maxY(lWrist, rWrist),
       'hip': _maxY(lHip, rHip),
     };
@@ -700,6 +714,8 @@ class PortraitModeHandler {
       shoulderConfidence: sConf,
       elbowConfidence: eConf,
       eyeConfidence: eyeConf,
+      kneeConfidence: kneeConf,
+      ankleConfidence: ankleConf,
       isGroupShot: isGroupShot,
       secondPersonSizeRatio: secondPersonSizeRatio,
       groupCroppedCount: groupCroppedCount,

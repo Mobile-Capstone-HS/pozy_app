@@ -94,6 +94,8 @@ class PortraitSceneState {
   final double shoulderConfidence;
   final double elbowConfidence;
   final double eyeConfidence;
+  final double kneeConfidence;
+  final double ankleConfidence;
 
   // 키포인트 가시성
   final int visibleKeypointCount;
@@ -163,6 +165,8 @@ class PortraitSceneState {
     this.shoulderConfidence = 0.0,
     this.elbowConfidence = 0.0,
     this.eyeConfidence = 0.0,
+    this.kneeConfidence = 0.0,
+    this.ankleConfidence = 0.0,
     this.visibleKeypointCount = 0,
     this.hasNose = false,
     this.hasEyes = false,
@@ -239,6 +243,16 @@ class PortraitSceneState {
 
   bool get hasAnyAnkle =>
       leftAnklePosition != null || rightAnklePosition != null;
+
+  bool get hasReliableKnees =>
+      (leftKneePosition != null || rightKneePosition != null) &&
+      kneeConfidence >= 0.15;
+
+  bool get hasReliableAnkles =>
+      hasAnyAnkle && ankleConfidence >= 0.15;
+
+  bool get hasReliableBothAnkles =>
+      hasBothAnkles && ankleConfidence >= 0.15;
 
   /// 프레임 하단 근처에서 관절이 잘리고 있는지
   bool get isBottomJointCut => bottomJoint != null && bottomJointY != null;
