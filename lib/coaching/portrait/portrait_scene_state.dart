@@ -21,6 +21,12 @@ enum ShotType {
   unknown,
 }
 
+enum PortraitIntent {
+  single,
+  environmental,
+  group,
+}
+
 // ─── 조명 상태 ──────────────────────────────────────────────
 
 enum LightingCondition {
@@ -64,6 +70,7 @@ class PortraitSceneState {
   // 기본 정보
   final int personCount;
   final ShotType shotType;
+  final PortraitIntent intent;
   final bool isFrontCamera;
 
   // 얼굴 데이터 (ML Kit Face Detection)
@@ -128,6 +135,7 @@ class PortraitSceneState {
   final double? ankleSpacingRatio;  // 발 간격 / 어깨 너비 비율 (null = 계산 불가)
   final String? bottomJoint;        // 프레임 하단(85%+)에 가장 가까운 관절 이름
   final double? bottomJointY;       // 해당 관절의 y좌표 (0~1)
+  final bool lowerBodyTouchesBottom;
 
   // 카메라 안정성
   final double cameraStability;     // 0.0=불안정, 1.0=매우 안정
@@ -143,6 +151,7 @@ class PortraitSceneState {
   const PortraitSceneState({
     this.personCount = 0,
     this.shotType = ShotType.unknown,
+    this.intent = PortraitIntent.single,
     this.isFrontCamera = false,
     this.faceYaw,
     this.facePitch,
@@ -189,6 +198,7 @@ class PortraitSceneState {
     this.ankleSpacingRatio,
     this.bottomJoint,
     this.bottomJointY,
+    this.lowerBodyTouchesBottom = false,
     this.cameraStability = 0.0,
     this.eyeClosedConfirmed = false,
     this.faceHiddenCount = 0,

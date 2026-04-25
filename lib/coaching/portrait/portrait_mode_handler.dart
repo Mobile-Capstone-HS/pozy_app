@@ -153,6 +153,7 @@ class PortraitModeHandler {
 
   // ─── 외부 설정 ────────────────────────────────────
   bool isFrontCamera = false;
+  PortraitIntent intent = PortraitIntent.single;
 
   /// 기기 방향 (0=세로, 90=가로 왼쪽, 180=거꾸로, 270=가로 오른쪽)
   /// camera_screen.dart에서 가속도계 기반으로 갱신합니다.
@@ -174,6 +175,16 @@ class PortraitModeHandler {
   /// 사용자가 상단 selector에서 선택한 구도 규칙을 코칭 엔진에 전달.
   void setRule(CompositionRule rule) {
     _coachEngine.setRule(rule);
+  }
+
+  void setIntent(PortraitIntent nextIntent) {
+    if (intent == nextIntent) return;
+    intent = nextIntent;
+    _isGroupShotStable = false;
+    _groupStreak = 0;
+    _stablePersonCount = 1;
+    _candidatePersonCount = 1;
+    _candidatePersonCountStreak = 0;
   }
 
   void dispose() {
@@ -343,14 +354,7 @@ class PortraitModeHandler {
           ..sort((a, b) => b.compareTo(a));
     final mainArea = main.normalizedBox.width * main.normalizedBox.height;
     final secondArea = areas.length > 1 ? areas[1] : 0.0;
-    final thirdArea = areas.length > 2 ? areas[2] : 0.0;
-    final avgPersonArea =
-        areas.isEmpty ? 0.0 : areas.reduce((a, b) => a + b) / areas.length;
     double secondPersonSizeRatio = mainArea > 0 ? secondArea / mainArea : 0.0;
-    final thirdPersonSizeRatio = mainArea > 0 ? thirdArea / mainArea : 0.0;
-    final significantPersonCount = mainArea > 0
-        ? areas.where((area) => area / mainArea >= 0.14).length
-        : persons.length;
 
     double groupLeft = double.infinity;
     double groupTop = double.infinity;
@@ -371,14 +375,8 @@ class PortraitModeHandler {
         ? (groupRight - groupLeft) * (groupBottom - groupTop)
         : mainArea;
 
-    final groupShotCandidate = _shouldTreatAsGroupShot(
-      persons,
-      secondPersonSizeRatio,
-      thirdPersonSizeRatio,
-      groupBboxRatio,
-      avgPersonArea,
-      significantPersonCount,
-    );
+    final groupShotCandidate = intent == PortraitIntent.group &&
+        persons.length >= 2;
 
     // ─── 다중 인물 메트릭 ─────────────────────────────
     // 그룹샷 안정화: 진입은 빠르게, 이탈은 느리게 (깜빡임 방지)
@@ -400,7 +398,7 @@ class PortraitModeHandler {
     double spacingUnevenness = 0.0;
     double heightVariation = 0.0;
 
-    if (isGroupShot) {
+    if (intent == PortraitIntent.group && isGroupShot) {
       final metricPersons = _selectGroupMetricPersons(persons, mainArea);
       // 모든 인물의 바운딩박스가 프레임 가장자리에 걸리는지 검사
       const edgeMgn = 0.03;
@@ -598,7 +596,9 @@ class PortraitModeHandler {
       centerX = (mainBox.left + mainBox.right) / 2;
     }
 
-    final hasAnkle = lAnkle != null || rAnkle != null;
+    final hasReliableAnkle = (lAnkle != null || rAnkle != null) &&
+        ankleConf >= 0.12 &&
+        maxY > 0.50;
     final hasKnee = lKnee != null || rKnee != null;
     final hasHip = lHip != null || rHip != null;
     final hasShoulder = lShoulder != null || rShoulder != null;
@@ -618,14 +618,12 @@ class PortraitModeHandler {
       if (groupMaxBottom.isFinite) {
         footSpace = 1.0 - groupMaxBottom;
       }
-    } else if (bboxRatio < 0.35) {
-      shot = ShotType.environmental;
     } else if (maxY > minY) {
       final h = maxY - minY;
 
-      if (hasAnkle && h > 0.7) {
+      if (hasReliableAnkle) {
         shot = ShotType.fullBody;
-      } else if (hasKnee && !hasAnkle) {
+      } else if (hasKnee) {
         shot = ShotType.kneeShot;
       } else if (hasHip && !hasKnee && h > 0.45) {
         shot = ShotType.waistShot;
@@ -718,6 +716,7 @@ class PortraitModeHandler {
     final state = PortraitSceneState(
       personCount: _stablePersonCount,
       shotType: shot,
+      intent: intent,
       faceYaw: _faceYaw,
       facePitch: _facePitch,
       faceRoll: _faceRoll,
@@ -763,6 +762,9 @@ class PortraitModeHandler {
       ankleSpacingRatio: ankleSpacing,
       bottomJoint: bottomJoint,
       bottomJointY: bottomJointY,
+      lowerBodyTouchesBottom: mainBox.bottom > 0.97 &&
+          !hasReliableAnkle &&
+          (shot == ShotType.fullBody || shot == ShotType.kneeShot),
       isFrontCamera: isFrontCamera,
       cameraStability: _cameraStability,
       eyeClosedConfirmed: _eyeClosedStreak >= _eyeConfirmFrames,
@@ -815,8 +817,17 @@ class PortraitModeHandler {
       eyeConfidence: eyeConf,
       shoulderConfidence: sConf,
       faceGuideRect: faceRect,
+      bodyGuideRect: Rect.fromLTRB(
+        main.normalizedBox.left.clamp(0.0, 1.0).toDouble(),
+        main.normalizedBox.top.clamp(0.0, 1.0).toDouble(),
+        main.normalizedBox.right.clamp(0.0, 1.0).toDouble(),
+        main.normalizedBox.bottom.clamp(0.0, 1.0).toDouble(),
+      ),
       targetEyeLineY: _targetEyeLineY(shot),
       targetHeadroomTop: _targetHeadroomTop(shot),
+      groupPersonCount: _stablePersonCount,
+      groupFaceHiddenCount: faceHiddenCount,
+      groupClosedEyeCount: _closedFaceCount,
     );
 
     return PortraitAnalysisResult(

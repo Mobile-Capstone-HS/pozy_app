@@ -16,6 +16,8 @@ class TopCameraBar extends StatelessWidget {
   final bool isDrawingRoi;
   final bool isRoiLocked;
   final VoidCallback? onToggleRoiLock;
+  final bool portraitDebugOverlayOn;
+  final VoidCallback? onTogglePortraitDebugOverlay;
 
   /// 뒤로가기 오른쪽에 표시할 배지(예: `PortraitBadge`). 없으면 Spacer만 들어간다.
   final Widget? badge;
@@ -30,6 +32,8 @@ class TopCameraBar extends StatelessWidget {
     required this.isDrawingRoi,
     required this.isRoiLocked,
     required this.onToggleRoiLock,
+    this.portraitDebugOverlayOn = false,
+    this.onTogglePortraitDebugOverlay,
     this.badge,
   });
 
@@ -68,6 +72,16 @@ class TopCameraBar extends StatelessWidget {
             icon: torchOn ? Icons.flash_on_rounded : Icons.flash_off_rounded,
             onTap: onToggleTorch!,
             tint: torchOn ? const Color(0xFFFBBF24) : null,
+          ),
+          const SizedBox(width: 8),
+        ],
+        if (onTogglePortraitDebugOverlay != null) ...[
+          GlassIconButton(
+            icon: portraitDebugOverlayOn
+                ? Icons.visibility_rounded
+                : Icons.visibility_off_rounded,
+            onTap: onTogglePortraitDebugOverlay!,
+            tint: portraitDebugOverlayOn ? const Color(0xFF38BDF8) : null,
           ),
           const SizedBox(width: 8),
         ],
