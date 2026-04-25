@@ -30,11 +30,13 @@ class TfliteModelMetadataLoader {
   Future<TfliteModelMetadataLoadResult> loadForModelAsset(
     String modelAssetPath,
   ) {
-    final metadataAssetPath = metadataAssetPathForModel(modelAssetPath);
-    return _cache.putIfAbsent(
-      metadataAssetPath,
-      () => _load(metadataAssetPath),
-    );
+    return loadMetadataAsset(metadataAssetPathForModel(modelAssetPath));
+  }
+
+  Future<TfliteModelMetadataLoadResult> loadMetadataAsset(
+    String metadataAssetPath,
+  ) {
+    return _cache.putIfAbsent(metadataAssetPath, () => _load(metadataAssetPath));
   }
 
   String metadataAssetPathForModel(String modelAssetPath) {

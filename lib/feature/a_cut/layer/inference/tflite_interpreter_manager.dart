@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_litert/flutter_litert.dart';
 
 class TfliteInterpreterManager {
@@ -42,6 +43,10 @@ class TfliteInterpreterManager {
       }
 
       interpreter = await Interpreter.fromAsset(assetPath, options: options);
+      debugPrint(
+        '[TfliteInterpreterManager] Loaded $assetPath '
+        '(flex=$useFlexDelegate)',
+      );
 
       return _InterpreterHandle(
         interpreter: interpreter,

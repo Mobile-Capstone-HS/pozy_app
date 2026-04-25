@@ -1,4 +1,8 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter_litert/flutter_litert.dart';
 
 import '../../model/model_score_detail.dart';
 import 'aesthetic_model_contract.dart';
@@ -26,6 +30,16 @@ class TflitePhotoScoreSummary {
   });
 }
 
+class TfliteSingleModelRun {
+  final ResolvedAestheticModelConfig model;
+  final ModelScoreDetail detail;
+
+  const TfliteSingleModelRun({
+    required this.model,
+    required this.detail,
+  });
+}
+
 class TfliteAestheticService {
   TfliteAestheticService({
     TfliteInterpreterManager? interpreterManager,
@@ -46,6 +60,20 @@ class TfliteAestheticService {
   final List<AestheticModelContract> _technicalModels;
   final List<AestheticModelContract> _aestheticModels;
 
+  Future<TfliteSingleModelRun> evaluateSingleModel(
+    Uint8List imageBytes,
+    AestheticModelContract contract,
+  ) async {
+    final resolvedConfig = await _resolveContract(contract);
+    final detail = await _runContract(
+      imageBytes,
+      resolvedConfig,
+      inputCache: <String, Future<Uint8List>>{},
+    );
+
+    return TfliteSingleModelRun(model: resolvedConfig, detail: detail);
+  }
+
   Future<TflitePhotoScoreSummary> evaluate(Uint8List imageBytes) async {
     final inputCache = <String, Future<Uint8List>>{};
     final scoreDetails = <ModelScoreDetail>[];
@@ -53,10 +81,7 @@ class TfliteAestheticService {
     final resolvedConfigs = <ResolvedAestheticModelConfig>[];
 
     for (final contract in [..._technicalModels, ..._aestheticModels]) {
-      final metadataResult = await _metadataLoader.loadForModelAsset(
-        contract.assetPath,
-      );
-      final resolvedConfig = contract.resolve(metadataResult: metadataResult);
+      final resolvedConfig = await _resolveContract(contract);
       resolvedConfigs.add(resolvedConfig);
 
       try {
@@ -110,6 +135,15 @@ class TfliteAestheticService {
     );
   }
 
+  Future<ResolvedAestheticModelConfig> _resolveContract(
+    AestheticModelContract contract,
+  ) async {
+    final metadataResult = await _metadataLoader.loadMetadataAsset(
+      contract.metadataAssetPath,
+    );
+    return contract.resolve(metadataResult: metadataResult);
+  }
+
   Future<ModelScoreDetail> _runContract(
     Uint8List imageBytes,
     ResolvedAestheticModelConfig contract, {
@@ -118,16 +152,6 @@ class TfliteAestheticService {
     final interpreter = await _interpreterManager.getInterpreter(
       contract.assetPath,
       useFlexDelegate: contract.useFlexDelegate,
-    );
-
-    final preprocessed = await inputCache.putIfAbsent(
-      contract.preprocessCacheKey,
-      () => _preprocessor.preprocessToRgbFloat32(
-        imageBytes,
-        width: contract.inputWidth,
-        height: contract.inputHeight,
-        normalization: contract.normalization,
-      ),
     );
 
     if (contract.inputDtype != 'float32') {
@@ -140,34 +164,493 @@ class TfliteAestheticService {
       throw Exception('Unsupported tensor layout: ${contract.tensorLayout}');
     }
 
-    final inputShape = interpreter.getInputTensor(0).shape;
-    if (inputShape.length != 4 ||
-        inputShape[1] != contract.inputHeight ||
-        inputShape[2] != contract.inputWidth ||
-        inputShape[3] != 3) {
-      throw Exception('Unexpected input shape for ${contract.id}: $inputShape');
+    switch (contract.executionMode) {
+      case AestheticModelExecutionMode.tensor:
+        return _runTensorContract(
+          imageBytes,
+          contract,
+          interpreter: interpreter,
+          inputCache: inputCache,
+        );
+      case AestheticModelExecutionMode.signature:
+        return _runSignatureContract(
+          imageBytes,
+          contract,
+          interpreter: interpreter,
+          inputCache: inputCache,
+        );
+    }
+  }
+
+  Future<ModelScoreDetail> _runTensorContract(
+    Uint8List imageBytes,
+    ResolvedAestheticModelConfig contract, {
+    required Interpreter interpreter,
+    required Map<String, Future<Uint8List>> inputCache,
+  }) async {
+    final inputTensors = interpreter.getInputTensors();
+    if (inputTensors.isEmpty) {
+      throw Exception('No input tensors found for ${contract.id}.');
     }
 
-    final outputTensor = interpreter.getOutputTensor(0);
-    final outputBytes = Uint8List(outputTensor.numElements() * 4);
-    interpreter.run(preprocessed, outputBytes.buffer);
+    final preparedInputs = <Uint8List>[];
+    final resolvedInputShapes = <List<int>>[];
 
-    final outputValues = outputBytes.buffer.asFloat32List();
-    if (outputValues.length < contract.expectedOutputLength) {
-      throw Exception(
-        'Unexpected output length for ${contract.id}: ${outputValues.length}',
+    for (var index = 0; index < inputTensors.length; index++) {
+      final inputTensor = inputTensors[index];
+      final inputShape = inputTensor.shape;
+      if (inputShape.length != 4 || inputShape[3] != 3) {
+        throw Exception(
+          'Unsupported input shape for ${contract.id} '
+          'tensor#$index: $inputShape',
+        );
+      }
+
+      final runtimeHeight =
+          inputShape[1] > 0 ? inputShape[1] : contract.inputHeight;
+      final runtimeWidth =
+          inputShape[2] > 0 ? inputShape[2] : contract.inputWidth;
+      final cacheKey =
+          '$index:$runtimeWidth:$runtimeHeight:${contract.normalization.name}:'
+          '${contract.inputDtype}:${contract.colorFormat}:${contract.tensorLayout}';
+
+      final preprocessed = await inputCache.putIfAbsent(
+        cacheKey,
+        () => _preprocessor.preprocessToRgbFloat32(
+          imageBytes,
+          width: runtimeWidth,
+          height: runtimeHeight,
+          normalization: contract.normalization,
+        ),
+      );
+
+      preparedInputs.add(preprocessed);
+      resolvedInputShapes.add(inputShape);
+    }
+
+    if (preparedInputs.length > 1) {
+      debugPrint(
+        '[TfliteAestheticService] ${contract.id} has ${preparedInputs.length} '
+        'input tensors. Reusing the source image for each input tensor.',
       );
     }
 
-    return ModelScoreDetail(
-      id: contract.id,
-      label: contract.displayLabel,
-      dimension: contract.dimension,
-      rawScore: contract.readRawScore(outputValues),
-      normalizedScore: contract.normalizeOutput(outputValues),
-      weight: contract.weight,
-      interpretation: contract.displayInterpretation,
+    final initialOutputTensors = interpreter.getOutputTensors();
+    if (initialOutputTensors.isEmpty) {
+      throw Exception('No output tensors found for ${contract.id}.');
+    }
+
+    final outputBuffers = <int, Object>{};
+    for (var index = 0; index < initialOutputTensors.length; index++) {
+      final outputElementCount = index == 0
+          ? math.max(1, contract.expectedOutputLength)
+          : math.max(1, initialOutputTensors[index].numBytes() ~/ 4);
+      outputBuffers[index] = Uint8List(outputElementCount * 4).buffer;
+    }
+
+    if (preparedInputs.length == 1) {
+      interpreter.run(preparedInputs.first, outputBuffers[0]!);
+    } else {
+      interpreter.runForMultipleInputs(preparedInputs, outputBuffers);
+    }
+
+    final runtimeOutputTensors = interpreter.getOutputTensors();
+    final primaryOutputTensor = runtimeOutputTensors.first;
+    final outputBuffer = outputBuffers[0] as ByteBuffer;
+    final runtimeOutputElementCount = primaryOutputTensor.numBytes() > 0
+        ? primaryOutputTensor.numBytes() ~/ 4
+        : contract.expectedOutputLength;
+    final outputValues = outputBuffer.asFloat32List(
+      0,
+      math.min(
+        outputBuffer.lengthInBytes ~/ 4,
+        math.max(1, runtimeOutputElementCount),
+      ),
     );
+    if (outputValues.isEmpty) {
+      throw Exception('No output values found for ${contract.id}.');
+    }
+
+    final runtimeOutputType = _resolveRuntimeOutputType(
+      contract.outputType,
+      outputValues.length,
+    );
+    final runtimeContract = contract.withRuntimeOverrides(
+      inputWidth:
+          resolvedInputShapes.first.length >= 3 && resolvedInputShapes.first[2] > 0
+          ? resolvedInputShapes.first[2]
+          : contract.inputWidth,
+      inputHeight:
+          resolvedInputShapes.first.length >= 2 && resolvedInputShapes.first[1] > 0
+          ? resolvedInputShapes.first[1]
+          : contract.inputHeight,
+      expectedOutputLength: outputValues.length,
+      outputType: runtimeOutputType,
+    );
+
+    final rawScore = runtimeContract.readRawScore(outputValues);
+    final normalizedScore = runtimeContract.normalizeOutput(outputValues);
+    final rawPreview = outputValues
+        .take(10)
+        .map((value) => value.toStringAsFixed(4))
+        .join(', ');
+
+    debugPrint(
+      '[TfliteAestheticService] ${contract.id} '
+      'inputShapes=${resolvedInputShapes.map((shape) => shape.toString()).join(', ')} '
+      'outputShapes=${runtimeOutputTensors.map((tensor) => tensor.shape.toString()).join(', ')}',
+    );
+    debugPrint(
+      '[TfliteAestheticService] ${contract.id} rawOutput=[$rawPreview] '
+      'rawScore=${rawScore.toStringAsFixed(4)} '
+      'normalized=${normalizedScore.toStringAsFixed(4)}',
+    );
+
+    return ModelScoreDetail(
+      id: runtimeContract.id,
+      label: runtimeContract.displayLabel,
+      dimension: runtimeContract.dimension,
+      rawScore: rawScore,
+      normalizedScore: normalizedScore,
+      weight: runtimeContract.weight,
+      interpretation: runtimeContract.displayInterpretation,
+    );
+  }
+
+  Future<ModelScoreDetail> _runSignatureContract(
+    Uint8List imageBytes,
+    ResolvedAestheticModelConfig contract, {
+    required Interpreter interpreter,
+    required Map<String, Future<Uint8List>> inputCache,
+  }) async {
+    final signatureKeys = interpreter.signatureKeys;
+    if (signatureKeys.isEmpty) {
+      throw Exception('No signature runners found for ${contract.id}.');
+    }
+
+    final signatureKey = contract.signatureKey ?? signatureKeys.first;
+    if (!signatureKeys.contains(signatureKey)) {
+      throw Exception(
+        'Signature "$signatureKey" was not found for ${contract.id}. '
+        'Available signatures: ${signatureKeys.join(', ')}',
+      );
+    }
+
+    final runner = interpreter.getSignatureRunner(signatureKey);
+    try {
+      final inputNames = runner.inputNames;
+      final outputNames = runner.outputNames;
+      if (inputNames.isEmpty || outputNames.isEmpty) {
+        throw Exception(
+          'Signature "$signatureKey" is missing inputs or outputs '
+          'for ${contract.id}.',
+        );
+      }
+
+      runner.allocateTensors();
+      final preparedInputs = await _prepareSignatureInputs(
+        imageBytes,
+        contract,
+        runner: runner,
+        inputNames: inputNames,
+        inputCache: inputCache,
+      );
+
+      debugPrint(
+        '[TfliteAestheticService] ${contract.id} '
+        'signature=$signatureKey '
+        'inputNames=${inputNames.join(', ')} '
+        'outputNames=${outputNames.join(', ')}',
+      );
+      debugPrint(
+        '[TfliteAestheticService] ${contract.id} '
+        'signatureInputs=${preparedInputs.debugDescriptions.join(', ')}',
+      );
+
+      for (final entry in preparedInputs.buffers.entries) {
+        runner.getInputTensor(entry.key).setTo(entry.value);
+      }
+
+      runner.invoke();
+
+      final outputName = outputNames.first;
+      final outputTensor = runner.getOutputTensor(outputName);
+      final outputElementCount = math.max(
+        1,
+        outputTensor.numBytes() > 0
+            ? outputTensor.numBytes() ~/ 4
+            : contract.expectedOutputLength,
+      );
+      final outputBuffer = Uint8List(outputElementCount * 4).buffer;
+      outputTensor.copyTo(outputBuffer);
+
+      final outputValues = outputBuffer.asFloat32List(0, outputElementCount);
+      final runtimeOutputType = _resolveRuntimeOutputType(
+        contract.outputType,
+        outputValues.length,
+      );
+      final runtimeContract = contract.withRuntimeOverrides(
+        inputWidth: preparedInputs.inputWidth,
+        inputHeight: preparedInputs.inputHeight,
+        expectedOutputLength: outputValues.length,
+        outputType: runtimeOutputType,
+      );
+
+      final rawScore = runtimeContract.readRawScore(outputValues);
+      final normalizedScore = runtimeContract.normalizeOutput(outputValues);
+      final rawPreview = outputValues
+          .take(10)
+          .map((value) => value.toStringAsFixed(4))
+          .join(', ');
+
+      debugPrint(
+        '[TfliteAestheticService] ${contract.id} '
+        'outputBytes=${outputTensor.numBytes()} '
+        'rawOutput=[$rawPreview] '
+        'rawScore=${rawScore.toStringAsFixed(4)} '
+        'normalized=${normalizedScore.toStringAsFixed(4)}',
+      );
+
+      return ModelScoreDetail(
+        id: runtimeContract.id,
+        label: runtimeContract.displayLabel,
+        dimension: runtimeContract.dimension,
+        rawScore: rawScore,
+        normalizedScore: normalizedScore,
+        weight: runtimeContract.weight,
+        interpretation:
+            '${runtimeContract.displayInterpretation} '
+            '(signature=$signatureKey)',
+      );
+    } finally {
+      runner.close();
+    }
+  }
+
+  Future<_SignatureInputBundle> _prepareSignatureInputs(
+    Uint8List imageBytes,
+    ResolvedAestheticModelConfig contract, {
+    required SignatureRunner runner,
+    required List<String> inputNames,
+    required Map<String, Future<Uint8List>> inputCache,
+  }) async {
+    switch (contract.id) {
+      case 'rgnet_aadb_gpu':
+        return _prepareRgnetInputs(
+          imageBytes,
+          contract,
+          runner: runner,
+          inputNames: inputNames,
+          inputCache: inputCache,
+        );
+      case 'alamp_aadb_gpu':
+        return _prepareAlampInputs(
+          imageBytes,
+          contract,
+          runner: runner,
+          inputNames: inputNames,
+          inputCache: inputCache,
+        );
+    }
+
+    throw Exception(
+      'Signature execution is not configured for ${contract.id}.',
+    );
+  }
+
+  Future<_SignatureInputBundle> _prepareRgnetInputs(
+    Uint8List imageBytes,
+    ResolvedAestheticModelConfig contract, {
+    required SignatureRunner runner,
+    required List<String> inputNames,
+    required Map<String, Future<Uint8List>> inputCache,
+  }) async {
+    if (inputNames.length != 1) {
+      throw Exception(
+        'RGNet expected exactly 1 signature input, found ${inputNames.length}: '
+        '${inputNames.join(', ')}',
+      );
+    }
+
+    final inputName = inputNames.first;
+    final inferredSide = _deriveSquareRgbInputSize(
+      runner.getInputTensor(inputName).numBytes(),
+    );
+    final inputSide = inferredSide ?? contract.inputWidth;
+    final cacheKey =
+        'signature:$inputName:$inputSide:$inputSide:${contract.normalization.name}';
+    final buffer = await inputCache.putIfAbsent(
+      cacheKey,
+      () => _preprocessor.preprocessToRgbFloat32(
+        imageBytes,
+        width: inputSide,
+        height: inputSide,
+        normalization: contract.normalization,
+      ),
+    );
+
+    return _SignatureInputBundle(
+      buffers: {inputName: buffer},
+      debugDescriptions: ['$inputName=[1, $inputSide, $inputSide, 3]'],
+      inputWidth: inputSide,
+      inputHeight: inputSide,
+    );
+  }
+
+  Future<_SignatureInputBundle> _prepareAlampInputs(
+    Uint8List imageBytes,
+    ResolvedAestheticModelConfig contract, {
+    required SignatureRunner runner,
+    required List<String> inputNames,
+    required Map<String, Future<Uint8List>> inputCache,
+  }) async {
+    final globalInputName = _findInputName(
+      inputNames,
+      contains: 'global',
+      fallback: inputNames.first,
+    );
+    final patchInputName = _findInputName(
+      inputNames,
+      contains: 'patch',
+      fallback: inputNames.length > 1 ? inputNames[1] : inputNames.first,
+    );
+
+    if (globalInputName == patchInputName) {
+      throw Exception(
+        'A-Lamp requires separate global_view and patches inputs. '
+        'Found: ${inputNames.join(', ')}',
+      );
+    }
+
+    final globalSide = _deriveSquareRgbInputSize(
+          runner.getInputTensor(globalInputName).numBytes(),
+        ) ??
+        contract.inputWidth;
+    final patchSpec = _inferPatchInputSpec(
+      runner.getInputTensor(patchInputName).numBytes(),
+      preferredPatchSide: globalSide,
+    );
+
+    final globalCacheKey =
+        'signature:$globalInputName:$globalSide:$globalSide:${contract.normalization.name}';
+    final patchesCacheKey =
+        'signature:$patchInputName:${patchSpec.patchWidth}:${patchSpec.patchHeight}:'
+        '${patchSpec.patchCount}:${contract.normalization.name}';
+
+    final globalBuffer = await inputCache.putIfAbsent(
+      globalCacheKey,
+      () => _preprocessor.preprocessToRgbFloat32(
+        imageBytes,
+        width: globalSide,
+        height: globalSide,
+        normalization: contract.normalization,
+      ),
+    );
+    final patchBuffer = await inputCache.putIfAbsent(
+      patchesCacheKey,
+      () => _preprocessor.preprocessPatchBatchToRgbFloat32(
+        imageBytes,
+        patchWidth: patchSpec.patchWidth,
+        patchHeight: patchSpec.patchHeight,
+        patchCount: patchSpec.patchCount,
+        normalization: contract.normalization,
+      ),
+    );
+
+    return _SignatureInputBundle(
+      buffers: {
+        globalInputName: globalBuffer,
+        patchInputName: patchBuffer,
+      },
+      debugDescriptions: [
+        '$globalInputName=[1, $globalSide, $globalSide, 3]',
+        '$patchInputName='
+            '[1, ${patchSpec.patchCount}, ${patchSpec.patchHeight}, ${patchSpec.patchWidth}, 3]',
+      ],
+      inputWidth: globalSide,
+      inputHeight: globalSide,
+    );
+  }
+
+  String _findInputName(
+    List<String> inputNames, {
+    required String contains,
+    required String fallback,
+  }) {
+    final lowered = contains.toLowerCase();
+    for (final inputName in inputNames) {
+      if (inputName.toLowerCase().contains(lowered)) {
+        return inputName;
+      }
+    }
+    return fallback;
+  }
+
+  int? _deriveSquareRgbInputSize(int byteCount) {
+    if (byteCount <= 0 || byteCount % (3 * 4) != 0) {
+      return null;
+    }
+
+    final pixelCount = byteCount ~/ (3 * 4);
+    final side = math.sqrt(pixelCount).round();
+    if (side * side == pixelCount) {
+      return side;
+    }
+    return null;
+  }
+
+  _PatchInputSpec _inferPatchInputSpec(
+    int byteCount, {
+    required int preferredPatchSide,
+  }) {
+    final candidateSides = <int>{
+      preferredPatchSide,
+      256,
+      224,
+      192,
+      160,
+      128,
+      112,
+      96,
+      84,
+      80,
+      75,
+      64,
+    };
+
+    for (final side in candidateSides) {
+      if (side <= 0) {
+        continue;
+      }
+
+      final bytesPerPatch = side * side * 3 * 4;
+      if (bytesPerPatch <= 0 || byteCount % bytesPerPatch != 0) {
+        continue;
+      }
+
+      final patchCount = byteCount ~/ bytesPerPatch;
+      if (patchCount >= 1 && patchCount <= 32) {
+        return _PatchInputSpec(
+          patchWidth: side,
+          patchHeight: side,
+          patchCount: patchCount,
+        );
+      }
+    }
+
+    throw Exception(
+      'Unable to infer A-Lamp patch input layout from $byteCount bytes.',
+    );
+  }
+
+  AestheticModelOutputType _resolveRuntimeOutputType(
+    AestheticModelOutputType fallback,
+    int outputLength,
+  ) {
+    if (outputLength == 10) {
+      return AestheticModelOutputType.distribution;
+    }
+    return fallback;
   }
 
   double _blend(List<ModelScoreDetail> details) {
@@ -187,4 +670,30 @@ class TfliteAestheticService {
 
     return (weightedSum / totalWeight).clamp(0.0, 1.0).toDouble();
   }
+}
+
+class _SignatureInputBundle {
+  final Map<String, Uint8List> buffers;
+  final List<String> debugDescriptions;
+  final int inputWidth;
+  final int inputHeight;
+
+  const _SignatureInputBundle({
+    required this.buffers,
+    required this.debugDescriptions,
+    required this.inputWidth,
+    required this.inputHeight,
+  });
+}
+
+class _PatchInputSpec {
+  final int patchWidth;
+  final int patchHeight;
+  final int patchCount;
+
+  const _PatchInputSpec({
+    required this.patchWidth,
+    required this.patchHeight,
+    required this.patchCount,
+  });
 }
