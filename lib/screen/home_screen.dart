@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../models/tour_place.dart';
+import '../screen/settings_screen.dart';
 import '../services/tour_api_service.dart';
 import '../widget/home_bottom_nav.dart';
 import 'camera_screen.dart';
 import 'map_spot_screen.dart';
-import 'settings_screen.dart';
 
 // ── PlaceTag 배지 정의 ──────────────────────────────────────────
 const _tagInfo = <PlaceTag, ({Color color, IconData icon, String label})>{
@@ -102,7 +102,13 @@ class _HomeScreenState extends State<HomeScreen> {
         bottom: false,
         child: Column(
           children: [
-            const _Header(),
+            _Header(
+              onSettingsTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                );
+              },
+            ),
             Expanded(
               child: FutureBuilder<_HomeData>(
                 future: _dataFuture,
@@ -147,7 +153,9 @@ class _HomeData {
 }
 
 class _Header extends StatelessWidget {
-  const _Header();
+  final VoidCallback onSettingsTap;
+
+  const _Header({required this.onSettingsTap});
 
   @override
   Widget build(BuildContext context) {
@@ -162,19 +170,13 @@ class _Header extends StatelessWidget {
             fit: BoxFit.contain,
           ),
           const Spacer(),
-          IconButton(
-            icon: const Icon(Icons.settings_outlined),
-            color: Colors.grey.shade400,
-            iconSize: 22,
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const SettingsScreen(),
-                ),
-              );
-            },
+          GestureDetector(
+            onTap: onSettingsTap,
+            child: Icon(
+              Icons.settings_outlined,
+              color: Colors.grey.shade400,
+              size: 22,
+            ),
           ),
         ],
       ),
