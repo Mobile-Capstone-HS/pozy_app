@@ -31,7 +31,7 @@ class HomeBottomNav extends StatelessWidget {
           bottomPadding,
         ),
         decoration: const BoxDecoration(
-          color: AppColors.surface,
+          color: Color(0xFFF6F7FB),
           border: Border(top: BorderSide(color: AppColors.border)),
         ),
         child: Row(
