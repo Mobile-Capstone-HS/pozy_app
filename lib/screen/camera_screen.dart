@@ -18,6 +18,7 @@ import 'package:pose_camera_app/screen/camera/widgets/bottom_camera_controls.dar
 import 'package:pose_camera_app/screen/camera/widgets/composition_grid_painter.dart';
 import 'package:pose_camera_app/screen/camera/widgets/composition_rule_selector.dart';
 import 'package:pose_camera_app/screen/camera/widgets/portrait_badge.dart';
+import 'package:pose_camera_app/screen/camera/widgets/portrait_intent_selector.dart';
 import 'package:pose_camera_app/screen/camera/widgets/roi_painter.dart';
 import 'package:pose_camera_app/screen/camera/widgets/top_camera_bar.dart';
 import 'package:pose_camera_app/widget/coaching_interface.dart';
@@ -82,6 +83,9 @@ class _CameraScreenState extends State<CameraScreen> {
   String _guidance = '\uAD6C\uB3C4\uB97C \uC7A1\uB294 \uC911...';
   String? _subGuidance;
   CoachingLevel _coachingLevel = CoachingLevel.caution;
+  double? _coachingScore;
+  DirectionHint _directionHint = DirectionHint.none;
+  LightDirection _lightDirection = LightDirection.unknown;
 
   late ShootingMode _shootingMode;
   Offset? _focusPoint;
@@ -93,6 +97,7 @@ class _CameraScreenState extends State<CameraScreen> {
   bool _isSaving = false;
   bool _showFlash = false;
   bool _torchOn = false;
+  bool _showPortraitDebugOverlay = true;
 
   bool _isDrawingRoi = false;
   Offset? _roiDragStart;
@@ -115,7 +120,7 @@ class _CameraScreenState extends State<CameraScreen> {
   double _tiltX = 0.0;
   double _gravX = 0.0;
   double _gravY = 9.8;
-  int _lastSentOrientationDeg = 0;
+  int _lastSentOrientationDeg = -1;
 
   portrait.CoachingResult _portraitCoaching = const portrait.CoachingResult(
     message:
@@ -154,6 +159,7 @@ class _CameraScreenState extends State<CameraScreen> {
   /// 사용자가 상단 selector에서 선택한 구도 규칙. 인물/객체 모드에서만 사용.
   CompositionRuleType _selectedRule = CompositionRuleType.none;
   CompositionRule get _activeRule => CompositionRuleRegistry.of(_selectedRule);
+  portrait.PortraitIntent _portraitIntent = portrait.PortraitIntent.single;
 
   @override
   void initState() {
@@ -280,6 +286,9 @@ class _CameraScreenState extends State<CameraScreen> {
         _guidance = coaching.guidance;
         _subGuidance = coaching.subGuidance;
         _coachingLevel = coaching.level;
+        _coachingScore = coaching.score;
+        _directionHint = coaching.directionHint;
+        _lightDirection = coaching.lightDirection;
       });
     }
   }
@@ -310,8 +319,17 @@ class _CameraScreenState extends State<CameraScreen> {
     return union > 0 ? inter / union : 0.0;
   }
 
-  static Rect _normalizedRect(YOLOResult det) {
+  Rect _normalizedRect(YOLOResult det) {
     final b = det.normalizedBox;
+    if (_isFrontCamera) {
+      // 전면 카메라: normalizedBox가 미러링 안 된 상태이므로 X 좌표 반전
+      return Rect.fromLTRB(
+        (1.0 - b.right).clamp(0.0, 1.0),
+        b.top.clamp(0.0, 1.0),
+        (1.0 - b.left).clamp(0.0, 1.0),
+        b.bottom.clamp(0.0, 1.0),
+      );
+    }
     return Rect.fromLTRB(
       b.left.clamp(0.0, 1.0),
       b.top.clamp(0.0, 1.0),
@@ -541,6 +559,9 @@ class _CameraScreenState extends State<CameraScreen> {
       guidance: '[Subject] ${coaching.guidance}',
       subGuidance: coaching.subGuidance,
       level: coaching.level,
+      score: coaching.score,
+      directionHint: coaching.directionHint,
+      lightDirection: coaching.lightDirection,
     );
   }
 
@@ -552,22 +573,39 @@ class _CameraScreenState extends State<CameraScreen> {
       _subGuidance =
           '\uD53C\uC0AC\uCCB4\uB97C \uD0ED\uD558\uAC70\uB098 \uADF8 \uC704\uB97C \uB4DC\uB798\uADF8\uD574\uC11C \uB2E4\uC2DC \uACE0\uC815\uD574\uBCF4\uC138\uC694';
       _coachingLevel = CoachingLevel.caution;
+      _coachingScore = null;
+      _directionHint = DirectionHint.none;
+      _lightDirection = LightDirection.unknown;
       _isDrawingRoi = false;
       _roiDragStart = null;
       _roiDragCurrent = null;
     });
   }
 
+  /// 카메라 ROI를 네이티브에 전달할 때 전면 카메라면 X 좌표를 다시 원래로 되돌림
+  void _setNativeLockedRoi(Rect roi) {
+    if (_isFrontCamera) {
+      _cameraController.setLockedRoi(
+        left: 1.0 - roi.right,
+        top: roi.top,
+        right: 1.0 - roi.left,
+        bottom: roi.bottom,
+      );
+    } else {
+      _cameraController.setLockedRoi(
+        left: roi.left,
+        top: roi.top,
+        right: roi.right,
+        bottom: roi.bottom,
+      );
+    }
+  }
+
   void _lockToDetection(YOLOResult detection) {
     final cameraRoi = _normalizedRect(detection);
     final screenRoi = _cameraToScreen(cameraRoi);
 
-    _cameraController.setLockedRoi(
-      left: cameraRoi.left,
-      top: cameraRoi.top,
-      right: cameraRoi.right,
-      bottom: cameraRoi.bottom,
-    );
+    _setNativeLockedRoi(cameraRoi);
     _sceneCoach.reset();
 
     setState(() {
@@ -585,6 +623,9 @@ class _CameraScreenState extends State<CameraScreen> {
       _guidance = '\uAD6C\uB3C4\uB97C \uC7A1\uB294 \uC911...';
       _subGuidance = null;
       _coachingLevel = CoachingLevel.caution;
+      _coachingScore = null;
+      _directionHint = DirectionHint.none;
+      _lightDirection = LightDirection.unknown;
     });
   }
 
@@ -640,7 +681,7 @@ class _CameraScreenState extends State<CameraScreen> {
     if (++_yoloDebugObjFrame % 30 == 1) {
       debugPrint(
         '[YOLO_DEBUG][obj] cb#$_yoloDebugObjFrame results=${results.length} '
-        'mode=${_shootingMode.name} mounted=$mounted',
+        'mode=${_shootingMode.name} mounted=$mounted front=$_isFrontCamera',
       );
     }
     if (!mounted || !_isObjectMode) return;
@@ -670,12 +711,7 @@ class _CameraScreenState extends State<CameraScreen> {
           bestMatch.appearanceSignature,
         );
         _lockedTrackingDetection = bestMatch;
-        _cameraController.setLockedRoi(
-          left: rawBox.left,
-          top: rawBox.top,
-          right: rawBox.right,
-          bottom: rawBox.bottom,
-        );
+        _setNativeLockedRoi(rawBox);
       } else {
         _lockedLostFrames++;
         final holdTrack =
@@ -733,6 +769,9 @@ class _CameraScreenState extends State<CameraScreen> {
           _guidance = coaching!.guidance;
           _subGuidance = coaching.subGuidance;
           _coachingLevel = coaching.level;
+          _coachingScore = coaching.score;
+          _directionHint = coaching.directionHint;
+          _lightDirection = coaching.lightDirection;
         }
         if (roiMoved) _lockedRoi = updatedScreenRoi;
         if (subjectLostBox) _lockedRoi = null;
@@ -766,6 +805,12 @@ class _CameraScreenState extends State<CameraScreen> {
 
     _portraitHandler.deviceOrientationDeg = _deviceOrientationDeg;
     _portraitHandler.isFrontCamera = _isFrontCamera;
+    _portraitHandler.setIntent(_portraitIntent);
+    final currentOrientation = _deviceOrientationDeg;
+    if (currentOrientation != _lastSentOrientationDeg) {
+      _lastSentOrientationDeg = currentOrientation;
+      _cameraController.setDeviceOrientation(currentOrientation);
+    }
     // 그룹샷 눈 감김 검사를 위해 YOLO 카메라의 captureFrame 콜백을 주입
     _portraitHandler.captureFrameCallback ??= _cameraController.captureFrame;
     final analysis = _portraitHandler.processResults(results);
@@ -814,11 +859,15 @@ class _CameraScreenState extends State<CameraScreen> {
       _guidance = '\uAD6C\uB3C4\uB97C \uC7A1\uB294 \uC911...';
       _subGuidance = null;
       _coachingLevel = CoachingLevel.caution;
+      _coachingScore = null;
+      _directionHint = DirectionHint.none;
+      _lightDirection = LightDirection.unknown;
       _focusPoint = null;
       _showFocusIndicator = false;
       _tiltX = 0.0;
       _gravX = 0.0;
       _gravY = 9.8;
+      _lastSentOrientationDeg = -1;
       _landscapeDecision = null;
       _landscapeOverlayAdvice = const LandscapeOverlayAdvice.none();
       _landscapeSegmentation = null;
@@ -841,9 +890,15 @@ class _CameraScreenState extends State<CameraScreen> {
 
     setState(() {
       _shootingMode = mode;
+      if (mode == ShootingMode.person) {
+        _portraitIntent = portrait.PortraitIntent.single;
+      }
       _guidance = '\uAD6C\uB3C4\uB97C \uC7A1\uB294 \uC911...';
       _subGuidance = null;
       _coachingLevel = CoachingLevel.caution;
+      _coachingScore = null;
+      _directionHint = DirectionHint.none;
+      _lightDirection = LightDirection.unknown;
       _focusPoint = null;
       _showFocusIndicator = false;
       _isDrawingRoi = false;
@@ -857,6 +912,7 @@ class _CameraScreenState extends State<CameraScreen> {
       _lockedRecentAppearanceSignature = null;
       _lockedTrackingDetection = null;
       _lockedLostFrames = 0;
+      _lastSentOrientationDeg = -1;
       _landscapeDecision = null;
       _landscapeOverlayAdvice = const LandscapeOverlayAdvice.none();
       _landscapeSegmentation = null;
@@ -917,6 +973,9 @@ class _CameraScreenState extends State<CameraScreen> {
       _guidance = '\uAD6C\uB3C4\uB97C \uC7A1\uB294 \uC911...';
       _subGuidance = null;
       _coachingLevel = CoachingLevel.caution;
+      _coachingScore = null;
+      _directionHint = DirectionHint.none;
+      _lightDirection = LightDirection.unknown;
     });
   }
 
@@ -1251,6 +1310,13 @@ class _CameraScreenState extends State<CameraScreen> {
       return '';
     }
 
+    if (_portraitIntent == portrait.PortraitIntent.environmental) {
+      return '환경 인물';
+    }
+    if (_portraitIntent == portrait.PortraitIntent.group) {
+      return '다중 인물';
+    }
+
     switch (_portraitOverlayData.shotType) {
       case portrait.ShotType.extremeCloseUp:
         return '\uC775\uC2A4\uD2B8\uB9BC \uD074\uB85C\uC988\uC5C5';
@@ -1273,6 +1339,54 @@ class _CameraScreenState extends State<CameraScreen> {
       case portrait.ShotType.unknown:
         return '\uC778\uBB3C \uCF54\uCE6D \uD65C\uC131';
     }
+  }
+
+  Widget _buildPortraitGroupCounter() {
+    final count = _portraitOverlayData.groupPersonCount;
+    final hidden = _portraitOverlayData.groupFaceHiddenCount;
+    final closed = _portraitOverlayData.groupClosedEyeCount;
+    final hasIssue = hidden > 0 || closed > 0;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.58),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: (hasIssue ? const Color(0xFFFBBF24) : Colors.white)
+              .withValues(alpha: 0.45),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.groups_rounded, color: Colors.white, size: 16),
+          const SizedBox(width: 6),
+          Text(
+            '${count.clamp(0, 99)}명',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          if (hidden > 0) ...[
+            const SizedBox(width: 8),
+            Text(
+              '얼굴 $hidden',
+              style: const TextStyle(color: Color(0xFFFBBF24), fontSize: 12),
+            ),
+          ],
+          if (closed > 0) ...[
+            const SizedBox(width: 8),
+            Text(
+              '눈감음 $closed',
+              style: const TextStyle(color: Color(0xFFF87171), fontSize: 12),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
   @override
@@ -1329,6 +1443,7 @@ class _CameraScreenState extends State<CameraScreen> {
                 painter: _isPortraitMode
                     ? PortraitOverlayPainter(
                         data: _portraitOverlayData.copyWithRule(_activeRule),
+                        showDebugGuides: _showPortraitDebugOverlay,
                       )
                     : _isLandscapeMode
                     ? LandscapeCompositionOverlayPainter(
@@ -1409,7 +1524,7 @@ class _CameraScreenState extends State<CameraScreen> {
                 ),
               ),
             Positioned(
-              top: 108,
+              top: _isPortraitMode ? 150 : 108,
               right: 12,
               child: IgnorePointer(
                 child: CoachingSpeechBubble(
@@ -1422,9 +1537,23 @@ class _CameraScreenState extends State<CameraScreen> {
                   level: _isPortraitMode
                       ? _portraitCoachingLevel()
                       : _coachingLevel,
+                  score: _isPortraitMode ? null : _coachingScore,
+                  directionHint: _isPortraitMode
+                      ? DirectionHint.none
+                      : _directionHint,
+                  lightDirection: _isPortraitMode
+                      ? LightDirection.unknown
+                      : _lightDirection,
                 ),
               ),
             ),
+            if (_isPortraitMode &&
+                _portraitIntent == portrait.PortraitIntent.group)
+              Positioned(
+                top: 150,
+                left: 16,
+                child: IgnorePointer(child: _buildPortraitGroupCounter()),
+              ),
             Positioned(
               top: 8,
               left: 16,
@@ -1440,6 +1569,13 @@ class _CameraScreenState extends State<CameraScreen> {
                 isDrawingRoi: _isDrawingRoi,
                 isRoiLocked: _lockedRoi != null,
                 onToggleRoiLock: _isObjectMode ? _toggleRoiLock : null,
+                portraitDebugOverlayOn: _showPortraitDebugOverlay,
+                onTogglePortraitDebugOverlay: _isPortraitMode
+                    ? () => setState(
+                        () => _showPortraitDebugOverlay =
+                            !_showPortraitDebugOverlay,
+                      )
+                    : null,
                 badge: _isPortraitMode
                     ? PortraitBadge(
                         isFrontCamera: _isFrontCamera,
@@ -1473,9 +1609,24 @@ class _CameraScreenState extends State<CameraScreen> {
                   ),
                 ),
               ),
-            if (!_isLandscapeMode)
+            if (_isPortraitMode)
               Positioned(
                 top: 60,
+                left: 0,
+                right: 0,
+                child: PortraitIntentSelector(
+                  selected: _portraitIntent,
+                  onChanged: (intent) {
+                    if (intent == _portraitIntent) return;
+                    setState(() => _portraitIntent = intent);
+                    _portraitHandler.setIntent(intent);
+                    _resetPortraitState();
+                  },
+                ),
+              ),
+            if (!_isLandscapeMode)
+              Positioned(
+                top: _isPortraitMode ? 104 : 60,
                 left: 0,
                 right: 0,
                 child: CompositionRuleSelector(

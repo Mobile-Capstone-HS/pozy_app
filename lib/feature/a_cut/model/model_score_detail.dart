@@ -41,6 +41,26 @@ class ModelScoreDetail {
         'interpretation': interpretation,
       };
 
+  ModelScoreDetail copyWith({
+    String? id,
+    String? label,
+    ModelScoreDimension? dimension,
+    double? rawScore,
+    double? normalizedScore,
+    double? weight,
+    String? interpretation,
+  }) {
+    return ModelScoreDetail(
+      id: id ?? this.id,
+      label: label ?? this.label,
+      dimension: dimension ?? this.dimension,
+      rawScore: rawScore ?? this.rawScore,
+      normalizedScore: normalizedScore ?? this.normalizedScore,
+      weight: weight ?? this.weight,
+      interpretation: interpretation ?? this.interpretation,
+    );
+  }
+
   int get normalizedPct => (normalizedScore * 100).round();
 
   double get weightedContribution => normalizedScore * weight;

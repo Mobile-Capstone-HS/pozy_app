@@ -51,26 +51,3 @@ extension SpotCategoryExt on SpotCategory {
   }
 }
 
-class PhotoSpot {
-  final String id;
-  final String name;
-  final String address;
-  final double latitude;
-  final double longitude;
-  final SpotCategory category;
-  final String description;
-  final List<String> tags;
-  final String bestSeason;
-
-  const PhotoSpot({
-    required this.id,
-    required this.name,
-    required this.address,
-    required this.latitude,
-    required this.longitude,
-    required this.category,
-    required this.description,
-    this.tags = const [],
-    this.bestSeason = '',
-  });
-}

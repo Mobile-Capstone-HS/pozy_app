@@ -81,12 +81,15 @@ class TfliteModelInputMetadata {
   });
 
   factory TfliteModelInputMetadata.fromJson(Map<String, dynamic> json) {
+    final decode = _readJsonMap(json['decode']);
     return TfliteModelInputMetadata(
       imageSize: _readIntList(json['image_size']),
       dtype: _readString(json['dtype']),
-      colorFormat: _readString(json['color_format']),
-      tensorLayout: _readString(json['tensor_layout']),
-      normalization: _readString(json['normalization']),
+      colorFormat:
+          _readString(json['color_format']) ?? _readString(decode['color_format']),
+      tensorLayout:
+          _readString(json['tensor_layout']) ?? _readString(json['layout']),
+      normalization: _readNormalizationHint(json['normalization']),
     );
   }
 
@@ -215,6 +218,30 @@ String? _readString(Object? value) {
   }
   final trimmed = value.trim();
   return trimmed.isEmpty ? null : trimmed;
+}
+
+String? _readNormalizationHint(Object? value) {
+  final direct = _readString(value);
+  if (direct != null) {
+    return direct;
+  }
+
+  if (value is! Map) {
+    return null;
+  }
+
+  final json = _readJsonMap(value);
+  final parts = <String>[
+    if (_readString(json['type']) != null) _readString(json['type'])!,
+    if (_readString(json['keras_preprocess_input']) != null)
+      _readString(json['keras_preprocess_input'])!,
+    if (json['range'] is List) 'range=${json['range']}',
+  ];
+
+  if (parts.isEmpty) {
+    return null;
+  }
+  return parts.join(' ');
 }
 
 Map<String, dynamic> _readJsonMap(Object? value) {

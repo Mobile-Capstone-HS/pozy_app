@@ -17,6 +17,7 @@ class SinglePhotoEvalScreen extends StatefulWidget {
   final String? fileName;
   final String? assetId;
   final PhotoEvaluationService? evaluationService;
+  final bool saveHistory;
 
   const SinglePhotoEvalScreen({
     super.key,
@@ -24,6 +25,7 @@ class SinglePhotoEvalScreen extends StatefulWidget {
     this.fileName,
     this.assetId,
     this.evaluationService,
+    this.saveHistory = true,
   });
 
   @override
@@ -61,7 +63,9 @@ class _SinglePhotoEvalScreenState extends State<SinglePhotoEvalScreen> {
         _result = result;
         _loading = false;
       });
-      HistoryService.instance.saveSingle(result: result, assetId: widget.assetId);
+      if (widget.saveHistory) {
+        HistoryService.instance.saveSingle(result: result, assetId: widget.assetId);
+      }
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -73,6 +77,8 @@ class _SinglePhotoEvalScreenState extends State<SinglePhotoEvalScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final displayedResult = _result;
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       body: SafeArea(
@@ -143,7 +149,7 @@ class _SinglePhotoEvalScreenState extends State<SinglePhotoEvalScreen> {
                       ? _ErrorView(message: _errorMessage!, onRetry: _evaluate)
                       : _ResultView(
                           imageBytes: widget.imageBytes,
-                          result: _result!,
+                          result: displayedResult!,
                         ),
             ),
           ],
@@ -253,7 +259,10 @@ class _ResultView extends StatelessWidget {
   final Uint8List imageBytes;
   final PhotoEvaluationResult result;
 
-  const _ResultView({required this.imageBytes, required this.result});
+  const _ResultView({
+    required this.imageBytes,
+    required this.result,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -309,6 +318,10 @@ class _ResultView extends StatelessWidget {
             const SizedBox(height: 16),
             _AdvancedDetailSection(details: result.scoreDetails.toList()),
           ],
+          const SizedBox(height: 16),
+          _AestheticEnsembleDebugSection(
+            result: result,
+          ),
           if (result.modelVersion != null) ...[
             const SizedBox(height: 18),
             Text(
@@ -321,6 +334,300 @@ class _ResultView extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _AestheticEnsembleDebugSection extends StatelessWidget {
+  final PhotoEvaluationResult result;
+
+  const _AestheticEnsembleDebugSection({
+    required this.result,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final weights = result.effectiveAestheticWeights;
+    final finalAestheticScore = result.finalAestheticScore ?? result.aestheticScore;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: AppShadows.card,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '미적 앙상블 디버그',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: AppColors.primaryText,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'NIMA, RGNet, A-Lamp를 각각 실행한 뒤 정규화된 가중합으로 최종 미적 점수를 계산해요.',
+            style: TextStyle(
+              fontSize: 12,
+              height: 1.45,
+              fontWeight: FontWeight.w600,
+              color: AppColors.secondaryText,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _DebugMetaRow(
+            label: '파일',
+            value: result.fileName ?? 'selected_image',
+          ),
+          const SizedBox(height: 6),
+          _DebugMetaRow(
+            label: '가중치',
+            value:
+                'NIMA ${weights.nimaWeight.toStringAsFixed(1)} / '
+                'RGNet ${weights.rgnetWeight.toStringAsFixed(1)} / '
+                'A-Lamp ${weights.alampWeight.toStringAsFixed(1)} '
+                '(코드 고정)',
+          ),
+          if (!result.hasAnyAestheticEnsembleScore) ...[
+            const SizedBox(height: 12),
+            const _DebugBanner(
+              text: '이 결과에는 NIMA/RGNet/A-Lamp 개별 점수가 아직 없습니다.',
+            ),
+          ] else ...[
+            const SizedBox(height: 14),
+            if (!result.hasAestheticEnsembleScores) ...[
+              const _DebugBanner(
+                text: '일부 모델 추론이 실패해서 최종 가중합 점수는 보류되었습니다. 아래에서 개별 성공/실패 상태를 확인할 수 있어요.',
+              ),
+              const SizedBox(height: 12),
+            ],
+            _EnsembleScoreRow(
+              label: 'NIMA',
+              score: result.nimaScore,
+              weight: weights.nimaWeight,
+              accent: const Color(0xFF2563EB),
+            ),
+            const SizedBox(height: 12),
+            _EnsembleScoreRow(
+              label: 'RGNet',
+              score: result.rgnetScore,
+              weight: weights.rgnetWeight,
+              accent: const Color(0xFF0F766E),
+            ),
+            const SizedBox(height: 12),
+            _EnsembleScoreRow(
+              label: 'A-Lamp',
+              score: result.alampScore,
+              weight: weights.alampWeight,
+              accent: const Color(0xFF7C3AED),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: _SummaryMetricCard(
+                    label: '최종 미적 점수',
+                    value: finalAestheticScore == null
+                        ? '-'
+                        : finalAestheticScore.toStringAsFixed(4),
+                    accent: const Color(0xFF111827),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _SummaryMetricCard(
+                    label: '현재 종합 점수',
+                    value: result.finalScore.toStringAsFixed(4),
+                    accent: const Color(0xFF0F766E),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _EnsembleScoreRow extends StatelessWidget {
+  final String label;
+  final double? score;
+  final double weight;
+  final Color accent;
+
+  const _EnsembleScoreRow({
+    required this.label,
+    required this.score,
+    required this.weight,
+    required this.accent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.primaryText,
+                  ),
+                ),
+              ),
+              Text(
+                score == null ? '실패' : score!.toStringAsFixed(4),
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                  color: accent,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            score == null
+                ? 'score unavailable · weight ${weight.toStringAsFixed(3)}'
+                : '${(score! * 100).round()}/100 · weight ${weight.toStringAsFixed(3)}',
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: AppColors.secondaryText,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SummaryMetricCard extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color accent;
+
+  const _SummaryMetricCard({
+    required this.label,
+    required this.value,
+    required this.accent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: AppColors.secondaryText,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+              color: accent,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DebugMetaRow extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _DebugMetaRow({
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 58,
+          child: Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: AppColors.secondaryText,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(
+              fontSize: 12,
+              height: 1.45,
+              fontWeight: FontWeight.w600,
+              color: AppColors.primaryText,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _DebugBanner extends StatelessWidget {
+  final String text;
+
+  const _DebugBanner({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 12,
+          height: 1.45,
+          fontWeight: FontWeight.w600,
+          color: AppColors.secondaryText,
+        ),
       ),
     );
   }
@@ -492,78 +799,149 @@ class _MetricInfo {
   });
 }
 
-class _MetricCard extends StatelessWidget {
+class _MetricCard extends StatefulWidget {
   final _MetricInfo info;
 
   const _MetricCard({required this.info});
 
   @override
+  State<_MetricCard> createState() => _MetricCardState();
+}
+
+class _MetricCardState extends State<_MetricCard>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double> _anim;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
+    _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic);
+    _ctrl.forward();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: AppShadows.card,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            info.label,
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: AppColors.secondaryText,
-            ),
+    return AnimatedBuilder(
+      animation: _anim,
+      builder: (_, _) {
+        final progress = _anim.value;
+        final displayValue = (widget.info.value * progress).round();
+        return Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: AppShadows.card,
           ),
-          const SizedBox(height: 8),
-          RichText(
-            text: TextSpan(
-              children: [
-                TextSpan(
-                  text: '${info.value}',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w900,
-                    color: info.accent,
+          child: Row(
+            children: [
+              SizedBox(
+                width: 68,
+                height: 68,
+                child: CustomPaint(
+                  painter: _ScoreArcPainter(
+                    progress: widget.info.value / 100 * progress,
+                    color: widget.info.accent,
+                    bgColor: AppColors.track,
+                  ),
+                  child: Center(
+                    child: Text(
+                      '$displayValue',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                        color: widget.info.accent,
+                      ),
+                    ),
                   ),
                 ),
-                const TextSpan(
-                  text: ' /100',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.secondaryText,
-                  ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.info.label,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.primaryText,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      widget.info.caption,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        height: 1.4,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.secondaryText,
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-          const SizedBox(height: 10),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: LinearProgressIndicator(
-              minHeight: 7,
-              value: info.value / 100,
-              backgroundColor: AppColors.track,
-              valueColor: AlwaysStoppedAnimation<Color>(info.accent),
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            info.caption,
-            style: const TextStyle(
-              fontSize: 12,
-              height: 1.4,
-              fontWeight: FontWeight.w600,
-              color: AppColors.secondaryText,
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
+}
+
+class _ScoreArcPainter extends CustomPainter {
+  final double progress;
+  final Color color;
+  final Color bgColor;
+
+  const _ScoreArcPainter({
+    required this.progress,
+    required this.color,
+    required this.bgColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const strokeWidth = 7.0;
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = (size.shortestSide - strokeWidth) / 2;
+    final rect = Rect.fromCircle(center: center, radius: radius);
+
+    final bgPaint = Paint()
+      ..color = bgColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round;
+
+    final fgPaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round;
+
+    // 배경 원
+    canvas.drawArc(rect, -1.5708, 6.2832, false, bgPaint);
+    // 점수 호 (12시 방향부터 시계방향)
+    if (progress > 0) {
+      canvas.drawArc(rect, -1.5708, 6.2832 * progress, false, fgPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_ScoreArcPainter old) =>
+      old.progress != progress || old.color != color;
 }
 
 class _InfoBanner extends StatelessWidget {

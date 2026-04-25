@@ -41,8 +41,12 @@ class OverlayData {
   final double eyeConfidence;
   final double shoulderConfidence;
   final Rect? faceGuideRect;
+  final Rect? bodyGuideRect;
   final double? targetEyeLineY;
   final double? targetHeadroomTop;
+  final int groupPersonCount;
+  final int groupFaceHiddenCount;
+  final int groupClosedEyeCount;
 
   /// 사용자가 선택한 구도 규칙. null이면 기본 3분할.
   final CompositionRule? activeRule;
@@ -69,8 +73,12 @@ class OverlayData {
     this.eyeConfidence = 0.0,
     this.shoulderConfidence = 0.0,
     this.faceGuideRect,
+    this.bodyGuideRect,
     this.targetEyeLineY,
     this.targetHeadroomTop,
+    this.groupPersonCount = 0,
+    this.groupFaceHiddenCount = 0,
+    this.groupClosedEyeCount = 0,
     this.activeRule,
   });
 
@@ -98,8 +106,12 @@ class OverlayData {
       eyeConfidence: eyeConfidence,
       shoulderConfidence: shoulderConfidence,
       faceGuideRect: faceGuideRect,
+      bodyGuideRect: bodyGuideRect,
       targetEyeLineY: targetEyeLineY,
       targetHeadroomTop: targetHeadroomTop,
+      groupPersonCount: groupPersonCount,
+      groupFaceHiddenCount: groupFaceHiddenCount,
+      groupClosedEyeCount: groupClosedEyeCount,
       activeRule: rule,
     );
   }
@@ -123,18 +135,96 @@ class _Colors {
 
 class PortraitOverlayPainter extends CustomPainter {
   final OverlayData data;
+  final bool showDebugGuides;
 
-  PortraitOverlayPainter({required this.data});
+  PortraitOverlayPainter({
+    required this.data,
+    this.showDebugGuides = true,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
     _drawCompositionGrid(canvas, size);
+    _drawFramingGuide(canvas, size);
+    if (!showDebugGuides) return;
     _drawFaceGuide(canvas, size);
     _drawClosedFaceWarnings(canvas, size);
     _drawBodyOutline(canvas, size);
     _drawKeypoints(canvas, size);
     _drawShoulderLine(canvas, size);
     _drawEyeGuide(canvas, size);
+  }
+
+  void _drawFramingGuide(Canvas canvas, Size size) {
+    final isFullBody = data.shotType == ShotType.fullBody;
+    final isKneeShot = data.shotType == ShotType.kneeShot;
+    if (!isFullBody && !isKneeShot) return;
+
+    final rect = data.bodyGuideRect;
+    if (rect != null) {
+      final r = Rect.fromLTWH(
+        rect.left * size.width,
+        rect.top * size.height,
+        rect.width * size.width,
+        rect.height * size.height,
+      ).inflate(10);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(r, const Radius.circular(16)),
+        Paint()
+          ..color = const Color(0x6638BDF8)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.2,
+      );
+    }
+
+    if (isFullBody) {
+      final footY = size.height * 0.94;
+      _drawGuideLine(
+        canvas,
+        y: footY,
+        width: size.width,
+        color: _Colors.greenSoft,
+        label: '발끝 여유',
+      );
+    } else if (isKneeShot) {
+      final kneeY = size.height * 0.82;
+      _drawGuideLine(
+        canvas,
+        y: kneeY,
+        width: size.width,
+        color: _Colors.yellowSoft,
+        label: '무릎선 피하기',
+      );
+    }
+
+    final headroomTop = data.targetHeadroomTop;
+    if (headroomTop != null) {
+      _drawGuideLine(
+        canvas,
+        y: headroomTop * size.height,
+        width: size.width,
+        color: const Color(0x55FFFFFF),
+        label: '머리 여유',
+      );
+    }
+  }
+
+  void _drawGuideLine(
+    Canvas canvas, {
+    required double y,
+    required double width,
+    required Color color,
+    required String label,
+  }) {
+    canvas.drawLine(
+      Offset(width * 0.16, y),
+      Offset(width * 0.84, y),
+      Paint()
+        ..color = color
+        ..strokeWidth = 1.5
+        ..strokeCap = StrokeCap.round,
+    );
+    _drawLabel(canvas, label, Offset(width * 0.5, y - 14), color);
   }
 
   // ─── 구도 그리드 (사용자 선택 규칙 기반) ───────────

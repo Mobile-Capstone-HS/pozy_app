@@ -15,6 +15,8 @@ class TourPlace {
   final String contentTypeId;
   final String cat1; // 대분류: A01=자연, A02=인문, A03=레포츠, A05=음식, B02=숙박
   final String cat2; // 중분류: A0201=역사, A0205=건축/조형물 등
+  final String? eventStartDate; // 축제 시작일 (YYYYMMDD), contentTypeId==15일 때만
+  final String? eventEndDate;   // 축제 종료일 (YYYYMMDD)
 
   const TourPlace({
     required this.contentId,
@@ -29,6 +31,8 @@ class TourPlace {
     required this.contentTypeId,
     this.cat1 = '',
     this.cat2 = '',
+    this.eventStartDate,
+    this.eventEndDate,
   });
 
   factory TourPlace.fromJson(Map<String, dynamic> json) {
@@ -47,7 +51,24 @@ class TourPlace {
       contentTypeId: json['contenttypeid']?.toString() ?? '',
       cat1: json['cat1']?.toString() ?? '',
       cat2: json['cat2']?.toString() ?? '',
+      eventStartDate: _nonEmpty(json['eventstartdate']?.toString()),
+      eventEndDate: _nonEmpty(json['eventenddate']?.toString()),
     );
+  }
+
+  /// 축제 기간 표시용 문자열 (예: "2026.04.15 ~ 2026.04.30")
+  String? get festivalDateRange {
+    final s = _formatDate(eventStartDate);
+    final e = _formatDate(eventEndDate);
+    if (s == null && e == null) return null;
+    if (s == null) return e;
+    if (e == null) return s;
+    return '$s ~ $e';
+  }
+
+  static String? _formatDate(String? raw) {
+    if (raw == null || raw.length != 8) return null;
+    return '${raw.substring(0, 4)}.${raw.substring(4, 6)}.${raw.substring(6, 8)}';
   }
 
   /// 스팟 테마 태그
@@ -97,7 +118,7 @@ class TourPlace {
 
   // 건축: 전망대·교량·조형물 계열
   static const _kArchitecture = [
-    '전망대', '타워', '스카이워크', '조형물', '케이블카',
+    '전망대', '타워', '스카이워크', '조형물', '케이블카', '등대',
   ];
 
   // 문화: 전시·공연·체험 계열

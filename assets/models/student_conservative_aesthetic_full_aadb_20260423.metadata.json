@@ -1,0 +1,94 @@
+{
+  "model_name": "student_conservative_aesthetic_full_aadb_20260423",
+  "source_checkpoint_dir": "/home/omen_pc1/photo_score_project/checkpoints/student_conservative_aesthetic_full_aadb_20260423",
+  "source_paths": {
+    "weights_path": "/home/omen_pc1/photo_score_project/checkpoints/student_conservative_aesthetic_full_aadb_20260423/best.weights.h5",
+    "keras_model_path": "/home/omen_pc1/photo_score_project/checkpoints/student_conservative_aesthetic_full_aadb_20260423/final_model.keras",
+    "saved_model_dir": "/home/omen_pc1/photo_score_project/checkpoints/student_conservative_aesthetic_full_aadb_20260423/saved_model"
+  },
+  "distillation": {
+    "target_column": "teacher_aesthetic_score",
+    "manifest_path": "/home/omen_pc1/photo_score_project/outputs/distill_conservative_aesthetic_full_aadb_20260423/teacher_labels_trainval.csv"
+  },
+  "input": {
+    "image_size": [
+      224,
+      224
+    ],
+    "decode": {
+      "color_format": "RGB",
+      "animation_handling": "expand_animations=False"
+    },
+    "resize": {
+      "method": "bilinear",
+      "mode": "direct_resize"
+    },
+    "normalization": {
+      "type": "pixel_value_div_255",
+      "range": [
+        0.0,
+        1.0
+      ],
+      "keras_preprocess_input": null
+    },
+    "layout": "NHWC",
+    "dtype": "float32"
+  },
+  "output": {
+    "shape": [
+      1,
+      1
+    ],
+    "dtype": "float32",
+    "interpretation": "Predicted aesthetic score in [0, 1], distilled against teacher_aesthetic_score. Higher is better."
+  },
+  "export": {
+    "requested_export_source": "auto",
+    "used_export_source": "rebuild",
+    "requested_conversion_mode": "builtin",
+    "used_conversion_mode": "builtin",
+    "requires_select_tf_ops": false,
+    "quantization": "float16",
+    "tflite_path": "/home/omen_pc1/photo_score_project/outputs/student_conservative_aesthetic_full_aadb_20260423/export/student_conservative_aesthetic_full_aadb_20260423_fp16_builtin.tflite",
+    "tflite_size_bytes": 1738468,
+    "attempts": [
+      {
+        "source": "rebuild",
+        "status": "success",
+        "used_conversion_mode": "builtin",
+        "requires_select_tf_ops": false,
+        "builtin_failure": null
+      }
+    ]
+  },
+  "export_model_io": {
+    "inputs": [
+      {
+        "name": "image",
+        "shape": [
+          null,
+          224,
+          224,
+          3
+        ],
+        "dtype": "float32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "keras_tensor_158",
+        "shape": [
+          null,
+          1
+        ],
+        "dtype": "float32"
+      }
+    ]
+  },
+  "saved_model_signature": null,
+  "todo_before_mobile_release": [
+    "Run numeric parity checks between Keras and TFLite outputs on a held-out image set.",
+    "Benchmark latency and memory on the target Flutter runtime/device tier.",
+    "Measure whether float16 quantization preserves ranking quality well enough for A-cut use."
+  ]
+}
