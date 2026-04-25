@@ -77,6 +77,8 @@ class _SinglePhotoEvalScreenState extends State<SinglePhotoEvalScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final displayedResult = _result;
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       body: SafeArea(
@@ -147,7 +149,7 @@ class _SinglePhotoEvalScreenState extends State<SinglePhotoEvalScreen> {
                       ? _ErrorView(message: _errorMessage!, onRetry: _evaluate)
                       : _ResultView(
                           imageBytes: widget.imageBytes,
-                          result: _result!,
+                          result: displayedResult!,
                         ),
             ),
           ],
@@ -257,7 +259,10 @@ class _ResultView extends StatelessWidget {
   final Uint8List imageBytes;
   final PhotoEvaluationResult result;
 
-  const _ResultView({required this.imageBytes, required this.result});
+  const _ResultView({
+    required this.imageBytes,
+    required this.result,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -313,6 +318,10 @@ class _ResultView extends StatelessWidget {
             const SizedBox(height: 16),
             _AdvancedDetailSection(details: result.scoreDetails.toList()),
           ],
+          const SizedBox(height: 16),
+          _AestheticEnsembleDebugSection(
+            result: result,
+          ),
           if (result.modelVersion != null) ...[
             const SizedBox(height: 18),
             Text(
@@ -325,6 +334,300 @@ class _ResultView extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _AestheticEnsembleDebugSection extends StatelessWidget {
+  final PhotoEvaluationResult result;
+
+  const _AestheticEnsembleDebugSection({
+    required this.result,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final weights = result.effectiveAestheticWeights;
+    final finalAestheticScore = result.finalAestheticScore ?? result.aestheticScore;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: AppShadows.card,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '미적 앙상블 디버그',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: AppColors.primaryText,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'NIMA, RGNet, A-Lamp를 각각 실행한 뒤 정규화된 가중합으로 최종 미적 점수를 계산해요.',
+            style: TextStyle(
+              fontSize: 12,
+              height: 1.45,
+              fontWeight: FontWeight.w600,
+              color: AppColors.secondaryText,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _DebugMetaRow(
+            label: '파일',
+            value: result.fileName ?? 'selected_image',
+          ),
+          const SizedBox(height: 6),
+          _DebugMetaRow(
+            label: '가중치',
+            value:
+                'NIMA ${weights.nimaWeight.toStringAsFixed(1)} / '
+                'RGNet ${weights.rgnetWeight.toStringAsFixed(1)} / '
+                'A-Lamp ${weights.alampWeight.toStringAsFixed(1)} '
+                '(코드 고정)',
+          ),
+          if (!result.hasAnyAestheticEnsembleScore) ...[
+            const SizedBox(height: 12),
+            const _DebugBanner(
+              text: '이 결과에는 NIMA/RGNet/A-Lamp 개별 점수가 아직 없습니다.',
+            ),
+          ] else ...[
+            const SizedBox(height: 14),
+            if (!result.hasAestheticEnsembleScores) ...[
+              const _DebugBanner(
+                text: '일부 모델 추론이 실패해서 최종 가중합 점수는 보류되었습니다. 아래에서 개별 성공/실패 상태를 확인할 수 있어요.',
+              ),
+              const SizedBox(height: 12),
+            ],
+            _EnsembleScoreRow(
+              label: 'NIMA',
+              score: result.nimaScore,
+              weight: weights.nimaWeight,
+              accent: const Color(0xFF2563EB),
+            ),
+            const SizedBox(height: 12),
+            _EnsembleScoreRow(
+              label: 'RGNet',
+              score: result.rgnetScore,
+              weight: weights.rgnetWeight,
+              accent: const Color(0xFF0F766E),
+            ),
+            const SizedBox(height: 12),
+            _EnsembleScoreRow(
+              label: 'A-Lamp',
+              score: result.alampScore,
+              weight: weights.alampWeight,
+              accent: const Color(0xFF7C3AED),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: _SummaryMetricCard(
+                    label: '최종 미적 점수',
+                    value: finalAestheticScore == null
+                        ? '-'
+                        : finalAestheticScore.toStringAsFixed(4),
+                    accent: const Color(0xFF111827),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _SummaryMetricCard(
+                    label: '현재 종합 점수',
+                    value: result.finalScore.toStringAsFixed(4),
+                    accent: const Color(0xFF0F766E),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _EnsembleScoreRow extends StatelessWidget {
+  final String label;
+  final double? score;
+  final double weight;
+  final Color accent;
+
+  const _EnsembleScoreRow({
+    required this.label,
+    required this.score,
+    required this.weight,
+    required this.accent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.primaryText,
+                  ),
+                ),
+              ),
+              Text(
+                score == null ? '실패' : score!.toStringAsFixed(4),
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                  color: accent,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            score == null
+                ? 'score unavailable · weight ${weight.toStringAsFixed(3)}'
+                : '${(score! * 100).round()}/100 · weight ${weight.toStringAsFixed(3)}',
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: AppColors.secondaryText,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SummaryMetricCard extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color accent;
+
+  const _SummaryMetricCard({
+    required this.label,
+    required this.value,
+    required this.accent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: AppColors.secondaryText,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+              color: accent,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DebugMetaRow extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _DebugMetaRow({
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 58,
+          child: Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: AppColors.secondaryText,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(
+              fontSize: 12,
+              height: 1.45,
+              fontWeight: FontWeight.w600,
+              color: AppColors.primaryText,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _DebugBanner extends StatelessWidget {
+  final String text;
+
+  const _DebugBanner({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 12,
+          height: 1.45,
+          fontWeight: FontWeight.w600,
+          color: AppColors.secondaryText,
+        ),
       ),
     );
   }

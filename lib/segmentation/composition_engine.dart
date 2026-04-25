@@ -40,12 +40,14 @@ class CompositionEngine {
     DateTime? now,
   }) {
     final ts = now ?? DateTime.now();
-    final skyRatio = features.skyRatio.clamp(0.0, 1.0);
+    final skyRatio = features.skyOnlyRatio.clamp(0.0, 1.0);
     final groundRatio = _computeGroundRatio(features);
 
     final horizonY = features.horizonPosition;
     final horizonValid = horizonY != null &&
         features.horizonConfidence >= 0.22 &&
+        features.horizonValidity != HorizonValidity.invalid &&
+        features.horizonStability >= 0.18 &&
         horizonY >= 0.10 &&
         horizonY <= 0.90;
     final distanceToUpperThird =

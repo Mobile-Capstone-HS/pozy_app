@@ -2,15 +2,13 @@ import 'package:flutter/foundation.dart';
 
 import '../../../../services/gemini_analysis_service.dart';
 import '../../model/photo_evaluation_result.dart';
-import '../inference/aesthetic_model_contract.dart';
-import '../inference/tflite_aesthetic_service.dart';
 import 'photo_evaluation_service.dart';
 
 /// Combines on-device TFLite scoring with Gemini-based explanation.
 ///
 /// Flow:
 ///   1. [OnDevicePhotoEvaluationService] runs KonIQ + FLIVE (technical) and
-///      AADB (aesthetic) locally → produces deterministic, offline scores.
+///      the NIMA + RGNet + A-Lamp aesthetic ensemble locally.
 ///   2. [GeminiExplanationService] receives the image together with those
 ///      pre-computed scores and returns structured explanation text only.
 ///   3. The two results are merged via [PhotoEvaluationResult.copyWith].
@@ -25,13 +23,7 @@ class HybridPhotoEvaluationService implements PhotoEvaluationService {
   HybridPhotoEvaluationService({
     OnDevicePhotoEvaluationService? scorer,
     GeminiExplanationService? explainer,
-  }) : _scorer = scorer ??
-            OnDevicePhotoEvaluationService(
-              tfliteService: TfliteAestheticService(
-                // Enable the AADB aesthetic model that is actually in assets.
-                aestheticModels: defaultAestheticModelContracts,
-              ),
-            ),
+  }) : _scorer = scorer ?? OnDevicePhotoEvaluationService(),
        _explainer = explainer ?? GeminiExplanationService();
 
   final OnDevicePhotoEvaluationService _scorer;
@@ -58,6 +50,8 @@ class HybridPhotoEvaluationService implements PhotoEvaluationService {
         return scored.copyWith(
           shortExplanation: explanation.shortReason,
           detailedExplanation: explanation.detailedReason,
+          eyeState: explanation.eyeState,
+          eyeStateReason: explanation.eyeStateReason,
         );
       }
     } catch (e) {

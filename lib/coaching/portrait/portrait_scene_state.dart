@@ -17,7 +17,14 @@ enum ShotType {
   kneeShot,        // 무릎샷
   fullBody,        // 전신
   environmental,   // 환경 포트레이트 (인물 + 풍경)
+  groupShot,       // 그룹샷 (2명 이상)
   unknown,
+}
+
+enum PortraitIntent {
+  single,
+  environmental,
+  group,
 }
 
 // ─── 조명 상태 ──────────────────────────────────────────────
@@ -63,6 +70,8 @@ class PortraitSceneState {
   // 기본 정보
   final int personCount;
   final ShotType shotType;
+  final PortraitIntent intent;
+  final bool isFrontCamera;
 
   // 얼굴 데이터 (ML Kit Face Detection)
   final double? faceYaw;
@@ -92,6 +101,8 @@ class PortraitSceneState {
   final double shoulderConfidence;
   final double elbowConfidence;
   final double eyeConfidence;
+  final double kneeConfidence;
+  final double ankleConfidence;
 
   // 키포인트 가시성
   final int visibleKeypointCount;
@@ -104,6 +115,7 @@ class PortraitSceneState {
   final double secondPersonSizeRatio; // 두 번째 인물 크기 / 메인 인물 크기 (0~1)
   final int groupCroppedCount;        // 바운딩박스가 프레임 가장자리에 걸리는 인원 수
   final bool anyFaceEyesClosed;       // 감지된 얼굴 중 눈 감긴 사람이 있는지 (ML Kit)
+  final int closedFaceCount;          // 눈 감은 것으로 보이는 얼굴 수 (ML Kit)
 
   // 조명 데이터
   final LightingCondition lightingCondition;
@@ -119,9 +131,28 @@ class PortraitSceneState {
   final Offset? leftKneePosition;
   final Offset? rightKneePosition;
 
+  // 전신 전용 데이터
+  final double? ankleSpacingRatio;  // 발 간격 / 어깨 너비 비율 (null = 계산 불가)
+  final String? bottomJoint;        // 프레임 하단(85%+)에 가장 가까운 관절 이름
+  final double? bottomJointY;       // 해당 관절의 y좌표 (0~1)
+  final bool lowerBodyTouchesBottom;
+
+  // 카메라 안정성
+  final double cameraStability;     // 0.0=불안정, 1.0=매우 안정
+
+  // 눈 감김 정밀 추적
+  final bool eyeClosedConfirmed;    // 네이티브 raw 기반 연속 프레임 확정
+
+  // 그룹샷 상세 데이터
+  final int faceHiddenCount;        // 얼굴 안 보이는 인원 수 (코 키포인트 없음)
+  final double spacingUnevenness;   // 인물 간 간격 불균등도 (0=균등)
+  final double heightVariation;     // 인물 키 차이 (bbox top Y 범위)
+
   const PortraitSceneState({
     this.personCount = 0,
     this.shotType = ShotType.unknown,
+    this.intent = PortraitIntent.single,
+    this.isFrontCamera = false,
     this.faceYaw,
     this.facePitch,
     this.faceRoll,
@@ -143,6 +174,8 @@ class PortraitSceneState {
     this.shoulderConfidence = 0.0,
     this.elbowConfidence = 0.0,
     this.eyeConfidence = 0.0,
+    this.kneeConfidence = 0.0,
+    this.ankleConfidence = 0.0,
     this.visibleKeypointCount = 0,
     this.hasNose = false,
     this.hasEyes = false,
@@ -151,6 +184,7 @@ class PortraitSceneState {
     this.secondPersonSizeRatio = 0.0,
     this.groupCroppedCount = 0,
     this.anyFaceEyesClosed = false,
+    this.closedFaceCount = 0,
     this.lightingCondition = LightingCondition.unknown,
     this.lightingConfidence = 0.0,
     this.leftWristPosition,
@@ -161,21 +195,31 @@ class PortraitSceneState {
     this.rightHipPosition,
     this.leftKneePosition,
     this.rightKneePosition,
+    this.ankleSpacingRatio,
+    this.bottomJoint,
+    this.bottomJointY,
+    this.lowerBodyTouchesBottom = false,
+    this.cameraStability = 0.0,
+    this.eyeClosedConfirmed = false,
+    this.faceHiddenCount = 0,
+    this.spacingUnevenness = 0.0,
+    this.heightVariation = 0.0,
   });
 
   bool get isJointCropped => croppedJoints.isNotEmpty;
 
   bool get areEyesClosed =>
-      leftEyeOpenProb != null &&
-      rightEyeOpenProb != null &&
-      leftEyeOpenProb! < 0.3 &&
-      rightEyeOpenProb! < 0.3;
+      eyeClosedConfirmed ||
+      (leftEyeOpenProb != null &&
+       rightEyeOpenProb != null &&
+       leftEyeOpenProb! < 0.35 &&
+       rightEyeOpenProb! < 0.35);
 
   bool get isOneEyeClosed =>
       leftEyeOpenProb != null &&
       rightEyeOpenProb != null &&
       !areEyesClosed &&
-      (leftEyeOpenProb! < 0.3 || rightEyeOpenProb! < 0.3);
+      (leftEyeOpenProb! < 0.35 || rightEyeOpenProb! < 0.35);
 
   bool get isSmiling =>
       smileProbability != null && smileProbability! >= 0.65;
@@ -203,4 +247,23 @@ class PortraitSceneState {
     if (lk == null || rk == null) return false;
     return (lk - rk).abs() >= 0.015;
   }
+
+  bool get hasBothAnkles =>
+      leftAnklePosition != null && rightAnklePosition != null;
+
+  bool get hasAnyAnkle =>
+      leftAnklePosition != null || rightAnklePosition != null;
+
+  bool get hasReliableKnees =>
+      (leftKneePosition != null || rightKneePosition != null) &&
+      kneeConfidence >= 0.15;
+
+  bool get hasReliableAnkles =>
+      hasAnyAnkle && ankleConfidence >= 0.15;
+
+  bool get hasReliableBothAnkles =>
+      hasBothAnkles && ankleConfidence >= 0.15;
+
+  /// 프레임 하단 근처에서 관절이 잘리고 있는지
+  bool get isBottomJointCut => bottomJoint != null && bottomJointY != null;
 }

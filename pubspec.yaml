@@ -21,6 +21,7 @@ dependencies:
   photo_manager: ^3.9.0
   sensors_plus: ^6.1.1
   permission_handler: any
+  package_info_plus: ^8.3.0
   flutter_litert: ^2.0.7
   flutter_litert_flex: ^0.0.5
   google_generative_ai: ^0.4.6

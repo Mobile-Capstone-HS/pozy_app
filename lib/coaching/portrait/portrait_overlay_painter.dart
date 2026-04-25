@@ -19,6 +19,7 @@ import 'portrait_scene_state.dart';
 
 /// 오버레이에 필요한 포즈/얼굴 데이터
 class OverlayData {
+  final List<Rect> closedFaceRects;
   final Offset? leftEye;
   final Offset? rightEye;
   final Offset? nose;
@@ -30,19 +31,28 @@ class OverlayData {
   final Offset? rightWrist;
   final Offset? leftHip;
   final Offset? rightHip;
+  final Offset? leftKnee;
+  final Offset? rightKnee;
+  final Offset? leftAnkle;
+  final Offset? rightAnkle;
 
   final CoachingResult coaching;
   final ShotType shotType;
   final double eyeConfidence;
   final double shoulderConfidence;
   final Rect? faceGuideRect;
+  final Rect? bodyGuideRect;
   final double? targetEyeLineY;
   final double? targetHeadroomTop;
+  final int groupPersonCount;
+  final int groupFaceHiddenCount;
+  final int groupClosedEyeCount;
 
   /// 사용자가 선택한 구도 규칙. null이면 기본 3분할.
   final CompositionRule? activeRule;
 
   const OverlayData({
+    this.closedFaceRects = const [],
     this.leftEye,
     this.rightEye,
     this.nose,
@@ -54,19 +64,28 @@ class OverlayData {
     this.rightWrist,
     this.leftHip,
     this.rightHip,
+    this.leftKnee,
+    this.rightKnee,
+    this.leftAnkle,
+    this.rightAnkle,
     required this.coaching,
     this.shotType = ShotType.unknown,
     this.eyeConfidence = 0.0,
     this.shoulderConfidence = 0.0,
     this.faceGuideRect,
+    this.bodyGuideRect,
     this.targetEyeLineY,
     this.targetHeadroomTop,
+    this.groupPersonCount = 0,
+    this.groupFaceHiddenCount = 0,
+    this.groupClosedEyeCount = 0,
     this.activeRule,
   });
 
   /// [activeRule]만 교체한 새 인스턴스 반환. 기존 필드는 그대로 유지.
   OverlayData copyWithRule(CompositionRule? rule) {
     return OverlayData(
+      closedFaceRects: closedFaceRects,
       leftEye: leftEye,
       rightEye: rightEye,
       nose: nose,
@@ -78,13 +97,21 @@ class OverlayData {
       rightWrist: rightWrist,
       leftHip: leftHip,
       rightHip: rightHip,
+      leftKnee: leftKnee,
+      rightKnee: rightKnee,
+      leftAnkle: leftAnkle,
+      rightAnkle: rightAnkle,
       coaching: coaching,
       shotType: shotType,
       eyeConfidence: eyeConfidence,
       shoulderConfidence: shoulderConfidence,
       faceGuideRect: faceGuideRect,
+      bodyGuideRect: bodyGuideRect,
       targetEyeLineY: targetEyeLineY,
       targetHeadroomTop: targetHeadroomTop,
+      groupPersonCount: groupPersonCount,
+      groupFaceHiddenCount: groupFaceHiddenCount,
+      groupClosedEyeCount: groupClosedEyeCount,
       activeRule: rule,
     );
   }
@@ -108,17 +135,96 @@ class _Colors {
 
 class PortraitOverlayPainter extends CustomPainter {
   final OverlayData data;
+  final bool showDebugGuides;
 
-  PortraitOverlayPainter({required this.data});
+  PortraitOverlayPainter({
+    required this.data,
+    this.showDebugGuides = true,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
     _drawCompositionGrid(canvas, size);
+    _drawFramingGuide(canvas, size);
+    if (!showDebugGuides) return;
     _drawFaceGuide(canvas, size);
+    _drawClosedFaceWarnings(canvas, size);
     _drawBodyOutline(canvas, size);
     _drawKeypoints(canvas, size);
     _drawShoulderLine(canvas, size);
     _drawEyeGuide(canvas, size);
+  }
+
+  void _drawFramingGuide(Canvas canvas, Size size) {
+    final isFullBody = data.shotType == ShotType.fullBody;
+    final isKneeShot = data.shotType == ShotType.kneeShot;
+    if (!isFullBody && !isKneeShot) return;
+
+    final rect = data.bodyGuideRect;
+    if (rect != null) {
+      final r = Rect.fromLTWH(
+        rect.left * size.width,
+        rect.top * size.height,
+        rect.width * size.width,
+        rect.height * size.height,
+      ).inflate(10);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(r, const Radius.circular(16)),
+        Paint()
+          ..color = const Color(0x6638BDF8)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.2,
+      );
+    }
+
+    if (isFullBody) {
+      final footY = size.height * 0.94;
+      _drawGuideLine(
+        canvas,
+        y: footY,
+        width: size.width,
+        color: _Colors.greenSoft,
+        label: '발끝 여유',
+      );
+    } else if (isKneeShot) {
+      final kneeY = size.height * 0.82;
+      _drawGuideLine(
+        canvas,
+        y: kneeY,
+        width: size.width,
+        color: _Colors.yellowSoft,
+        label: '무릎선 피하기',
+      );
+    }
+
+    final headroomTop = data.targetHeadroomTop;
+    if (headroomTop != null) {
+      _drawGuideLine(
+        canvas,
+        y: headroomTop * size.height,
+        width: size.width,
+        color: const Color(0x55FFFFFF),
+        label: '머리 여유',
+      );
+    }
+  }
+
+  void _drawGuideLine(
+    Canvas canvas, {
+    required double y,
+    required double width,
+    required Color color,
+    required String label,
+  }) {
+    canvas.drawLine(
+      Offset(width * 0.16, y),
+      Offset(width * 0.84, y),
+      Paint()
+        ..color = color
+        ..strokeWidth = 1.5
+        ..strokeCap = StrokeCap.round,
+    );
+    _drawLabel(canvas, label, Offset(width * 0.5, y - 14), color);
   }
 
   // ─── 구도 그리드 (사용자 선택 규칙 기반) ───────────
@@ -148,6 +254,14 @@ class PortraitOverlayPainter extends CustomPainter {
       data.leftElbow, data.rightElbow,
       data.leftWrist, data.rightWrist,
       data.leftHip, data.rightHip,
+    ]) {
+      _drawGlowPoint(canvas, size, pt, radius: 3.5, isMain: false);
+    }
+
+    // 하체 포인트 (무릎~발목) — 작은 글로우
+    for (final pt in [
+      data.leftKnee, data.rightKnee,
+      data.leftAnkle, data.rightAnkle,
     ]) {
       _drawGlowPoint(canvas, size, pt, radius: 3.5, isMain: false);
     }
@@ -322,6 +436,42 @@ class PortraitOverlayPainter extends CustomPainter {
     }
   }
 
+  void _drawClosedFaceWarnings(Canvas canvas, Size size) {
+    if (data.closedFaceRects.isEmpty) return;
+
+    for (final rect in data.closedFaceRects) {
+      final r = Rect.fromLTWH(
+        rect.left * size.width,
+        rect.top * size.height,
+        rect.width * size.width,
+        rect.height * size.height,
+      );
+
+      final warningColor = _Colors.red;
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(r, const Radius.circular(10)),
+        Paint()
+          ..color = const Color(0x22EF4444)
+          ..style = PaintingStyle.fill,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(r, const Radius.circular(10)),
+        Paint()
+          ..color = warningColor
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.0,
+      );
+
+      final labelY = math.max(18.0, r.top - 14.0);
+      _drawLabel(
+        canvas,
+        '눈 감음',
+        Offset(r.center.dx, labelY),
+        warningColor,
+      );
+    }
+  }
+
   void _drawCheckMark(Canvas canvas, Offset center) {
     // 글로우 원
     canvas.drawCircle(
@@ -449,6 +599,12 @@ class PortraitOverlayPainter extends CustomPainter {
     drawBone(data.leftShoulder, data.leftHip);
     drawBone(data.rightShoulder, data.rightHip);
     drawBone(data.leftHip, data.rightHip);
+
+    // 하체
+    drawBone(data.leftHip, data.leftKnee);
+    drawBone(data.leftKnee, data.leftAnkle);
+    drawBone(data.rightHip, data.rightKnee);
+    drawBone(data.rightKnee, data.rightAnkle);
   }
 
   // ─── 라벨 헬퍼 ───────────────────────────────────

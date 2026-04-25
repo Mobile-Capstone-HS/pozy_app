@@ -8,11 +8,13 @@ import 'package:pose_camera_app/segmentation/fastscnn_view.dart';
 import 'package:pose_camera_app/segmentation/landscape_analyzer.dart';
 
 class LandscapeModeController {
+  final LandscapeAnalyzer _landscapeAnalyzer = LandscapeAnalyzer();
   final CompositionEngine _compositionEngine = CompositionEngine();
   final CompositionResolver _resolver = const CompositionResolver();
   final CompositionTemporalFilter _temporalFilter = CompositionTemporalFilter();
 
   void reset() {
+    _landscapeAnalyzer.reset();
     _compositionEngine.reset();
     _temporalFilter.reset();
   }
@@ -21,14 +23,15 @@ class LandscapeModeController {
     FastScnnFrame frame, {
     required LandscapeUiState currentState,
   }) {
-    final raw = LandscapeAnalyzer.analyzeFeatures(frame.result);
-    final smoothed = _temporalFilter.smooth(raw);
+    final analysis = _landscapeAnalyzer.analyze(frame.result);
+    final smoothed = _temporalFilter.smooth(analysis.features);
     final decision = _temporalFilter.stabilize(_resolver.resolve(smoothed));
     final summary = _compositionEngine.evaluate(
       features: smoothed,
       decision: decision,
     );
     final subGuidance =
+        analysis.advice.secondaryGuidance ??
         decision.secondaryGuidance ??
         (decision.primaryGuidance == summary.guideMessage
             ? null
@@ -36,10 +39,11 @@ class LandscapeModeController {
 
     return currentState.copyWith(
       decision: decision,
+      overlayAdvice: analysis.advice,
       segmentation: frame.result,
       isFrontCamera: frame.isFrontCamera,
       currentZoom: frame.zoomLevel,
-      guidance: summary.guideMessage,
+      guidance: analysis.advice.primaryGuidance,
       subGuidance: subGuidance,
       coachingLevel: _coachingLevelFor(summary.guideState),
     );

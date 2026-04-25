@@ -7,10 +7,13 @@ import 'tflite_model_metadata_loader.dart';
 
 enum AestheticModelOutputType { scalarPercent, scalarUnitInterval, distribution }
 
+enum AestheticModelExecutionMode { tensor, signature }
+
 class AestheticModelContract {
   final String id;
   final String label;
   final String assetPath;
+  final String? metadataAssetPathOverride;
   final ModelScoreDimension dimension;
   final int inputWidth;
   final int inputHeight;
@@ -22,11 +25,14 @@ class AestheticModelContract {
   final String inputDtype;
   final String colorFormat;
   final String tensorLayout;
+  final AestheticModelExecutionMode executionMode;
+  final String? signatureKey;
 
   const AestheticModelContract({
     required this.id,
     required this.label,
     required this.assetPath,
+    this.metadataAssetPathOverride,
     required this.dimension,
     required this.inputWidth,
     required this.inputHeight,
@@ -38,9 +44,12 @@ class AestheticModelContract {
     this.inputDtype = 'float32',
     this.colorFormat = 'RGB',
     this.tensorLayout = 'NHWC',
+    this.executionMode = AestheticModelExecutionMode.tensor,
+    this.signatureKey,
   });
 
   String get metadataAssetPath =>
+      metadataAssetPathOverride ??
       TfliteModelMetadataLoader.instance.metadataAssetPathForModel(assetPath);
 
   ResolvedAestheticModelConfig resolve({
@@ -83,6 +92,8 @@ class AestheticModelContract {
       inputDtype: resolvedDtype,
       colorFormat: resolvedColorFormat,
       tensorLayout: resolvedTensorLayout,
+      executionMode: executionMode,
+      signatureKey: signatureKey,
       metadata: metadata,
       metadataBacked: metadata != null,
       resolutionNotes: resolutionNotes,
@@ -104,7 +115,10 @@ class AestheticModelContract {
       metadata.output.interpretation,
     ].whereType<String>().join(' ').toLowerCase();
 
-    if (hint.contains('/255') || hint.contains('/ 255')) {
+    if (hint.contains('/255') ||
+        hint.contains('/ 255') ||
+        hint.contains('div_255') ||
+        hint.contains('pixel_value_div_255')) {
       return ImageNormalization.zeroToOne;
     }
     if (hint.contains('127.5') || hint.contains('-1.0') || hint.contains('[-1')) {
@@ -248,6 +262,8 @@ class ResolvedAestheticModelConfig {
   final String inputDtype;
   final String colorFormat;
   final String tensorLayout;
+  final AestheticModelExecutionMode executionMode;
+  final String? signatureKey;
   final TfliteModelMetadata? metadata;
   final bool metadataBacked;
   final List<String> resolutionNotes;
@@ -269,6 +285,8 @@ class ResolvedAestheticModelConfig {
     required this.inputDtype,
     required this.colorFormat,
     required this.tensorLayout,
+    required this.executionMode,
+    required this.signatureKey,
     required this.metadata,
     required this.metadataBacked,
     required this.resolutionNotes,
@@ -285,6 +303,37 @@ class ResolvedAestheticModelConfig {
       return scoreInterpretation;
     }
     return '$scoreInterpretation (${resolutionNotes.join(' | ')})';
+  }
+
+  ResolvedAestheticModelConfig withRuntimeOverrides({
+    int? inputWidth,
+    int? inputHeight,
+    int? expectedOutputLength,
+    AestheticModelOutputType? outputType,
+  }) {
+    return ResolvedAestheticModelConfig(
+      id: id,
+      label: label,
+      assetPath: assetPath,
+      metadataAssetPath: metadataAssetPath,
+      dimension: dimension,
+      inputWidth: inputWidth ?? this.inputWidth,
+      inputHeight: inputHeight ?? this.inputHeight,
+      expectedOutputLength: expectedOutputLength ?? this.expectedOutputLength,
+      normalization: normalization,
+      outputType: outputType ?? this.outputType,
+      weight: weight,
+      useFlexDelegate: useFlexDelegate,
+      inputDtype: inputDtype,
+      colorFormat: colorFormat,
+      tensorLayout: tensorLayout,
+      executionMode: executionMode,
+      signatureKey: signatureKey,
+      metadata: metadata,
+      metadataBacked: metadataBacked,
+      resolutionNotes: resolutionNotes,
+      scoreInterpretation: scoreInterpretation,
+    );
   }
 
   double readRawScore(Float32List values) {
@@ -366,6 +415,36 @@ const AestheticModelContract nimaMobileContract = AestheticModelContract(
   weight: 1.0,
 );
 
+const AestheticModelContract rgnetAadbGpuContract = AestheticModelContract(
+  id: 'rgnet_aadb_gpu',
+  label: 'RGNet',
+  assetPath: 'assets/models/rgnet_aadb_gpu.tflite',
+  dimension: ModelScoreDimension.aesthetic,
+  inputWidth: 256,
+  inputHeight: 256,
+  expectedOutputLength: 1,
+  normalization: ImageNormalization.zeroToOne,
+  outputType: AestheticModelOutputType.scalarUnitInterval,
+  weight: 1.0,
+  executionMode: AestheticModelExecutionMode.signature,
+  signatureKey: 'serving_default',
+);
+
+const AestheticModelContract alampAadbGpuContract = AestheticModelContract(
+  id: 'alamp_aadb_gpu',
+  label: 'A-Lamp',
+  assetPath: 'assets/models/alamp_aadb_gpu.tflite',
+  dimension: ModelScoreDimension.aesthetic,
+  inputWidth: 224,
+  inputHeight: 224,
+  expectedOutputLength: 1,
+  normalization: ImageNormalization.zeroToOne,
+  outputType: AestheticModelOutputType.scalarUnitInterval,
+  weight: 1.0,
+  executionMode: AestheticModelExecutionMode.signature,
+  signatureKey: 'serving_default',
+);
+
 const List<AestheticModelContract> defaultTechnicalModelContracts = [
   koniqMobileContract,
   fliveImageMobileContract,
@@ -377,12 +456,13 @@ const List<AestheticModelContract> futureAestheticModelContracts = [
   nimaMobileContract,
 ];
 
-/// AADB student-distilled model that is actually present in assets.
+/// Current baseline student aesthetic scorer used by the main app flow.
 /// Input : 224×224, float32, RGB÷255, NHWC
-/// Output: [1,1] float32 scalar in [0,1] (sigmoid, higher = better aesthetics)
-const AestheticModelContract activeAadbContract = AestheticModelContract(
-  id: 'aadb_mobile',
-  label: 'AADB',
+/// Output: [1,1] float32 scalar in [0,1] (higher = better aesthetics)
+const AestheticModelContract stage5StudentAadbBaselineContract =
+    AestheticModelContract(
+  id: 'stage5_student_aadb_baseline',
+  label: 'AADB Baseline',
   assetPath:
       'assets/models/stage5_student_full_aadb_aesthetic_mobile_fp32.tflite',
   dimension: ModelScoreDimension.aesthetic,
@@ -395,7 +475,44 @@ const AestheticModelContract activeAadbContract = AestheticModelContract(
   useFlexDelegate: false,
 );
 
-/// The aesthetic models that are active in the current build.
+/// Conservative student candidate for local side-by-side testing.
+/// Input : 224×224, float32, RGB÷255, NHWC
+/// Output: [1,1] float32 scalar in [0,1] (higher = better aesthetics)
+const AestheticModelContract conservativeStudentAadbContract =
+    AestheticModelContract(
+  id: 'student_conservative_aadb_20260423',
+  label: 'AADB Conservative Student',
+  assetPath:
+      'assets/models/student_conservative_aesthetic_full_aadb_20260423_fp16_builtin.tflite',
+  metadataAssetPathOverride:
+      'assets/models/student_conservative_aesthetic_full_aadb_20260423.metadata.json',
+  dimension: ModelScoreDimension.aesthetic,
+  inputWidth: 224,
+  inputHeight: 224,
+  expectedOutputLength: 1,
+  normalization: ImageNormalization.zeroToOne,
+  outputType: AestheticModelOutputType.scalarUnitInterval,
+  weight: 1.0,
+  useFlexDelegate: false,
+);
+
+const AestheticModelContract activeAadbContract =
+    stage5StudentAadbBaselineContract;
+
+/// Legacy single-model aesthetic scorer retained for fallback/debug use only.
 const List<AestheticModelContract> defaultAestheticModelContracts = [
   activeAadbContract,
+];
+
+/// Local comparison candidates for smoke-testing the same image in Flutter.
+const List<AestheticModelContract> aestheticComparisonModelContracts = [
+  stage5StudentAadbBaselineContract,
+  conservativeStudentAadbContract,
+];
+
+/// Active three-model ensemble for A-cut aesthetic scoring.
+const List<AestheticModelContract> activeAestheticEnsembleContracts = [
+  nimaMobileContract,
+  rgnetAadbGpuContract,
+  alampAadbGpuContract,
 ];

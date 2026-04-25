@@ -164,6 +164,18 @@ class YOLOViewController {
     }
   }
 
+  Future<void> setDeviceOrientation(int degrees) async {
+    if (_methodChannel != null) {
+      try {
+        await _methodChannel!.invokeMethod('setDeviceOrientation', {
+          'degrees': degrees,
+        });
+      } catch (e) {
+        logInfo('Error setting device orientation: $e');
+      }
+    }
+  }
+
   Future<void> setZoomLevel(double zoomLevel) async {
     if (_methodChannel != null) {
       try {

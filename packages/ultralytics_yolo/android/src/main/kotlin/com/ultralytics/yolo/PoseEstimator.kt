@@ -31,8 +31,8 @@ class PoseEstimator(
     modelPath: String,
     override var labels: List<String>,
     private val useGpu: Boolean = true,
-    private var confidenceThreshold: Float = 0.25f,   // Can be changed as needed
-    private var iouThreshold: Float = 0.45f,          // Can be changed as needed
+    private var confidenceThreshold: Float = 0.15f,   // 그룹샷에서 작게 나오는 인물도 감지
+    private var iouThreshold: Float = 0.65f,          // 붙어서 찍는 그룹샷에서 NMS 억제 방지
     private val customOptions: Interpreter.Options? = null
 ) : BasePredictor() {
 
@@ -372,8 +372,8 @@ class PoseEstimator(
         detections: List<PoseDetection>,
         iouThreshold: Float
     ): List<PoseDetection> {
-        val confidenceThreshold = 0.25f  // Configurable threshold
-        val filteredDetections = detections.filter { it.box.conf >= confidenceThreshold }
+        // postProcessPose에서 이미 confidenceThreshold로 필터링됨; 여기서는 추가 필터링 불필요
+        val filteredDetections = detections
         
         if (filteredDetections.size <= 1) {
             return filteredDetections
