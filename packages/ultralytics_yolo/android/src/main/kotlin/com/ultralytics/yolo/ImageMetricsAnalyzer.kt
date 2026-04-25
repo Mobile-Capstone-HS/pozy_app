@@ -53,6 +53,12 @@ object ImageMetricsAnalyzer {
         var subjectHighlightCount = 0
         var subjectShadowCount = 0
 
+        // Light direction — quadrant brightness accumulators
+        val midX = w / 2
+        val midY = h / 2
+        var sumLeft = 0.0; var sumRight = 0.0; var sumTop = 0.0; var sumBottom = 0.0
+        var cntLeft = 0; var cntRight = 0; var cntTop = 0; var cntBottom = 0
+
         // Laplacian variance for blur (global)
         val lumaArray = FloatArray(w * h)
 
@@ -70,6 +76,10 @@ object ImageMetricsAnalyzer {
 
                 if (luma >= 235.0) highlightCount++
                 if (luma <= 35.0) shadowCount++
+
+                // Accumulate quadrant brightness for light direction
+                if (x < midX) { sumLeft += luma; cntLeft++ } else { sumRight += luma; cntRight++ }
+                if (y < midY) { sumTop += luma; cntTop++ } else { sumBottom += luma; cntBottom++ }
 
                 val inRoi = hasRoi &&
                         x in roiX0..roiX1 &&
@@ -117,6 +127,13 @@ object ImageMetricsAnalyzer {
             globalBlurScore
         }
 
+        // Light direction estimation: 0=unknown, 1=left, 2=right, 3=top, 4=bottom, 5=behind
+        val lightDirectionIndex = estimateLightDirection(
+            cntLeft, cntRight, cntTop, cntBottom,
+            sumLeft, sumRight, sumTop, sumBottom,
+            hasRoi, subjectLumaSum, subjectCount, bgLumaSum, bgCount,
+        )
+
         return mapOf(
             "brightness" to globalBrightness,
             "subjectBrightness" to subjectBrightness,
@@ -127,6 +144,7 @@ object ImageMetricsAnalyzer {
             "subjectShadowRatio" to subjectShadowRatio,
             "globalBlurScore" to globalBlurScore,
             "subjectBlurScore" to subjectBlurScore,
+            "lightDirectionIndex" to lightDirectionIndex,
         )
     }
 
@@ -155,5 +173,45 @@ object ImageMetricsAnalyzer {
         if (count == 0) return 999.0
         val mean = sum / count
         return sumSq / count - mean * mean
+    }
+
+    /**
+     * Estimate light direction from quadrant brightness + backlight detection.
+     * Returns: 0=unknown, 1=left, 2=right, 3=top, 4=bottom, 5=behind(backlight)
+     */
+    private fun estimateLightDirection(
+        cntLeft: Int, cntRight: Int, cntTop: Int, cntBottom: Int,
+        sumLeft: Double, sumRight: Double, sumTop: Double, sumBottom: Double,
+        hasRoi: Boolean, subjectLumaSum: Double, subjectCount: Int,
+        bgLumaSum: Double, bgCount: Int,
+    ): Int {
+        if (cntLeft == 0 || cntRight == 0 || cntTop == 0 || cntBottom == 0) return 0
+
+        // Backlight: subject significantly darker than background
+        if (hasRoi && subjectCount > 0 && bgCount > 0) {
+            val subjectAvg = subjectLumaSum / subjectCount
+            val bgAvg = bgLumaSum / bgCount
+            if (bgAvg > 150 && (bgAvg - subjectAvg) > 50) return 5 // behind
+        }
+
+        val avgLeft = sumLeft / cntLeft
+        val avgRight = sumRight / cntRight
+        val avgTop = sumTop / cntTop
+        val avgBottom = sumBottom / cntBottom
+
+        val hDiff = avgRight - avgLeft   // positive = right is brighter
+        val vDiff = avgBottom - avgTop   // positive = bottom is brighter
+
+        val absH = kotlin.math.abs(hDiff)
+        val absV = kotlin.math.abs(vDiff)
+        val threshold = 20.0
+
+        if (absH < threshold && absV < threshold) return 0 // unknown
+
+        return if (absH >= absV) {
+            if (hDiff > 0) 2 else 1  // right : left
+        } else {
+            if (vDiff > 0) 4 else 3  // bottom : top
+        }
     }
 }
