@@ -17,6 +17,7 @@ class SinglePhotoEvalScreen extends StatefulWidget {
   final String? fileName;
   final String? assetId;
   final PhotoEvaluationService? evaluationService;
+  final bool saveHistory;
 
   const SinglePhotoEvalScreen({
     super.key,
@@ -24,6 +25,7 @@ class SinglePhotoEvalScreen extends StatefulWidget {
     this.fileName,
     this.assetId,
     this.evaluationService,
+    this.saveHistory = true,
   });
 
   @override
@@ -61,7 +63,9 @@ class _SinglePhotoEvalScreenState extends State<SinglePhotoEvalScreen> {
         _result = result;
         _loading = false;
       });
-      HistoryService.instance.saveSingle(result: result, assetId: widget.assetId);
+      if (widget.saveHistory) {
+        HistoryService.instance.saveSingle(result: result, assetId: widget.assetId);
+      }
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -795,78 +799,149 @@ class _MetricInfo {
   });
 }
 
-class _MetricCard extends StatelessWidget {
+class _MetricCard extends StatefulWidget {
   final _MetricInfo info;
 
   const _MetricCard({required this.info});
 
   @override
+  State<_MetricCard> createState() => _MetricCardState();
+}
+
+class _MetricCardState extends State<_MetricCard>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double> _anim;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
+    _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic);
+    _ctrl.forward();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: AppShadows.card,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            info.label,
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: AppColors.secondaryText,
-            ),
+    return AnimatedBuilder(
+      animation: _anim,
+      builder: (_, _) {
+        final progress = _anim.value;
+        final displayValue = (widget.info.value * progress).round();
+        return Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: AppShadows.card,
           ),
-          const SizedBox(height: 8),
-          RichText(
-            text: TextSpan(
-              children: [
-                TextSpan(
-                  text: '${info.value}',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w900,
-                    color: info.accent,
+          child: Row(
+            children: [
+              SizedBox(
+                width: 68,
+                height: 68,
+                child: CustomPaint(
+                  painter: _ScoreArcPainter(
+                    progress: widget.info.value / 100 * progress,
+                    color: widget.info.accent,
+                    bgColor: AppColors.track,
+                  ),
+                  child: Center(
+                    child: Text(
+                      '$displayValue',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                        color: widget.info.accent,
+                      ),
+                    ),
                   ),
                 ),
-                const TextSpan(
-                  text: ' /100',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.secondaryText,
-                  ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.info.label,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.primaryText,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      widget.info.caption,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        height: 1.4,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.secondaryText,
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-          const SizedBox(height: 10),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: LinearProgressIndicator(
-              minHeight: 7,
-              value: info.value / 100,
-              backgroundColor: AppColors.track,
-              valueColor: AlwaysStoppedAnimation<Color>(info.accent),
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            info.caption,
-            style: const TextStyle(
-              fontSize: 12,
-              height: 1.4,
-              fontWeight: FontWeight.w600,
-              color: AppColors.secondaryText,
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
+}
+
+class _ScoreArcPainter extends CustomPainter {
+  final double progress;
+  final Color color;
+  final Color bgColor;
+
+  const _ScoreArcPainter({
+    required this.progress,
+    required this.color,
+    required this.bgColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const strokeWidth = 7.0;
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = (size.shortestSide - strokeWidth) / 2;
+    final rect = Rect.fromCircle(center: center, radius: radius);
+
+    final bgPaint = Paint()
+      ..color = bgColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round;
+
+    final fgPaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round;
+
+    // 배경 원
+    canvas.drawArc(rect, -1.5708, 6.2832, false, bgPaint);
+    // 점수 호 (12시 방향부터 시계방향)
+    if (progress > 0) {
+      canvas.drawArc(rect, -1.5708, 6.2832 * progress, false, fgPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_ScoreArcPainter old) =>
+      old.progress != progress || old.color != color;
 }
 
 class _InfoBanner extends StatelessWidget {

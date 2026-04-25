@@ -1,7 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:gal/gal.dart';
@@ -9,14 +7,18 @@ import 'package:image_picker/image_picker.dart';
 
 import 'package:pose_camera_app/services/gemini_service.dart';
 import 'crop_screen.dart';
-import '../theme/app_colors.dart';
-import '../theme/app_text_styles.dart';
-import '../widget/app_top_bar.dart';
 import 'editor/editor_types.dart';
 import 'editor/editor_image_processing.dart';
 import 'editor/editor_presets.dart';
 import 'editor/editor_history.dart';
 import 'editor/editor_comparison.dart';
+
+const _kBg = Color(0xFFF7F8FB);
+const _kBlue = Color(0xFF3182F6);
+const _kDark = Color(0xFF191F28);
+const _kGrey600 = Color(0xFF6B7684);
+const _kGrey400 = Color(0xFFB0B8C1);
+const _kGrey100 = Color(0xFFF2F4F6);
 
 class EditorScreen extends StatefulWidget {
   final ValueChanged<int> onMoveTab;
@@ -76,9 +78,14 @@ class _EditorScreenState extends State<EditorScreen> {
     super.initState();
     if (widget.initialBytesFuture != null) {
       _selectedImagePath = 'gallery';
+      _isPreparingImage = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         widget.initialBytesFuture!.then((bytes) {
-          if (bytes != null && mounted) _loadFromRawBytes(bytes);
+          if (bytes != null && mounted) {
+            _loadFromRawBytes(bytes);
+          } else if (mounted) {
+            setState(() => _isPreparingImage = false);
+          }
         });
       });
     }
@@ -488,73 +495,94 @@ class _EditorScreenState extends State<EditorScreen> {
   Widget build(BuildContext context) {
     final bottomPadding = MediaQuery.of(context).padding.bottom;
 
-    return SafeArea(
-      child: Column(
-        children: [
-          // ── 상단 바 (고정) ──
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 10, 18, 0),
-            child: AppTopBar(
-              title: '보정',
-              onBack: widget.onBack,
-              leadingIcon: widget.onBack != null
-                  ? Icons.arrow_back_ios_new_rounded
-                  : Icons.menu_rounded,
-              trailingWidth: 120,
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
+    return Scaffold(
+      backgroundColor: _kBg,
+      body: SafeArea(
+        child: Column(
+          children: [
+            // ── 상단 바 ──
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 16, 0),
+              child: Row(
                 children: [
-                  GestureDetector(
-                    onTap: _history.canUndo ? _undo : null,
-                    child: Icon(
-                      Icons.undo,
-                      size: 20,
-                      color: _history.canUndo
-                          ? AppColors.primaryText
-                          : AppColors.lightText,
+                  // 뒤로가기 / 메뉴
+                  if (widget.onBack != null)
+                    GestureDetector(
+                      onTap: widget.onBack,
+                      child: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: _kGrey100,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.arrow_back_ios_new_rounded,
+                          size: 18,
+                          color: _kDark,
+                        ),
+                      ),
+                    ),
+                  if (widget.onBack != null) const SizedBox(width: 12),
+                  const Text(
+                    'Editor',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      color: _kDark,
+                      letterSpacing: -0.5,
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  GestureDetector(
-                    onTap: _history.canRedo ? _redo : null,
-                    child: Icon(
-                      Icons.redo,
-                      size: 20,
-                      color: _history.canRedo
-                          ? AppColors.primaryText
-                          : AppColors.lightText,
-                    ),
+                  const Spacer(),
+                  // Undo / Redo
+                  _HeaderIconBtn(
+                    icon: Icons.undo_rounded,
+                    enabled: _history.canUndo,
+                    onTap: _undo,
                   ),
-                  const SizedBox(width: 14),
+                  const SizedBox(width: 6),
+                  _HeaderIconBtn(
+                    icon: Icons.redo_rounded,
+                    enabled: _history.canRedo,
+                    onTap: _redo,
+                  ),
+                  const SizedBox(width: 10),
+                  // 저장
                   GestureDetector(
                     onTap: _hasImage && !_isSaving ? _saveImage : null,
-                    child: Text(
-                      '저장',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: _hasImage && !_isSaving
-                            ? AppColors.primaryText
-                            : AppColors.lightText,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color:
+                            _hasImage && !_isSaving ? _kBlue : _kGrey100,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '저장',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: _hasImage && !_isSaving
+                              ? Colors.white
+                              : _kGrey400,
+                        ),
                       ),
                     ),
                   ),
                 ],
               ),
             ),
-          ),
 
-          // ── 이미지 캔버스 (남는 공간 전부 사용) ──
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(top: 8, bottom: 4),
-              child: _buildCanvas(),
-            ),
-          ),
+            const SizedBox(height: 8),
 
-          // ── 하단 컨트롤 패널 (고정) ──
-          _buildBottomPanel(bottomPadding),
-        ],
+            // ── 이미지 캔버스 ──
+            Expanded(child: _buildCanvas()),
+
+            // ── 하단 패널 ──
+            _buildBottomPanel(bottomPadding),
+          ],
+        ),
       ),
     );
   }
@@ -564,113 +592,57 @@ class _EditorScreenState extends State<EditorScreen> {
     setState(() => _currentZoom = 1.0);
   }
 
-  // ── 이미지 캔버스 ──
-
   Widget _buildCanvas() {
-    return GestureDetector(
-      onTap: _hasImage ? null : _pickImage,
-      onLongPressStart: (_) {
-        if (_hasImage) setState(() => _showOriginalPreview = true);
-      },
-      onLongPressEnd: (_) {
-        if (_showOriginalPreview) setState(() => _showOriginalPreview = false);
-      },
-      child: Container(
-          color: AppColors.soft,
+    // 사진이 없을 때: 빈 플레이스홀더 카드 (Expanded가 크기 결정)
+    if (!_hasImage) {
+      return GestureDetector(
+        onTap: _isPreparingImage ? null : _pickImage,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 12,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          clipBehavior: Clip.antiAlias,
           child: Stack(
             fit: StackFit.expand,
             children: [
-              if (_hasImage)
-                CustomPaint(painter: _CheckerboardPainter()),
-
-              if (!_hasImage && !_isPreparingImage) const _PlusPlaceholder(),
-
-              if (_hasImage && _comparisonMode && _originalPreviewSourceBytes != null)
-                Center(
-                  child: AspectRatio(
-                    aspectRatio: _originalAspectRatio ?? _imageAspectRatio ?? 1.0,
-                    child: LayoutBuilder(
-                      builder: (context, constraints) => ComparisonView(
-                        originalBytes: _originalPreviewSourceBytes!,
-                        editedBytes: _previewBytes ?? _previewSourceBytes!,
-                        width: constraints.maxWidth,
-                        height: constraints.maxHeight,
-                      ),
-                    ),
-                  ),
-                )
-              else if (_hasImage)
-                InteractiveViewer(
-                  transformationController: _zoomController,
-                  minScale: 0.5,
-                  maxScale: 8.0,
-                  panEnabled: true,
-                  scaleEnabled: true,
-                  onInteractionUpdate: (details) {
-                    final zoom = _zoomController.value.getMaxScaleOnAxis();
-                    if ((zoom - _currentZoom).abs() > 0.01) {
-                      setState(() => _currentZoom = zoom);
-                    }
-                  },
-                  onInteractionEnd: (_) {
-                    setState(() {
-                      _currentZoom = _zoomController.value.getMaxScaleOnAxis();
-                    });
-                  },
-                  child: Center(
-                    child: Image.memory(
-                      _showOriginalPreview
-                          ? _previewSourceBytes!
-                          : (_previewBytes ?? _previewSourceBytes!),
-                      fit: BoxFit.contain,
-                      gaplessPlayback: true,
-                    ),
-                  ),
-                ),
-
-              // 줌 인디케이터
-              if (_hasImage && !_comparisonMode)
-                Positioned(
-                  left: 12,
-                  bottom: 12,
-                  child: _ZoomIndicator(
-                    zoom: _currentZoom,
-                    onReset: _currentZoom != 1.0 ? _resetZoom : null,
-                  ),
-                ),
-
-              // 로딩 오버레이
-              if (_isPreparingImage || _isRenderingPreview || _isSaving)
+              if (!_isPreparingImage) const _EmptyPlaceholder(),
+              if (_isPreparingImage)
                 Container(
-                  color: const Color(0x38000000),
+                  color: Colors.black.withValues(alpha: 0.25),
                   child: Center(
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 16),
                       decoration: BoxDecoration(
-                        color: const Color(0x9E000000),
-                        borderRadius: BorderRadius.circular(18),
+                        color: Colors.black.withValues(alpha: 0.7),
+                        borderRadius: BorderRadius.circular(16),
                       ),
-                      child: Column(
+                      child: const Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const SizedBox(
-                            width: 24,
-                            height: 24,
+                          SizedBox(
+                            width: 18,
+                            height: 18,
                             child: CircularProgressIndicator(
-                              strokeWidth: 2.6,
+                              strokeWidth: 2,
                               color: Colors.white,
                             ),
                           ),
-                          const SizedBox(height: 10),
+                          SizedBox(width: 12),
                           Text(
-                            _isSaving
-                                ? '사진 저장 중...'
-                                : _isPreparingImage
-                                    ? '사진 준비 중...'
-                                    : '미리보기 적용 중...',
-                            style: const TextStyle(
+                            '불러오는 중…',
+                            style: TextStyle(
                               color: Colors.white,
-                              fontSize: 13,
+                              fontSize: 14,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -681,34 +653,180 @@ class _EditorScreenState extends State<EditorScreen> {
                 ),
             ],
           ),
+        ),
+      );
+    }
+
+    // 사진이 있을 때: 사진 비율에 맞춰 카드 크기 동적 조정
+    final aspect = _imageAspectRatio ?? 1.0;
+
+    return GestureDetector(
+      onLongPressStart: (_) {
+        setState(() => _showOriginalPreview = true);
+      },
+      onLongPressEnd: (_) {
+        if (_showOriginalPreview) {
+          setState(() => _showOriginalPreview = false);
+        }
+      },
+      child: Center(
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.06),
+                blurRadius: 16,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              // 사용 가능한 영역 내에서 사진 비율에 맞는 최대 크기 계산
+              double w = constraints.maxWidth;
+              double h = w / aspect;
+              if (h > constraints.maxHeight) {
+                h = constraints.maxHeight;
+                w = h * aspect;
+              }
+
+              return SizedBox(
+                width: w,
+                height: h,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    // 사진 영역
+                    if (_comparisonMode &&
+                        _originalPreviewSourceBytes != null)
+                      ComparisonView(
+                        originalBytes: _originalPreviewSourceBytes!,
+                        editedBytes:
+                            _previewBytes ?? _previewSourceBytes!,
+                        width: w,
+                        height: h,
+                      )
+                    else
+                      InteractiveViewer(
+                        transformationController: _zoomController,
+                        minScale: 0.5,
+                        maxScale: 8.0,
+                        panEnabled: true,
+                        scaleEnabled: true,
+                        onInteractionUpdate: (details) {
+                          final zoom = _zoomController.value
+                              .getMaxScaleOnAxis();
+                          if ((zoom - _currentZoom).abs() > 0.01) {
+                            setState(() => _currentZoom = zoom);
+                          }
+                        },
+                        onInteractionEnd: (_) {
+                          setState(() {
+                            _currentZoom = _zoomController.value
+                                .getMaxScaleOnAxis();
+                          });
+                        },
+                        child: Image.memory(
+                          _showOriginalPreview
+                              ? _previewSourceBytes!
+                              : (_previewBytes ?? _previewSourceBytes!),
+                          fit: BoxFit.cover,
+                          gaplessPlayback: true,
+                        ),
+                      ),
+
+                    // 줌 인디케이터
+                    if (!_comparisonMode)
+                      Positioned(
+                        left: 12,
+                        bottom: 12,
+                        child: _ZoomBadge(
+                          zoom: _currentZoom,
+                          onReset:
+                              _currentZoom != 1.0 ? _resetZoom : null,
+                        ),
+                      ),
+
+                    // 로딩
+                    if (_isRenderingPreview || _isSaving)
+                      Container(
+                        color: Colors.black.withValues(alpha: 0.25),
+                        child: Center(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 20, vertical: 16),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.7),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.5,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                Text(
+                                  _isSaving
+                                      ? '저장 중...'
+                                      : '미리보기 적용 중...',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
       ),
     );
   }
 
-  // ── 하단 고정 패널 ──
+  // ── 하단 패널 ──
 
   Widget _buildBottomPanel(double bottomPadding) {
     final activeValue = _valueOf(_activeAdjustment);
 
     return Container(
-      padding: EdgeInsets.fromLTRB(18, 6, 18, bottomPadding > 0 ? 4 : 10),
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        border: Border(top: BorderSide(color: AppColors.border)),
+      padding: EdgeInsets.fromLTRB(16, 10, 16, bottomPadding > 0 ? 4 : 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, -2),
+          ),
+        ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // 액션 아이콘 바
           _buildActionBar(),
-          const SizedBox(height: 8),
-          // 슬라이더
-          _buildCompactSlider(activeValue),
-          const SizedBox(height: 8),
-          // 탭 전환: 조절 / 필터
+          const SizedBox(height: 10),
+          _buildSlider(activeValue),
+          const SizedBox(height: 10),
           _buildTabBar(),
           const SizedBox(height: 8),
-          // 탭 내용
           _showPresets ? _buildPresetStrip() : _buildToolStrip(),
         ],
       ),
@@ -721,47 +839,46 @@ class _EditorScreenState extends State<EditorScreen> {
       child: ListView(
         scrollDirection: Axis.horizontal,
         children: [
-          _ActionBarButton(
+          _ActionChip(
             icon: Icons.photo_library_outlined,
             label: _selectedImagePath == null ? '사진' : '바꾸기',
             onTap: _pickImage,
           ),
           if (_hasImage) ...[
             const SizedBox(width: 8),
-            _ActionBarButton(
-              icon: Icons.crop,
-              label: '자르기',
-              onTap: _openCropScreen,
-            ),
+            _ActionChip(
+                icon: Icons.crop_rounded,
+                label: '자르기',
+                onTap: _openCropScreen),
             const SizedBox(width: 8),
-            _ActionBarButton(
-              icon: Icons.rotate_right,
-              label: '회전',
-              onTap: _rotateImage,
-            ),
+            _ActionChip(
+                icon: Icons.rotate_right_rounded,
+                label: '회전',
+                onTap: _rotateImage),
             const SizedBox(width: 8),
-            _ActionBarButton(
-              icon: Icons.flip,
-              label: '뒤집기',
-              onTap: _flipImage,
-            ),
+            _ActionChip(
+                icon: Icons.flip_rounded,
+                label: '뒤집기',
+                onTap: _flipImage),
             const SizedBox(width: 8),
-            _ActionBarButton(
-              icon: Icons.auto_awesome,
-              label: 'AI',
-              onTap: _showAiEditSheet,
-            ),
+            _ActionChip(
+                icon: Icons.auto_awesome_rounded,
+                label: 'AI',
+                onTap: _showAiEditSheet),
             if (_hasAnyEdit) ...[
               const SizedBox(width: 8),
-              _ActionBarButton(
-                icon: _comparisonMode ? Icons.compare : Icons.compare_outlined,
+              _ActionChip(
+                icon: _comparisonMode
+                    ? Icons.compare_rounded
+                    : Icons.compare_outlined,
                 label: '비교',
-                onTap: () => setState(() => _comparisonMode = !_comparisonMode),
+                onTap: () =>
+                    setState(() => _comparisonMode = !_comparisonMode),
                 active: _comparisonMode,
               ),
               const SizedBox(width: 8),
-              _ActionBarButton(
-                icon: Icons.restart_alt,
+              _ActionChip(
+                icon: Icons.restart_alt_rounded,
                 label: '초기화',
                 onTap: _resetEverything,
               ),
@@ -772,31 +889,32 @@ class _EditorScreenState extends State<EditorScreen> {
     );
   }
 
-  Widget _buildCompactSlider(double activeValue) {
+  Widget _buildSlider(double activeValue) {
     return Row(
       children: [
-        Icon(_activeAdjustment.icon, size: 18, color: AppColors.primaryText),
+        Icon(_activeAdjustment.icon, size: 16, color: _kDark),
         const SizedBox(width: 6),
         SizedBox(
-          width: 32,
+          width: 28,
           child: Text(
             _activeAdjustment.shortLabel,
             style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w700,
-              color: AppColors.primaryText,
+              color: _kDark,
             ),
           ),
         ),
         Expanded(
           child: SliderTheme(
             data: SliderTheme.of(context).copyWith(
-              activeTrackColor: AppColors.primaryText,
-              inactiveTrackColor: AppColors.track,
+              activeTrackColor: _kBlue,
+              inactiveTrackColor: _kGrey100,
               thumbColor: Colors.white,
-              overlayColor: Colors.transparent,
+              overlayColor: _kBlue.withValues(alpha: 0.08),
               trackHeight: 3,
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+              thumbShape:
+                  const RoundSliderThumbShape(enabledThumbRadius: 7),
             ),
             child: Slider(
               min: -100,
@@ -809,22 +927,23 @@ class _EditorScreenState extends State<EditorScreen> {
           ),
         ),
         SizedBox(
-          width: 32,
+          width: 30,
           child: Text(
             activeValue.round().toString(),
             textAlign: TextAlign.right,
             style: const TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w700,
-              color: AppColors.primaryText,
+              color: _kDark,
             ),
           ),
         ),
         if (activeValue != 0) ...[
-          const SizedBox(width: 6),
+          const SizedBox(width: 4),
           GestureDetector(
             onTap: _resetActiveAdjustment,
-            child: const Icon(Icons.refresh, size: 16, color: AppColors.secondaryText),
+            child:
+                const Icon(Icons.refresh_rounded, size: 16, color: _kGrey400),
           ),
         ],
       ],
@@ -834,13 +953,13 @@ class _EditorScreenState extends State<EditorScreen> {
   Widget _buildTabBar() {
     return Row(
       children: [
-        _TabButton(
+        _TabChip(
           label: '조절',
           selected: !_showPresets,
           onTap: () => setState(() => _showPresets = false),
         ),
         const SizedBox(width: 8),
-        _TabButton(
+        _TabChip(
           label: '필터',
           selected: _showPresets,
           onTap: () => setState(() => _showPresets = true),
@@ -859,11 +978,11 @@ class _EditorScreenState extends State<EditorScreen> {
 
   Widget _buildToolStrip() {
     return SizedBox(
-      height: 38,
+      height: 40,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: EditorAdjustment.values.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
           final adjustment = EditorAdjustment.values[index];
           final selected = adjustment == _activeAdjustment;
@@ -871,15 +990,12 @@ class _EditorScreenState extends State<EditorScreen> {
 
           return GestureDetector(
             onTap: () => setState(() => _activeAdjustment = adjustment),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: selected ? AppColors.primaryText : AppColors.soft,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: selected ? AppColors.primaryText : AppColors.border,
-                ),
+                color: selected ? _kDark : _kGrey100,
+                borderRadius: BorderRadius.circular(10),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -887,15 +1003,15 @@ class _EditorScreenState extends State<EditorScreen> {
                   Icon(
                     adjustment.icon,
                     size: 14,
-                    color: selected ? Colors.white : AppColors.primaryText,
+                    color: selected ? Colors.white : _kDark,
                   ),
                   const SizedBox(width: 6),
                   Text(
                     '${adjustment.shortLabel} $value',
                     style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: selected ? Colors.white : AppColors.primaryText,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: selected ? Colors.white : _kDark,
                     ),
                   ),
                 ],
@@ -908,46 +1024,93 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 }
 
-class _PlusPlaceholder extends StatelessWidget {
-  const _PlusPlaceholder();
+// ── 빈 상태 플레이스홀더 ──
+class _EmptyPlaceholder extends StatelessWidget {
+  const _EmptyPlaceholder();
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
-      child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: _kGrey100,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Icon(
               Icons.add_photo_alternate_outlined,
-              size: 58,
-              color: AppColors.secondaryText,
+              size: 30,
+              color: _kGrey400,
             ),
-            SizedBox(height: 14),
-            Text(
-              '사진을 추가해 보정을 시작하세요',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: AppColors.primaryText,
-              ),
-              textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            '사진을 추가해 보정을 시작하세요',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: _kDark,
             ),
-          ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            '탭해서 갤러리에서 선택',
+            style: TextStyle(
+              fontSize: 13,
+              color: _kGrey600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── 헤더 아이콘 버튼 ──
+class _HeaderIconBtn extends StatelessWidget {
+  final IconData icon;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  const _HeaderIconBtn({
+    required this.icon,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: enabled ? onTap : null,
+      child: Container(
+        width: 34,
+        height: 34,
+        decoration: BoxDecoration(
+          color: _kGrey100,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Icon(
+          icon,
+          size: 18,
+          color: enabled ? _kDark : _kGrey400,
         ),
       ),
     );
   }
 }
 
-class _ActionBarButton extends StatelessWidget {
+// ── 액션 칩 ──
+class _ActionChip extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
   final bool active;
 
-  const _ActionBarButton({
+  const _ActionChip({
     required this.icon,
     required this.label,
     required this.onTap,
@@ -958,27 +1121,23 @@ class _ActionBarButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
+      child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: active ? AppColors.primaryText : AppColors.soft,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: active ? AppColors.primaryText : AppColors.border,
-          ),
+          color: active ? _kDark : _kGrey100,
+          borderRadius: BorderRadius.circular(10),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 16, color: active ? Colors.white : AppColors.primaryText),
+            Icon(icon, size: 16, color: active ? Colors.white : _kDark),
             const SizedBox(width: 5),
             Text(
               label,
               style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: active ? Colors.white : AppColors.primaryText,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: active ? Colors.white : _kDark,
               ),
             ),
           ],
@@ -988,12 +1147,13 @@ class _ActionBarButton extends StatelessWidget {
   }
 }
 
-class _TabButton extends StatelessWidget {
+// ── 탭 칩 ──
+class _TabChip extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
 
-  const _TabButton({
+  const _TabChip({
     required this.label,
     required this.selected,
     required this.onTap,
@@ -1003,19 +1163,18 @@ class _TabButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
+      child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         decoration: BoxDecoration(
-          color: selected ? AppColors.primaryText : Colors.transparent,
+          color: selected ? _kDark : Colors.transparent,
           borderRadius: BorderRadius.circular(10),
         ),
         child: Text(
           label,
           style: TextStyle(
-            fontSize: 12,
+            fontSize: 13,
             fontWeight: FontWeight.w700,
-            color: selected ? Colors.white : AppColors.secondaryText,
+            color: selected ? Colors.white : _kGrey400,
           ),
         ),
       ),
@@ -1023,68 +1182,38 @@ class _TabButton extends StatelessWidget {
   }
 }
 
-class _CheckerboardPainter extends CustomPainter {
-  static const double _cellSize = 10.0;
-  static const Color _light = Color(0xFFEEF1F5);
-  static const Color _dark = Color(0xFFE4E8EE);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paintLight = Paint()..color = _light;
-    final paintDark = Paint()..color = _dark;
-    final cols = (size.width / _cellSize).ceil();
-    final rows = (size.height / _cellSize).ceil();
-
-    for (int row = 0; row < rows; row++) {
-      for (int col = 0; col < cols; col++) {
-        final rect = Rect.fromLTWH(
-          col * _cellSize,
-          row * _cellSize,
-          _cellSize,
-          _cellSize,
-        );
-        canvas.drawRect(rect, (row + col).isEven ? paintLight : paintDark);
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class _ZoomIndicator extends StatelessWidget {
+// ── 줌 뱃지 ──
+class _ZoomBadge extends StatelessWidget {
   final double zoom;
   final VoidCallback? onReset;
 
-  const _ZoomIndicator({required this.zoom, this.onReset});
+  const _ZoomBadge({required this.zoom, this.onReset});
 
   @override
   Widget build(BuildContext context) {
-    final label = '${(zoom * 100).round()}%';
     return GestureDetector(
       onTap: onReset,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
+      child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
-          color: AppColors.surface,
+          color: Colors.black.withValues(alpha: 0.55),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: AppColors.border),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              label,
+              '${(zoom * 100).round()}%',
               style: const TextStyle(
-                color: AppColors.primaryText,
+                color: Colors.white,
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
               ),
             ),
             if (onReset != null) ...[
               const SizedBox(width: 4),
-              const Icon(Icons.refresh, size: 12, color: AppColors.secondaryText),
+              const Icon(Icons.refresh_rounded,
+                  size: 12, color: Colors.white70),
             ],
           ],
         ),
@@ -1093,6 +1222,7 @@ class _ZoomIndicator extends StatelessWidget {
   }
 }
 
+// ── AI 편집 시트 ──
 class _AiEditSheet extends StatefulWidget {
   final Future<void> Function(String prompt) onGenerate;
 
@@ -1130,7 +1260,7 @@ class _AiEditSheetState extends State<_AiEditSheet> {
       padding: EdgeInsets.fromLTRB(20, 16, 20, 24 + bottomPadding),
       decoration: const BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1142,7 +1272,7 @@ class _AiEditSheetState extends State<_AiEditSheet> {
               height: 4,
               margin: const EdgeInsets.only(bottom: 20),
               decoration: BoxDecoration(
-                color: AppColors.border,
+                color: _kGrey100,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -1150,25 +1280,35 @@ class _AiEditSheetState extends State<_AiEditSheet> {
           Row(
             children: [
               Container(
-                width: 38,
-                height: 38,
+                width: 40,
+                height: 40,
                 decoration: BoxDecoration(
-                  color: AppColors.soft,
+                  color: const Color(0xFFFFF4E6),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(
-                  Icons.auto_awesome,
+                  Icons.auto_awesome_rounded,
                   size: 20,
-                  color: AppColors.primaryText,
+                  color: Color(0xFFF59E0B),
                 ),
               ),
               const SizedBox(width: 12),
-              Column(
+              const Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('AI 이미지 편집', style: AppTextStyles.title16),
-                  const SizedBox(height: 2),
-                  Text('원하는 수정사항을 입력하세요', style: AppTextStyles.caption12),
+                  Text(
+                    'AI 이미지 편집',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: _kDark,
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    '원하는 수정사항을 입력하세요',
+                    style: TextStyle(fontSize: 13, color: _kGrey600),
+                  ),
                 ],
               ),
             ],
@@ -1181,56 +1321,46 @@ class _AiEditSheetState extends State<_AiEditSheet> {
             enabled: !_isLoading,
             decoration: InputDecoration(
               hintText: '예: 배경을 노을로 바꿔줘',
-              hintStyle: const TextStyle(
-                color: AppColors.lightText,
-                fontSize: 14,
-              ),
+              hintStyle: const TextStyle(color: _kGrey400, fontSize: 14),
               filled: true,
-              fillColor: AppColors.soft,
+              fillColor: _kGrey100,
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(14),
                 borderSide: BorderSide.none,
               ),
               contentPadding: const EdgeInsets.all(16),
             ),
           ),
           const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: TextButton(
-              onPressed: canSubmit
-                  ? () async {
-                      final navigator = Navigator.of(context);
-                      final messenger = ScaffoldMessenger.of(context);
-                      setState(() {
-                        _isLoading = true;
-                      });
-                      try {
-                        await widget.onGenerate(_controller.text.trim());
-                        if (mounted) navigator.pop();
-                      } catch (_) {
-                        if (!mounted) return;
-                        setState(() {
-                          _isLoading = false;
-                        });
-                        messenger.showSnackBar(
-                          const SnackBar(
-                            content: Text('이미지 생성에 실패했어요. 다시 시도해주세요.'),
-                          ),
-                        );
-                      }
+          GestureDetector(
+            onTap: canSubmit
+                ? () async {
+                    final navigator = Navigator.of(context);
+                    final messenger = ScaffoldMessenger.of(context);
+                    setState(() => _isLoading = true);
+                    try {
+                      await widget.onGenerate(_controller.text.trim());
+                      if (mounted) navigator.pop();
+                    } catch (_) {
+                      if (!mounted) return;
+                      setState(() => _isLoading = false);
+                      messenger.showSnackBar(
+                        const SnackBar(
+                          content:
+                              Text('이미지 생성에 실패했어요. 다시 시도해주세요.'),
+                        ),
+                      );
                     }
-                  : null,
-              style: TextButton.styleFrom(
-                backgroundColor: AppColors.buttonDark,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                disabledBackgroundColor: AppColors.soft,
-                disabledForegroundColor: AppColors.secondaryText,
+                  }
+                : null,
+            child: Container(
+              width: double.infinity,
+              height: 52,
+              decoration: BoxDecoration(
+                color: canSubmit ? _kBlue : _kGrey100,
+                borderRadius: BorderRadius.circular(14),
               ),
+              alignment: Alignment.center,
               child: _isLoading
                   ? const SizedBox(
                       width: 20,
@@ -1240,11 +1370,12 @@ class _AiEditSheetState extends State<_AiEditSheet> {
                         color: Colors.white,
                       ),
                     )
-                  : const Text(
-                      '재생성',
+                  : Text(
+                      '생성하기',
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
+                        color: canSubmit ? Colors.white : _kGrey400,
                       ),
                     ),
             ),

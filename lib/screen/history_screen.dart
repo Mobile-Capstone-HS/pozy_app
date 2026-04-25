@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../firebase/history_service.dart';
-import '../theme/app_colors.dart';
-import '../widget/app_top_bar.dart';
 import 'history_detail_screen.dart';
 
-const _kBlue = Color(0xFF64B5F6);
+const _kBg = Color(0xFFF7F8FB);
+const _kBlue = Color(0xFF3182F6);
+const _kDark = Color(0xFF191F28);
+const _kGrey600 = Color(0xFF6B7684);
+const _kGrey400 = Color(0xFFB0B8C1);
+const _kGrey100 = Color(0xFFF2F4F6);
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -52,12 +55,18 @@ class _HistoryScreenState extends State<HistoryScreen> {
       context: context,
       builder: (_) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: const Text('기록 삭제', style: TextStyle(fontWeight: FontWeight.w800)),
-        content: Text('선택한 ${ids.length}개의 기록을 삭제할까요?'),
+        title: const Text(
+          '기록 삭제',
+          style: TextStyle(fontWeight: FontWeight.w800, color: _kDark),
+        ),
+        content: Text(
+          '선택한 ${ids.length}개의 기록을 삭제할까요?',
+          style: const TextStyle(color: _kGrey600),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('취소'),
+            child: const Text('취소', style: TextStyle(color: _kGrey600)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
@@ -76,37 +85,84 @@ class _HistoryScreenState extends State<HistoryScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F8FB),
+      backgroundColor: _kBg,
       body: SafeArea(
         child: Column(
           children: [
+            // ── 헤더 ──
             Padding(
-              padding: const EdgeInsets.fromLTRB(18, 10, 18, 0),
-              child: AppTopBar(
-                title: _selectMode
-                    ? (_hasSelection ? '${_selected.length}개 선택됨' : '삭제할 기록 선택')
-                    : '분석 히스토리',
-                leadingIcon:
-                    _selectMode ? Icons.close_rounded : Icons.arrow_back_ios_new_rounded,
-                onLeadingTap:
-                    _selectMode ? _cancelSelect : () => Navigator.of(context).pop(),
-                trailing: _TopBarIconButton(
-                  icon: _selectMode ? Icons.delete_rounded : Icons.delete_outline_rounded,
-                  onTap: _selectMode
-                      ? (_hasSelection ? _deleteSelected : null)
-                      : _enterSelectMode,
-                  foregroundColor: Colors.red,
-                  backgroundColor: Colors.red.withValues(
-                    alpha: _selectMode
-                        ? (_hasSelection ? 0.12 : 0.05)
-                        : 0.08,
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+              child: Row(
+                children: [
+                  GestureDetector(
+                    onTap: _selectMode
+                        ? _cancelSelect
+                        : () => Navigator.of(context).pop(),
+                    child: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: _kGrey100,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        _selectMode
+                            ? Icons.close_rounded
+                            : Icons.arrow_back_ios_new_rounded,
+                        size: 18,
+                        color: _kDark,
+                      ),
+                    ),
                   ),
-                  borderColor:
-                      _selectMode && !_hasSelection ? Colors.red.withValues(alpha: 0.08) : null,
-                ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Text(
+                      _selectMode
+                          ? (_hasSelection
+                              ? '${_selected.length}개 선택됨'
+                              : '삭제할 기록 선택')
+                          : '분석 히스토리',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: _kDark,
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: _selectMode
+                        ? (_hasSelection ? _deleteSelected : null)
+                        : _enterSelectMode,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: _selectMode && _hasSelection
+                            ? Colors.red.withValues(alpha: 0.1)
+                            : _kGrey100,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        _selectMode
+                            ? Icons.delete_rounded
+                            : Icons.delete_outline_rounded,
+                        size: 20,
+                        color: _selectMode
+                            ? (_hasSelection
+                                ? Colors.red
+                                : Colors.red.withValues(alpha: 0.35))
+                            : _kGrey600,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
+
+            // ── 리스트 ──
             Expanded(
               child: StreamBuilder<List<HistoryEntry>>(
                 stream: HistoryService.instance.watchHistory(),
@@ -130,44 +186,36 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   final rest = items.where((e) => !e.pinned).toList();
 
                   return ListView(
-                    padding: const EdgeInsets.fromLTRB(18, 4, 18, 24),
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                     children: [
                       if (pinned.isNotEmpty) ...[
-                        _SectionLabel(label: '고정됨', icon: Icons.push_pin_rounded),
-                        const SizedBox(height: 8),
-                        ...pinned.map((e) => Padding(
-                              padding: const EdgeInsets.only(bottom: 10),
-                              child: _HistoryCard(
-                                entry: e,
-                                selected: _selected.contains(e.id),
-                                selectMode: _selectMode,
-                                onTap: () => _selectMode
-                                    ? _toggleSelect(e.id)
-                                    : Navigator.of(context).push(MaterialPageRoute<void>(
-                                        builder: (_) => HistoryDetailScreen(entry: e),
-                                      )),
-                                onPin: () => HistoryService.instance.togglePin(e.id, e.pinned),
-                              ),
-                            )),
-                        const SizedBox(height: 4),
+                        const _SectionLabel(
+                          label: '고정됨',
+                          icon: Icons.push_pin_rounded,
+                        ),
+                        const SizedBox(height: 10),
+                        _HistoryCardGroup(
+                          entries: pinned,
+                          selected: _selected,
+                          selectMode: _selectMode,
+                          onTap: _onCardTap,
+                          onPin: _onPin,
+                        ),
+                        const SizedBox(height: 20),
                       ],
                       if (rest.isNotEmpty) ...[
-                        _SectionLabel(label: '전체 기록', icon: Icons.history_rounded),
-                        const SizedBox(height: 8),
-                        ...rest.map((e) => Padding(
-                              padding: const EdgeInsets.only(bottom: 10),
-                              child: _HistoryCard(
-                                entry: e,
-                                selected: _selected.contains(e.id),
-                                selectMode: _selectMode,
-                                onTap: () => _selectMode
-                                    ? _toggleSelect(e.id)
-                                    : Navigator.of(context).push(MaterialPageRoute<void>(
-                                        builder: (_) => HistoryDetailScreen(entry: e),
-                                      )),
-                                onPin: () => HistoryService.instance.togglePin(e.id, e.pinned),
-                              ),
-                            )),
+                        const _SectionLabel(
+                          label: '전체 기록',
+                          icon: Icons.history_rounded,
+                        ),
+                        const SizedBox(height: 10),
+                        _HistoryCardGroup(
+                          entries: rest,
+                          selected: _selected,
+                          selectMode: _selectMode,
+                          onTap: _onCardTap,
+                          onPin: _onPin,
+                        ),
                       ],
                     ],
                   );
@@ -179,49 +227,25 @@ class _HistoryScreenState extends State<HistoryScreen> {
       ),
     );
   }
-}
 
-class _TopBarIconButton extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback? onTap;
-  final Color foregroundColor;
-  final Color backgroundColor;
-  final Color? borderColor;
-
-  const _TopBarIconButton({
-    required this.icon,
-    required this.onTap,
-    required this.foregroundColor,
-    required this.backgroundColor,
-    this.borderColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          color: backgroundColor,
-          borderRadius: BorderRadius.circular(10),
-          border: borderColor == null ? null : Border.all(color: borderColor!),
+  void _onCardTap(HistoryEntry e) {
+    if (_selectMode) {
+      _toggleSelect(e.id);
+    } else {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => HistoryDetailScreen(entry: e),
         ),
-        child: Icon(
-          icon,
-          size: 20,
-          color: onTap == null
-              ? foregroundColor.withValues(alpha: 0.35)
-              : foregroundColor,
-        ),
-      ),
-    );
+      );
+    }
+  }
+
+  void _onPin(HistoryEntry e) {
+    HistoryService.instance.togglePin(e.id, e.pinned);
   }
 }
 
-// ── 섹션 라벨 ─────────────────────────────────────────────
+// ── 섹션 라벨 ──
 class _SectionLabel extends StatelessWidget {
   final String label;
   final IconData icon;
@@ -230,24 +254,231 @@ class _SectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, size: 14, color: AppColors.secondaryText),
-        const SizedBox(width: 5),
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-            color: AppColors.secondaryText,
+    return Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 14, color: _kGrey400),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: _kGrey600,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
 
-// ── 빈 상태 ───────────────────────────────────────────────
+// ── 카드 그룹 (하나의 흰색 카드 안에 리스트) ──
+class _HistoryCardGroup extends StatelessWidget {
+  final List<HistoryEntry> entries;
+  final Set<String> selected;
+  final bool selectMode;
+  final ValueChanged<HistoryEntry> onTap;
+  final ValueChanged<HistoryEntry> onPin;
+
+  const _HistoryCardGroup({
+    required this.entries,
+    required this.selected,
+    required this.selectMode,
+    required this.onTap,
+    required this.onPin,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: Column(
+          children: [
+            for (int i = 0; i < entries.length; i++) ...[
+              if (i > 0)
+                const Divider(height: 1, indent: 68, color: _kGrey100),
+              _HistoryTile(
+                entry: entries[i],
+                selected: selected.contains(entries[i].id),
+                selectMode: selectMode,
+                onTap: () => onTap(entries[i]),
+                onPin: () => onPin(entries[i]),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── 히스토리 타일 (카드 내 개별 행) ──
+class _HistoryTile extends StatelessWidget {
+  final HistoryEntry entry;
+  final bool selected;
+  final bool selectMode;
+  final VoidCallback onTap;
+  final VoidCallback onPin;
+
+  const _HistoryTile({
+    required this.entry,
+    required this.selected,
+    required this.selectMode,
+    required this.onTap,
+    required this.onPin,
+  });
+
+  IconData get _icon => entry.type == HistoryType.acut
+      ? Icons.content_cut_rounded
+      : Icons.auto_awesome_rounded;
+
+  Color get _iconBg => entry.type == HistoryType.acut
+      ? const Color(0xFFEBF4FF)
+      : const Color(0xFFFFF4E6);
+
+  Color get _iconColor => entry.type == HistoryType.acut
+      ? _kBlue
+      : const Color(0xFFF59E0B);
+
+  String get _dateLabel {
+    final d = entry.analyzedAt;
+    return '${d.month}/${d.day} ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        color: selected ? _kBlue.withValues(alpha: 0.06) : Colors.white,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            // 선택 모드 체크박스
+            if (selectMode)
+              Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  width: 22,
+                  height: 22,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: selected ? _kBlue : Colors.transparent,
+                    border: Border.all(
+                      color: selected ? _kBlue : _kGrey400,
+                      width: 1.5,
+                    ),
+                  ),
+                  child: selected
+                      ? const Icon(Icons.check, size: 14, color: Colors.white)
+                      : null,
+                ),
+              ),
+
+            // 타입 아이콘
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: _iconBg,
+                borderRadius: BorderRadius.circular(13),
+              ),
+              child: Icon(_icon, color: _iconColor, size: 20),
+            ),
+            const SizedBox(width: 14),
+
+            // 텍스트
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          entry.typeLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: _kDark,
+                          ),
+                        ),
+                      ),
+                      if (entry.pinned) ...[
+                        const SizedBox(width: 5),
+                        const Icon(
+                          Icons.push_pin_rounded,
+                          size: 13,
+                          color: _kBlue,
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    entry.subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: _kGrey600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+
+            // 핀 + 날짜
+            if (!selectMode)
+              GestureDetector(
+                onTap: onPin,
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: Icon(
+                    entry.pinned
+                        ? Icons.push_pin_rounded
+                        : Icons.push_pin_outlined,
+                    size: 18,
+                    color: entry.pinned ? _kBlue : _kGrey400,
+                  ),
+                ),
+              ),
+            const SizedBox(width: 4),
+            Text(
+              _dateLabel,
+              style: const TextStyle(
+                fontSize: 12,
+                color: _kGrey400,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── 빈 상태 ──
 class _EmptyState extends StatelessWidget {
   const _EmptyState();
 
@@ -263,10 +494,14 @@ class _EmptyState extends StatelessWidget {
               width: 72,
               height: 72,
               decoration: BoxDecoration(
-                color: _kBlue.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
+                color: _kGrey100,
+                borderRadius: BorderRadius.circular(22),
               ),
-              child: const Icon(Icons.history_rounded, size: 34, color: _kBlue),
+              child: const Icon(
+                Icons.history_rounded,
+                size: 32,
+                color: _kGrey400,
+              ),
             ),
             const SizedBox(height: 20),
             const Text(
@@ -274,7 +509,7 @@ class _EmptyState extends StatelessWidget {
               style: TextStyle(
                 fontSize: 17,
                 fontWeight: FontWeight.w800,
-                color: AppColors.primaryText,
+                color: _kDark,
               ),
             ),
             const SizedBox(height: 8),
@@ -282,149 +517,9 @@ class _EmptyState extends StatelessWidget {
               '갤러리에서 사진을 선택하거나\n카메라로 촬영 후 분석하면 기록이 쌓여요.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize: 13,
+                fontSize: 14,
                 height: 1.6,
-                color: AppColors.secondaryText,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── 히스토리 카드 ─────────────────────────────────────────
-class _HistoryCard extends StatelessWidget {
-  final HistoryEntry entry;
-  final bool selected;
-  final bool selectMode;
-  final VoidCallback onTap;
-  final VoidCallback onPin;
-
-  const _HistoryCard({
-    required this.entry,
-    required this.selected,
-    required this.selectMode,
-    required this.onTap,
-    required this.onPin,
-  });
-
-  IconData get _icon => entry.type == HistoryType.acut
-      ? Icons.content_cut_rounded
-      : Icons.auto_awesome_rounded;
-
-  String get _dateLabel {
-    final d = entry.analyzedAt;
-    return '${d.month}/${d.day} ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: selected ? _kBlue.withValues(alpha: 0.08) : Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: selected ? _kBlue : Colors.transparent,
-            width: 1.5,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            if (selectMode)
-              Padding(
-                padding: const EdgeInsets.only(right: 10),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 150),
-                  width: 22,
-                  height: 22,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: selected ? _kBlue : Colors.transparent,
-                    border: Border.all(
-                      color: selected ? _kBlue : AppColors.lightText,
-                      width: 1.5,
-                    ),
-                  ),
-                  child: selected
-                      ? const Icon(Icons.check, size: 14, color: Colors.white)
-                      : null,
-                ),
-              ),
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: _kBlue.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(_icon, color: _kBlue, size: 20),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        entry.typeLabel,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.primaryText,
-                        ),
-                      ),
-                      if (entry.pinned) ...[
-                        const SizedBox(width: 5),
-                        const Icon(Icons.push_pin_rounded, size: 13, color: _kBlue),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    entry.subtitle,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.secondaryText,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 6),
-            if (!selectMode) ...[
-              GestureDetector(
-                onTap: onPin,
-                child: Padding(
-                  padding: const EdgeInsets.all(6),
-                  child: Icon(
-                    entry.pinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
-                    size: 18,
-                    color: entry.pinned ? _kBlue : AppColors.lightText,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 2),
-            ],
-            Text(
-              _dateLabel,
-              style: const TextStyle(
-                fontSize: 11,
-                color: AppColors.lightText,
-                fontWeight: FontWeight.w600,
+                color: _kGrey600,
               ),
             ),
           ],

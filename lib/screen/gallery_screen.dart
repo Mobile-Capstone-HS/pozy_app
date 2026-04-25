@@ -8,8 +8,14 @@ import '../theme/app_text_styles.dart';
 class GalleryScreen extends StatefulWidget {
   final ValueChanged<int> onMoveTab;
   final void Function(Future<Uint8List?> future)? onOpenInEditor;
+  final String? focusAssetId;
 
-  const GalleryScreen({super.key, required this.onMoveTab, this.onOpenInEditor});
+  const GalleryScreen({
+    super.key,
+    required this.onMoveTab,
+    this.onOpenInEditor,
+    this.focusAssetId,
+  });
 
   @override
   State<GalleryScreen> createState() => _GalleryScreenState();
@@ -24,6 +30,9 @@ class _GalleryScreenState extends State<GalleryScreen> {
   List<AssetPathEntity> _albums = [];
   AssetPathEntity? _selectedAlbum;
   List<AssetEntity> _photos = [];
+  bool _focusHandled = false;
+
+  final Map<String, Future<Uint8List?>> _thumbCache = {};
 
   @override
   void initState() {
@@ -96,6 +105,8 @@ class _GalleryScreenState extends State<GalleryScreen> {
         _photos = photos;
         _errorMessage = null;
       });
+
+      _tryAutoOpenFocusAsset();
     } catch (e) {
       debugPrint('앨범 로드 에러: $e');
 
@@ -131,6 +142,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
   Future<void> _selectAlbum(AssetPathEntity album) async {
     if (_selectedAlbum?.id == album.id) return;
 
+    _thumbCache.clear();
     setState(() {
       _loading = true;
       _selectedAlbum = album;
@@ -157,13 +169,39 @@ class _GalleryScreenState extends State<GalleryScreen> {
     }
   }
 
-  Future<Uint8List?> _thumb(AssetEntity asset) async {
-    try {
-      return await asset.thumbnailDataWithSize(const ThumbnailSize(500, 500));
-    } catch (e) {
-      debugPrint('썸네일 생성 에러: $e');
-      return null;
-    }
+  void _tryAutoOpenFocusAsset() {
+    final focusId = widget.focusAssetId;
+    if (focusId == null || _focusHandled || _photos.isEmpty) return;
+    _focusHandled = true;
+
+    final index = _photos.indexWhere((a) => a.id == focusId);
+    if (index < 0) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => _PhotoDetailPage(
+            photos: _photos,
+            initialIndex: index,
+            onPhotoDeleted: _handlePhotoDeleted,
+            onOpenInEditor: widget.onOpenInEditor,
+          ),
+        ),
+      );
+    });
+  }
+
+  Future<Uint8List?> _thumb(AssetEntity asset) {
+    return _thumbCache.putIfAbsent(asset.id, () async {
+      try {
+        return await asset.thumbnailDataWithSize(const ThumbnailSize(500, 500));
+      } catch (e) {
+        debugPrint('썸네일 생성 에러: $e');
+        return null;
+      }
+    });
   }
 
   String _albumLabel(AssetPathEntity album) {
@@ -228,7 +266,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
                               children: [
                                 Expanded(
                                   child: Text(
-                                    _albumLabel(_selectedAlbum!).toUpperCase(),
+                                    _albumLabel(_selectedAlbum!),
                                     style: const TextStyle(
                                       fontSize: 18,
                                       fontWeight: FontWeight.w800,
@@ -488,7 +526,7 @@ class _PermissionView extends StatelessWidget {
                       ),
                     ),
                     child: Text(
-                      'Open Settings',
+                      '설정에서 권한 허용',
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
@@ -652,7 +690,7 @@ class _PhotoDetailPageState extends State<_PhotoDetailPage> {
     }
   }
 
-  Future<void> _deleteCurrentPhoto() async {
+Future<void> _deleteCurrentPhoto() async {
     final asset = widget.photos[_currentIndex];
 
     final confirm = await showDialog<bool>(
@@ -819,7 +857,7 @@ class _PhotoDetailPageState extends State<_PhotoDetailPage> {
                       label: '정보',
                       onTap: _showPhotoInfo,
                     ),
-                    _ActionButton(
+_ActionButton(
                       icon: Icons.edit_outlined,
                       label: '편집',
                       onTap: _openInEditor,

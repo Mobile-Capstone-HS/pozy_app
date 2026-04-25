@@ -56,13 +56,16 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  // 앱 세션 내에서 1회만 API 호출 — 탭 전환 시 재로딩 없음
+  static _HomeData? _cache;
+
   final _api = TourApiService();
   late Future<_HomeData> _dataFuture;
 
   @override
   void initState() {
     super.initState();
-    _dataFuture = _loadData();
+    _dataFuture = _cache != null ? Future.value(_cache) : _loadData();
   }
 
   Future<_HomeData> _loadData() async {
@@ -71,7 +74,12 @@ class _HomeScreenState extends State<HomeScreen> {
       _api.fetchCurrentEvents(count: 8),
     ]);
 
-    return _HomeData(weeklySpots: results[0], events: results[1]);
+    final data = _HomeData(
+      weeklySpots: results[0],
+      events: results[1],
+    );
+    _cache = data;
+    return data;
   }
 
   void _openCamera() {
@@ -120,7 +128,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   if (snapshot.hasError || !snapshot.hasData) {
                     return _ErrorBody(
                       hasApiKey: _api.hasApiKey,
-                      onRetry: () => setState(() => _dataFuture = _loadData()),
+                      onRetry: () => setState(() {
+                          _cache = null;
+                          _dataFuture = _loadData();
+                        }),
                       onMap: () => _openMap(),
                     );
                   }
@@ -160,7 +171,7 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Colors.white,
+      color: const Color(0xFFF6F7FB),
       padding: const EdgeInsets.fromLTRB(16, 8, 12, 8),
       child: Row(
         children: [
@@ -390,7 +401,7 @@ class _Body extends StatelessWidget {
           if (weekly.isNotEmpty) const SizedBox(height: 14),
           if (weekly.length > 1)
             _PlaceSection(
-              title: '지금 사진 찍으러 가기 좋은\n이번 주 추천 스팟 📸',
+              title: '이번 주 사진 찍으러 가기 좋은\n${TourApiService.weeklyAreaName} 추천 스팟 📸',
               places: weekly.skip(1).toList(),
               onMoreTap: onMap,
               onPlaceTap: onPlaceTap,
@@ -914,7 +925,7 @@ class _CTABanner extends StatelessWidget {
                 borderRadius: BorderRadius.circular(20),
               ),
               child: const Text(
-                '지도 보기 >',
+                '스팟 지도 >',
                 style: TextStyle(
                   fontFamily: 'Pretendard',
                   fontSize: 12,

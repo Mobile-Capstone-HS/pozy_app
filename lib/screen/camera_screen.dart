@@ -83,6 +83,9 @@ class _CameraScreenState extends State<CameraScreen> {
   String _guidance = '\uAD6C\uB3C4\uB97C \uC7A1\uB294 \uC911...';
   String? _subGuidance;
   CoachingLevel _coachingLevel = CoachingLevel.caution;
+  double? _coachingScore;
+  DirectionHint _directionHint = DirectionHint.none;
+  LightDirection _lightDirection = LightDirection.unknown;
 
   late ShootingMode _shootingMode;
   Offset? _focusPoint;
@@ -283,6 +286,9 @@ class _CameraScreenState extends State<CameraScreen> {
         _guidance = coaching.guidance;
         _subGuidance = coaching.subGuidance;
         _coachingLevel = coaching.level;
+        _coachingScore = coaching.score;
+        _directionHint = coaching.directionHint;
+        _lightDirection = coaching.lightDirection;
       });
     }
   }
@@ -313,8 +319,17 @@ class _CameraScreenState extends State<CameraScreen> {
     return union > 0 ? inter / union : 0.0;
   }
 
-  static Rect _normalizedRect(YOLOResult det) {
+  Rect _normalizedRect(YOLOResult det) {
     final b = det.normalizedBox;
+    if (_isFrontCamera) {
+      // 전면 카메라: normalizedBox가 미러링 안 된 상태이므로 X 좌표 반전
+      return Rect.fromLTRB(
+        (1.0 - b.right).clamp(0.0, 1.0),
+        b.top.clamp(0.0, 1.0),
+        (1.0 - b.left).clamp(0.0, 1.0),
+        b.bottom.clamp(0.0, 1.0),
+      );
+    }
     return Rect.fromLTRB(
       b.left.clamp(0.0, 1.0),
       b.top.clamp(0.0, 1.0),
@@ -544,6 +559,9 @@ class _CameraScreenState extends State<CameraScreen> {
       guidance: '[Subject] ${coaching.guidance}',
       subGuidance: coaching.subGuidance,
       level: coaching.level,
+      score: coaching.score,
+      directionHint: coaching.directionHint,
+      lightDirection: coaching.lightDirection,
     );
   }
 
@@ -555,22 +573,39 @@ class _CameraScreenState extends State<CameraScreen> {
       _subGuidance =
           '\uD53C\uC0AC\uCCB4\uB97C \uD0ED\uD558\uAC70\uB098 \uADF8 \uC704\uB97C \uB4DC\uB798\uADF8\uD574\uC11C \uB2E4\uC2DC \uACE0\uC815\uD574\uBCF4\uC138\uC694';
       _coachingLevel = CoachingLevel.caution;
+      _coachingScore = null;
+      _directionHint = DirectionHint.none;
+      _lightDirection = LightDirection.unknown;
       _isDrawingRoi = false;
       _roiDragStart = null;
       _roiDragCurrent = null;
     });
   }
 
+  /// 카메라 ROI를 네이티브에 전달할 때 전면 카메라면 X 좌표를 다시 원래로 되돌림
+  void _setNativeLockedRoi(Rect roi) {
+    if (_isFrontCamera) {
+      _cameraController.setLockedRoi(
+        left: 1.0 - roi.right,
+        top: roi.top,
+        right: 1.0 - roi.left,
+        bottom: roi.bottom,
+      );
+    } else {
+      _cameraController.setLockedRoi(
+        left: roi.left,
+        top: roi.top,
+        right: roi.right,
+        bottom: roi.bottom,
+      );
+    }
+  }
+
   void _lockToDetection(YOLOResult detection) {
     final cameraRoi = _normalizedRect(detection);
     final screenRoi = _cameraToScreen(cameraRoi);
 
-    _cameraController.setLockedRoi(
-      left: cameraRoi.left,
-      top: cameraRoi.top,
-      right: cameraRoi.right,
-      bottom: cameraRoi.bottom,
-    );
+    _setNativeLockedRoi(cameraRoi);
     _sceneCoach.reset();
 
     setState(() {
@@ -588,6 +623,9 @@ class _CameraScreenState extends State<CameraScreen> {
       _guidance = '\uAD6C\uB3C4\uB97C \uC7A1\uB294 \uC911...';
       _subGuidance = null;
       _coachingLevel = CoachingLevel.caution;
+      _coachingScore = null;
+      _directionHint = DirectionHint.none;
+      _lightDirection = LightDirection.unknown;
     });
   }
 
@@ -643,7 +681,7 @@ class _CameraScreenState extends State<CameraScreen> {
     if (++_yoloDebugObjFrame % 30 == 1) {
       debugPrint(
         '[YOLO_DEBUG][obj] cb#$_yoloDebugObjFrame results=${results.length} '
-        'mode=${_shootingMode.name} mounted=$mounted',
+        'mode=${_shootingMode.name} mounted=$mounted front=$_isFrontCamera',
       );
     }
     if (!mounted || !_isObjectMode) return;
@@ -673,12 +711,7 @@ class _CameraScreenState extends State<CameraScreen> {
           bestMatch.appearanceSignature,
         );
         _lockedTrackingDetection = bestMatch;
-        _cameraController.setLockedRoi(
-          left: rawBox.left,
-          top: rawBox.top,
-          right: rawBox.right,
-          bottom: rawBox.bottom,
-        );
+        _setNativeLockedRoi(rawBox);
       } else {
         _lockedLostFrames++;
         final holdTrack =
@@ -736,6 +769,9 @@ class _CameraScreenState extends State<CameraScreen> {
           _guidance = coaching!.guidance;
           _subGuidance = coaching.subGuidance;
           _coachingLevel = coaching.level;
+          _coachingScore = coaching.score;
+          _directionHint = coaching.directionHint;
+          _lightDirection = coaching.lightDirection;
         }
         if (roiMoved) _lockedRoi = updatedScreenRoi;
         if (subjectLostBox) _lockedRoi = null;
@@ -823,6 +859,9 @@ class _CameraScreenState extends State<CameraScreen> {
       _guidance = '\uAD6C\uB3C4\uB97C \uC7A1\uB294 \uC911...';
       _subGuidance = null;
       _coachingLevel = CoachingLevel.caution;
+      _coachingScore = null;
+      _directionHint = DirectionHint.none;
+      _lightDirection = LightDirection.unknown;
       _focusPoint = null;
       _showFocusIndicator = false;
       _tiltX = 0.0;
@@ -857,6 +896,9 @@ class _CameraScreenState extends State<CameraScreen> {
       _guidance = '\uAD6C\uB3C4\uB97C \uC7A1\uB294 \uC911...';
       _subGuidance = null;
       _coachingLevel = CoachingLevel.caution;
+      _coachingScore = null;
+      _directionHint = DirectionHint.none;
+      _lightDirection = LightDirection.unknown;
       _focusPoint = null;
       _showFocusIndicator = false;
       _isDrawingRoi = false;
@@ -931,6 +973,9 @@ class _CameraScreenState extends State<CameraScreen> {
       _guidance = '\uAD6C\uB3C4\uB97C \uC7A1\uB294 \uC911...';
       _subGuidance = null;
       _coachingLevel = CoachingLevel.caution;
+      _coachingScore = null;
+      _directionHint = DirectionHint.none;
+      _lightDirection = LightDirection.unknown;
     });
   }
 
@@ -1492,6 +1537,13 @@ class _CameraScreenState extends State<CameraScreen> {
                   level: _isPortraitMode
                       ? _portraitCoachingLevel()
                       : _coachingLevel,
+                  score: _isPortraitMode ? null : _coachingScore,
+                  directionHint: _isPortraitMode
+                      ? DirectionHint.none
+                      : _directionHint,
+                  lightDirection: _isPortraitMode
+                      ? LightDirection.unknown
+                      : _lightDirection,
                 ),
               ),
             ),
