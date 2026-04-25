@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/tour_place.dart';
+import '../screen/settings_screen.dart';
 import '../services/tour_api_service.dart';
 import '../widget/home_bottom_nav.dart';
 import 'camera_screen.dart';
@@ -8,13 +9,41 @@ import 'map_spot_screen.dart';
 
 // ── PlaceTag 배지 정의 ──────────────────────────────────────────
 const _tagInfo = <PlaceTag, ({Color color, IconData icon, String label})>{
-  PlaceTag.nature:       (color: Color(0xFF43A047), icon: Icons.park_outlined,           label: '자연'),
-  PlaceTag.history:      (color: Color(0xFF8D6E63), icon: Icons.account_balance_outlined, label: '역사'),
-  PlaceTag.architecture: (color: Color(0xFFF59E0B), icon: Icons.apartment_outlined,       label: '건축'),
-  PlaceTag.culture:      (color: Color(0xFF5C6BC0), icon: Icons.palette_outlined,         label: '문화'),
-  PlaceTag.leisure:      (color: Color(0xFF00ACC1), icon: Icons.directions_run,            label: '레포츠'),
-  PlaceTag.festival:     (color: Color(0xFFE91E63), icon: Icons.celebration_outlined,     label: '축제'),
-  PlaceTag.landmark:     (color: Color(0xFF607D8B), icon: Icons.place_outlined,           label: '명소'),
+  PlaceTag.nature: (
+    color: Color(0xFF43A047),
+    icon: Icons.park_outlined,
+    label: '자연',
+  ),
+  PlaceTag.history: (
+    color: Color(0xFF8D6E63),
+    icon: Icons.account_balance_outlined,
+    label: '역사',
+  ),
+  PlaceTag.architecture: (
+    color: Color(0xFFF59E0B),
+    icon: Icons.apartment_outlined,
+    label: '건축',
+  ),
+  PlaceTag.culture: (
+    color: Color(0xFF5C6BC0),
+    icon: Icons.palette_outlined,
+    label: '문화',
+  ),
+  PlaceTag.leisure: (
+    color: Color(0xFF00ACC1),
+    icon: Icons.directions_run,
+    label: '레포츠',
+  ),
+  PlaceTag.festival: (
+    color: Color(0xFFE91E63),
+    icon: Icons.celebration_outlined,
+    label: '축제',
+  ),
+  PlaceTag.landmark: (
+    color: Color(0xFF607D8B),
+    icon: Icons.place_outlined,
+    label: '명소',
+  ),
 };
 
 class HomeScreen extends StatefulWidget {
@@ -42,10 +71,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _api.fetchCurrentEvents(count: 8),
     ]);
 
-    return _HomeData(
-      weeklySpots: results[0],
-      events: results[1],
-    );
+    return _HomeData(weeklySpots: results[0], events: results[1]);
   }
 
   void _openCamera() {
@@ -63,11 +89,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _openMap([TourPlace? place]) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => MapSpotScreen(focusPlace: place),
-      ),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => MapSpotScreen(focusPlace: place)));
   }
 
   @override
@@ -78,7 +102,13 @@ class _HomeScreenState extends State<HomeScreen> {
         bottom: false,
         child: Column(
           children: [
-            const _Header(),
+            _Header(
+              onSettingsTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                );
+              },
+            ),
             Expanded(
               child: FutureBuilder<_HomeData>(
                 future: _dataFuture,
@@ -119,14 +149,13 @@ class _HomeData {
   final List<TourPlace> weeklySpots;
   final List<TourPlace> events;
 
-  const _HomeData({
-    required this.weeklySpots,
-    required this.events,
-  });
+  const _HomeData({required this.weeklySpots, required this.events});
 }
 
 class _Header extends StatelessWidget {
-  const _Header();
+  final VoidCallback onSettingsTap;
+
+  const _Header({required this.onSettingsTap});
 
   @override
   Widget build(BuildContext context) {
@@ -141,10 +170,13 @@ class _Header extends StatelessWidget {
             fit: BoxFit.contain,
           ),
           const Spacer(),
-          Icon(
-            Icons.settings_outlined,
-            color: Colors.grey.shade400,
-            size: 22,
+          GestureDetector(
+            onTap: onSettingsTap,
+            child: Icon(
+              Icons.settings_outlined,
+              color: Colors.grey.shade400,
+              size: 22,
+            ),
           ),
         ],
       ),
@@ -252,9 +284,7 @@ class _ErrorBody extends StatelessWidget {
               const Text('📷', style: TextStyle(fontSize: 48)),
               const SizedBox(height: 12),
               Text(
-                hasApiKey
-                    ? '추천 장소를 불러오는 중 문제가 생겼어요'
-                    : '관광 정보 API 키 설정이 필요해요',
+                hasApiKey ? '추천 장소를 불러오는 중 문제가 생겼어요' : '관광 정보 API 키 설정이 필요해요',
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   fontFamily: 'Pretendard',
@@ -419,8 +449,9 @@ class _FeaturedBanner extends StatelessWidget {
                 Image.network(
                   place.photoUrl!,
                   fit: BoxFit.cover,
-                  loadingBuilder: (_, child, progress) =>
-                      progress == null ? child : _PhotoPlaceholder(place: place),
+                  loadingBuilder: (_, child, progress) => progress == null
+                      ? child
+                      : _PhotoPlaceholder(place: place),
                   errorBuilder: (_, _, _) => _PhotoPlaceholder(place: place),
                 )
               else
@@ -643,8 +674,9 @@ class _PlaceCard extends StatelessWidget {
                 Image.network(
                   place.photoUrl!,
                   fit: BoxFit.cover,
-                  loadingBuilder: (_, child, progress) =>
-                      progress == null ? child : _PhotoPlaceholder(place: place),
+                  loadingBuilder: (_, child, progress) => progress == null
+                      ? child
+                      : _PhotoPlaceholder(place: place),
                   errorBuilder: (_, _, _) => _PhotoPlaceholder(place: place),
                 )
               else
@@ -677,7 +709,11 @@ class _PlaceCard extends StatelessWidget {
                     else
                       Row(
                         children: [
-                          const Icon(Icons.place, color: Colors.white70, size: 11),
+                          const Icon(
+                            Icons.place,
+                            color: Colors.white70,
+                            size: 11,
+                          ),
                           const SizedBox(width: 3),
                           Text(
                             regionLabel,
@@ -713,7 +749,6 @@ class _PlaceCard extends StatelessWidget {
     );
   }
 }
-
 
 class _PlaceTagBadge extends StatelessWidget {
   final ({Color color, IconData icon, String label}) tag;
