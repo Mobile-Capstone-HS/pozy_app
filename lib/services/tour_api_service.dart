@@ -34,6 +34,7 @@ class TourApiService {
   ];
 
   String? get _serviceKey => dotenv.env['TOUR_API_KEY'];
+  final Map<String, Future<String?>> _overviewCache = {};
 
   bool get hasApiKey => (_serviceKey ?? '').isNotEmpty;
 
@@ -92,7 +93,7 @@ class TourApiService {
   static String get weekLabel {
     final now = DateTime.now();
     final weekInMonth = ((now.day - 1) / 7).floor() + 1;
-    return '${now.month}월 ${weekInMonth}주차';
+    return '${now.month}월 $weekInMonth주차';
   }
 
   Future<List<TourPlace>> fetchWeeklySpots({int count = 10}) async {
@@ -141,6 +142,7 @@ class TourApiService {
     int pages = 2,
     int rowsPerPage = 40,
     String contentTypeId = '',
+    bool prioritizePhotoSpots = true,
   }) async {
     final normalizedKeywords = <String>{};
     for (final keyword in keywords) {
@@ -179,8 +181,15 @@ class TourApiService {
         }
       }
 
-      final withPhoto = merged.where((place) => place.photoUrl != null).toList();
-      final withoutPhoto = merged.where((place) => place.photoUrl == null).toList();
+      final prioritized = prioritizePhotoSpots
+          ? _prioritizePhotoSpots(merged)
+          : _sortPhotoSpots(merged);
+      final withPhoto = prioritized
+          .where((place) => place.photoUrl != null)
+          .toList();
+      final withoutPhoto = prioritized
+          .where((place) => place.photoUrl == null)
+          .toList();
       return [...withPhoto, ...withoutPhoto].take(count).toList();
     } catch (error) {
       debugPrint('TourApiService.searchByKeywords error: $error');
@@ -215,8 +224,7 @@ class TourApiService {
       final valid = places.where((p) {
         return p.photoUrl != null &&
             p.title.codeUnits.any((c) => c >= 0xAC00 && c <= 0xD7AF);
-      }).toList()
-        ..shuffle(Random());
+      }).toList()..shuffle(Random());
       return valid.take(count).toList();
     } catch (error) {
       debugPrint('TourApiService.fetchCurrentEvents error: $error');
@@ -237,7 +245,7 @@ class TourApiService {
     final uri = Uri.parse('$_baseUrl/locationBasedList2').replace(
       queryParameters: {
         'serviceKey': key,
-        'numOfRows': '$count',
+        'numOfRows': '${max(count * 5, 30)}',
         'pageNo': '1',
         'MobileOS': 'ETC',
         'MobileApp': 'Pozy',
@@ -253,18 +261,22 @@ class TourApiService {
     try {
       final resp = await http.get(uri).timeout(const Duration(seconds: 10));
       if (resp.statusCode != 200) {
-        debugPrint('TourApiService.fetchNearbySpots status: ${resp.statusCode}');
+        debugPrint(
+          'TourApiService.fetchNearbySpots status: ${resp.statusCode}',
+        );
         debugPrint('TourApiService.fetchNearbySpots body: ${resp.body}');
         return [];
       }
 
-      final places = _parseItems(resp.body);
+      final places = _prioritizePhotoSpots(_parseItems(resp.body));
       final seenIds = <String>{};
       final withPhoto = <TourPlace>[];
       final withoutPhoto = <TourPlace>[];
 
       for (final place in places) {
-        if (place.contentId.isEmpty || seenIds.contains(place.contentId)) {
+        if (place.contentId.isEmpty ||
+            seenIds.contains(place.contentId) ||
+            !place.isPhotoSpotCandidate) {
           continue;
         }
         seenIds.add(place.contentId);
@@ -280,6 +292,11 @@ class TourApiService {
       debugPrint('TourApiService.fetchNearbySpots error: $error');
       return [];
     }
+  }
+
+  Future<String?> fetchOverview(TourPlace place) {
+    if (place.contentId.isEmpty) return Future.value(null);
+    return _overviewCache[place.contentId] ??= _fetchOverview(place);
   }
 
   Future<List<TourPlace>> _fetchAreaSpots({
@@ -310,8 +327,9 @@ class TourApiService {
           params['areaCode'] = areaCode;
         }
 
-        final uri =
-            Uri.parse('$_baseUrl/areaBasedList2').replace(queryParameters: params);
+        final uri = Uri.parse(
+          '$_baseUrl/areaBasedList2',
+        ).replace(queryParameters: params);
         try {
           final resp = await http.get(uri).timeout(const Duration(seconds: 10));
           if (resp.statusCode != 200) return <TourPlace>[];
@@ -335,8 +353,13 @@ class TourApiService {
         }
       }
 
-      final withPhoto = merged.where((place) => place.photoUrl != null).toList();
-      final withoutPhoto = merged.where((place) => place.photoUrl == null).toList();
+      final prioritized = _prioritizePhotoSpots(merged);
+      final withPhoto = prioritized
+          .where((place) => place.photoUrl != null)
+          .toList();
+      final withoutPhoto = prioritized
+          .where((place) => place.photoUrl == null)
+          .toList();
       return [...withPhoto, ...withoutPhoto].take(count).toList();
     } catch (error) {
       debugPrint('TourApiService._fetchAreaSpots error: $error');
@@ -351,11 +374,9 @@ class TourApiService {
   }) {
     if (places.length <= count) return places;
 
-    final pool = (places.where((p) {
-      return p.photoUrl != null &&
-          p.title.codeUnits.any((c) => c >= 0xAC00 && c <= 0xD7AF);
-    }).toList()
-      ..shuffle(Random()));
+    final pool = (_prioritizePhotoSpots(places).where((p) {
+      return p.photoUrl != null && p.isPhotoSpotCandidate;
+    }).toList()..shuffle(Random()));
 
     const maxPerTag = 2;
     final tagCount = <PlaceTag, int>{};
@@ -401,6 +422,76 @@ class TourApiService {
     }
   }
 
+  Future<String?> _fetchOverview(TourPlace place) async {
+    final key = _serviceKey;
+    if (key == null || key.isEmpty) return null;
+
+    final params = <String, String>{
+      'serviceKey': key,
+      'MobileOS': 'ETC',
+      'MobileApp': 'Pozy',
+      '_type': 'json',
+      'contentId': place.contentId,
+      'defaultYN': 'Y',
+      'firstImageYN': 'N',
+      'areacodeYN': 'N',
+      'catcodeYN': 'N',
+      'addrinfoYN': 'N',
+      'mapinfoYN': 'N',
+      'overviewYN': 'Y',
+    };
+    if (place.contentTypeId.isNotEmpty) {
+      params['contentTypeId'] = place.contentTypeId;
+    }
+
+    final uri = Uri.parse(
+      '$_baseUrl/detailCommon2',
+    ).replace(queryParameters: params);
+
+    try {
+      final resp = await http.get(uri).timeout(const Duration(seconds: 8));
+      if (resp.statusCode != 200) return null;
+      final json = jsonDecode(resp.body) as Map<String, dynamic>;
+      final items = json['response']?['body']?['items']?['item'];
+      final item = items is List && items.isNotEmpty
+          ? items.first
+          : items is Map
+          ? items
+          : null;
+      if (item is! Map) return null;
+      return _cleanText(item['overview']?.toString());
+    } catch (error) {
+      debugPrint('TourApiService._fetchOverview error: $error');
+      return null;
+    }
+  }
+
+  String? _cleanText(String? value) {
+    if (value == null || value.trim().isEmpty) return null;
+    return value
+        .replaceAll(RegExp(r'<[^>]*>'), ' ')
+        .replaceAll('&nbsp;', ' ')
+        .replaceAll('&amp;', '&')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  List<TourPlace> _prioritizePhotoSpots(List<TourPlace> places) {
+    return _sortPhotoSpots(
+      places.where((place) => place.isPhotoSpotCandidate).toList(),
+    );
+  }
+
+  List<TourPlace> _sortPhotoSpots(List<TourPlace> places) {
+    return places.toList()..sort((a, b) {
+      final scoreCompare = b.photoSpotScore.compareTo(a.photoSpotScore);
+      if (scoreCompare != 0) return scoreCompare;
+      if (a.photoUrl != null && b.photoUrl == null) return -1;
+      if (a.photoUrl == null && b.photoUrl != null) return 1;
+      return a.title.compareTo(b.title);
+    });
+  }
+
   Future<List<TourPlace>> _searchKeywordPage({
     required String keyword,
     required int pageNo,
@@ -424,9 +515,9 @@ class TourApiService {
       params['contentTypeId'] = contentTypeId;
     }
 
-    final uri = Uri.parse('$_baseUrl/searchKeyword2').replace(
-      queryParameters: params,
-    );
+    final uri = Uri.parse(
+      '$_baseUrl/searchKeyword2',
+    ).replace(queryParameters: params);
 
     final resp = await http.get(uri).timeout(const Duration(seconds: 10));
     if (resp.statusCode != 200) return [];
