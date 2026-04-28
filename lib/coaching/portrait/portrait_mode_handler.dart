@@ -1123,6 +1123,7 @@ class PortraitModeHandler {
   List<YOLOResult> _dedupePersons(List<YOLOResult> persons) {
     if (persons.length <= 1) return persons;
 
+    final minConfidence = intent == PortraitIntent.group ? 0.06 : 0.12;
     final sorted = [...persons]..sort((a, b) {
       final aScore = a.confidence * a.normalizedBox.width * a.normalizedBox.height;
       final bScore = b.confidence * b.normalizedBox.width * b.normalizedBox.height;
@@ -1131,7 +1132,7 @@ class PortraitModeHandler {
 
     final kept = <YOLOResult>[];
     for (final person in sorted) {
-      if (person.confidence < 0.12) continue;
+      if (person.confidence < minConfidence) continue;
 
       final isDuplicate = kept.any((other) => _looksLikeSamePerson(other, person));
       if (!isDuplicate) {
@@ -1157,9 +1158,20 @@ class PortraitModeHandler {
     final iou = _intersectionOverUnion(boxA, boxB);
 
     if (isFrontCamera) {
+      if (intent == PortraitIntent.group) {
+        return iou > 0.68 ||
+            overlapOnSmaller > 0.92 ||
+            (centerDistance < 0.035 && areaRatio > 0.82);
+      }
       return iou > 0.52 ||
           overlapOnSmaller > 0.82 ||
           (centerDistance < 0.05 && areaRatio > 0.72);
+    }
+
+    if (intent == PortraitIntent.group) {
+      return iou > 0.70 ||
+          overlapOnSmaller > 0.90 ||
+          (centerDistance < 0.04 && areaRatio > 0.78);
     }
 
     return iou > 0.55 ||

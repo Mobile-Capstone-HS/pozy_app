@@ -42,6 +42,7 @@ import 'package:pose_camera_app/segmentation/landscape_analyzer.dart';
 
 const String poseModelPath = 'yolov8n-pose_float16.tflite';
 const double poseConfidenceThreshold = 0.15;
+const double groupPersonConfidenceThreshold = 0.08;
 const double poseIouThreshold = 0.65;
 
 class CameraScreen extends StatefulWidget {
@@ -149,6 +150,8 @@ class _CameraScreenState extends State<CameraScreen> {
   bool get _isPortraitMode => _shootingMode == ShootingMode.person;
   bool get _isLandscapeMode => _shootingMode == ShootingMode.landscape;
   bool get _isObjectMode => _shootingMode == ShootingMode.object;
+  bool get _isGroupPortraitMode =>
+      _isPortraitMode && _portraitIntent == portrait.PortraitIntent.group;
 
   /// 현재 기기 방향 기준 상대 기울기 (isLevel 판단 전용)
   double get _relativeTilt {
@@ -1264,19 +1267,33 @@ class _CameraScreenState extends State<CameraScreen> {
 
     return YOLOView(
       key: ValueKey(
-        'yolo_${_isPortraitMode ? 'pose' : 'detect'}_${_isFrontCamera ? 'front' : 'back'}',
+        'yolo_${_isGroupPortraitMode ? 'group_detect' : _isPortraitMode ? 'pose' : 'detect'}_${_isFrontCamera ? 'front' : 'back'}',
       ),
       controller: _cameraController,
-      modelPath: _isPortraitMode ? poseModelPath : detectModelPath,
-      task: _isPortraitMode ? YOLOTask.pose : YOLOTask.detect,
+      modelPath: _isGroupPortraitMode
+          ? detectModelPath
+          : _isPortraitMode
+          ? poseModelPath
+          : detectModelPath,
+      task: _isGroupPortraitMode
+          ? YOLOTask.detect
+          : _isPortraitMode
+          ? YOLOTask.pose
+          : YOLOTask.detect,
       useGpu: true,
       showNativeUI: false,
       showOverlays: false,
-      confidenceThreshold: _isPortraitMode
+      confidenceThreshold: _isGroupPortraitMode
+          ? groupPersonConfidenceThreshold
+          : _isPortraitMode
           ? poseConfidenceThreshold
           : detectionConfidenceThreshold,
-      iouThreshold: _isPortraitMode ? poseIouThreshold : 0.45,
-      streamingConfig: _isPortraitMode
+      iouThreshold: _isGroupPortraitMode
+          ? 0.50
+          : _isPortraitMode
+          ? poseIouThreshold
+          : 0.45,
+      streamingConfig: _isPortraitMode && !_isGroupPortraitMode
           ? const YOLOStreamingConfig.withPoses()
           : const YOLOStreamingConfig.minimal(),
       lensFacing: _isFrontCamera ? LensFacing.front : LensFacing.back,
