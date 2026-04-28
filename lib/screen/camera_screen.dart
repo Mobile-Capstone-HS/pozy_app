@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -98,6 +98,7 @@ class _CameraScreenState extends State<CameraScreen> {
   bool _showFlash = false;
   bool _torchOn = false;
   bool _showPortraitDebugOverlay = true;
+  bool _isRuleSelectorExpanded = false;
 
   bool _isDrawingRoi = false;
   Offset? _roiDragStart;
@@ -1523,8 +1524,12 @@ class _CameraScreenState extends State<CameraScreen> {
                   ),
                 ),
               ),
-            Positioned(
-              top: _isPortraitMode ? 150 : 108,
+            AnimatedPositioned(
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeOutCubic,
+              top: _isPortraitMode
+                  ? (_isRuleSelectorExpanded ? 212 : 150)
+                  : (_isRuleSelectorExpanded ? 164 : 108),
               right: 12,
               child: IgnorePointer(
                 child: CoachingSpeechBubble(
@@ -1549,8 +1554,10 @@ class _CameraScreenState extends State<CameraScreen> {
             ),
             if (_isPortraitMode &&
                 _portraitIntent == portrait.PortraitIntent.group)
-              Positioned(
-                top: 150,
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeOutCubic,
+                top: _isRuleSelectorExpanded ? 212 : 150,
                 left: 16,
                 child: IgnorePointer(child: _buildPortraitGroupCounter()),
               ),
@@ -1631,6 +1638,8 @@ class _CameraScreenState extends State<CameraScreen> {
                 right: 0,
                 child: CompositionRuleSelector(
                   selected: _selectedRule,
+                  onExpandedChanged: (expanded) =>
+                      setState(() => _isRuleSelectorExpanded = expanded),
                   onChanged: (type) {
                     if (type == _selectedRule) return;
                     setState(() => _selectedRule = type);
