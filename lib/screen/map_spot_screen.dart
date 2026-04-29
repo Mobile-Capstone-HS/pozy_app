@@ -5,6 +5,7 @@ import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../services/driving_route_service.dart';
+import '../services/spot_theme_rule_service.dart';
 import '../services/tour_api_service.dart';
 import '../models/photo_spot.dart';
 import '../models/tour_place.dart';
@@ -22,11 +23,14 @@ class MapSpotScreen extends StatefulWidget {
 class _MapSpotScreenState extends State<MapSpotScreen>
     with TickerProviderStateMixin {
   final _routeService = DrivingRouteService();
+  final _themeRuleService = SpotThemeRuleService();
   final _tourApiService = TourApiService();
 
   NaverMapController? _mapController;
   SpotCategory _selectedCategory = SpotCategory.all;
   TourPlace? _focusedPlace; // 홈에서 넘어온 Tour 장소
+  TourPlace? _recentPlace;
+  String? _activeSearchKeyword;
   Position? _currentPosition;
   List<TourPlace> _nearbyPlaces = [];
   List<TourPlace> _keywordPlaces = [];
@@ -39,137 +43,6 @@ class _MapSpotScreenState extends State<MapSpotScreen>
   final Map<int, NOverlayImage> _markerImageCache = {};
 
   static const _categoryListLimit = 10;
-  static const _categorySearchConfigs = {
-    SpotCategory.cherry: _CategorySearchConfig(
-      queries: [
-        '\uBC9A\uAF43',
-        '\uBC9A\uAF43\uAE38',
-        '\uBC9A\uAF43\uCD95\uC81C',
-        '\uBC9A\uAF43\uACF5\uC6D0',
-        '\uBC9A\uAF43\uBA85\uC18C',
-      ],
-      preferredTitleTokens: [
-        '\uBC9A\uAF43',
-        '\uBC9A\uB098\uBB34',
-        '\uBC9A\uAF43\uAE38',
-        '\uBC9A\uAF43\uCD95\uC81C',
-        '\uBD04\uAF43',
-      ],
-    ),
-    SpotCategory.autumn: _CategorySearchConfig(
-      queries: [
-        '\uB2E8\uD48D',
-        '\uB2E8\uD48D\uAE38',
-        '\uB2E8\uD48D\uBA85\uC18C',
-        '\uB2E8\uD48D\uCD95\uC81C',
-        '\uAC00\uC744\uBA85\uC18C',
-        '\uB2E8\uD48D\uACF5\uC6D0',
-        '\uB2E8\uD48D\uC0B0',
-        '\uB2E8\uD48D \uC804\uB9DD\uB300',
-        '\uB2E8\uD48D \uBA54\uD0C0\uC138\uCFFC\uC774\uC544',
-        '\uAC00\uC744 \uD48D\uACBD',
-        '\uB2E8\uD48D \uC0B0\uCC45\uB85C',
-        '\uB2E8\uD48D \uD2B8\uB808\uD0B9',
-        '\uB2E8\uD48D \uC218\uBAA9\uC6D0',
-        '\uAC00\uC744 \uACF5\uC6D0',
-        '\uAC00\uC744 \uC804\uB9DD\uB300',
-      ],
-      preferredTitleTokens: [
-        '\uB2E8\uD48D',
-        '\uB2E8\uD48D\uAE38',
-        '\uB2E8\uD48D\uB098\uBB34',
-        '\uB2E8\uD48D\uCD95\uC81C',
-        '\uAC00\uC744',
-        '\uB2E8\uD48D\uACF5\uC6D0',
-        '\uBA54\uD0C0\uC138\uCFFC\uC774\uC544',
-      ],
-    ),
-    SpotCategory.sunrise: _CategorySearchConfig(
-      queries: [
-        '\uC77C\uCD9C',
-        '\uD574\uB3CB\uC774',
-        '\uD574\uB9DE\uC774',
-        '\uC77C\uCD9C\uBA85\uC18C',
-      ],
-      preferredTitleTokens: [
-        '\uC77C\uCD9C',
-        '\uD574\uB3CB\uC774',
-        '\uD574\uB9DE\uC774',
-        '\uC77C\uCD9C\uBA85\uC18C',
-      ],
-    ),
-    SpotCategory.sunset: _CategorySearchConfig(
-      queries: [
-        '\uC77C\uBAB0',
-        '\uB178\uC744',
-        '\uC11D\uC591',
-        '\uB099\uC870',
-        '\uC77C\uBAB0\uBA85\uC18C',
-        '\uB178\uC744 \uACF5\uC6D0',
-        '\uB178\uC744 \uC804\uB9DD\uB300',
-        '\uB099\uC870 \uC804\uB9DD\uB300',
-        '\uC11D\uC591 \uBA85\uC18C',
-        '\uD574\uC9C8\uB155 \uBA85\uC18C',
-        '\uC77C\uBAB0 \uC804\uB9DD\uB300',
-        '\uC11C\uD574 \uB179\uC870',
-        '\uD574\uBCC0 \uB178\uC744',
-        '\uB2E4\uB9AC \uB178\uC744',
-        '\uB178\uC744 \uC0B0\uCC45\uB85C',
-      ],
-      preferredTitleTokens: [
-        '\uC77C\uBAB0',
-        '\uB178\uC744',
-        '\uC11D\uC591',
-        '\uB099\uC870',
-        '\uC804\uB9DD\uB300',
-      ],
-    ),
-    SpotCategory.night: _CategorySearchConfig(
-      queries: [
-        '\uC57C\uACBD',
-        '\uC57C\uAC04\uBA85\uC18C',
-        '\uBE5B\uCD95\uC81C',
-        '\uC804\uB9DD\uB300',
-        '\uBBF8\uB514\uC5B4\uC544\uD2B8',
-      ],
-      preferredTitleTokens: [
-        '\uC57C\uACBD',
-        '\uBE5B\uCD95\uC81C',
-        '\uC57C\uAC04',
-        '\uC804\uB9DD\uB300',
-        '\uBBF8\uB514\uC5B4\uC544\uD2B8',
-        '\uB77C\uC774\uD2B8',
-      ],
-    ),
-    SpotCategory.snow: _CategorySearchConfig(
-      queries: [
-        '\uC124\uACBD',
-        '\uB208\uAF43',
-        '\uC124\uC0B0',
-        '\uACA8\uC6B8\uBA85\uC18C',
-        '\uB208\uCD95\uC81C',
-        '\uC124\uC6D0',
-        '\uC0C1\uACE0\uB300',
-        '\uC5BC\uC74C\uCD95\uC81C',
-        '\uACA8\uC6B8 \uD48D\uACBD',
-        '\uB208 \uC804\uB9DD\uB300',
-        '\uB208 \uC0B0',
-        '\uB208\uAF43 \uBA85\uC18C',
-        '\uACA8\uC6B8 \uD3EC\uD1A0\uC2A4\uD31F',
-        '\uACA8\uC6B8 \uACF5\uC6D0',
-        '\uC124\uACBD \uC0B0\uCC45\uB85C',
-      ],
-      preferredTitleTokens: [
-        '\uC124\uACBD',
-        '\uB208\uAF43',
-        '\uC124\uC0B0',
-        '\uACA8\uC6B8',
-        '\uB208',
-        '\uC0C1\uACE0\uB300',
-        '\uC124\uC6D0',
-      ],
-    ),
-  };
   static const _excludedBusinessTitleTokens = [
     '\uB9C8\uD2B8',
     '\uC57D\uAD6D',
@@ -201,17 +74,29 @@ class _MapSpotScreenState extends State<MapSpotScreen>
   static const _seoulLat = 37.5665;
   static const _seoulLng = 126.9780;
   static const _routeOverlayId = '__active_route__';
+  bool get _isKeywordMode => _activeSearchKeyword != null;
 
-  int get _visibleSpotCount => _selectedCategory == SpotCategory.all
+  int get _visibleSpotCount =>
+      _selectedCategory == SpotCategory.all && !_isKeywordMode
       ? _nearbyPlaces.length
       : _keywordPlaces.length;
 
   List<TourPlace> get _visibleKeywordPlaces =>
       _sortedByDistance(_keywordPlaces).take(_categoryListLimit).toList();
 
-  String get _mapHeaderTitle => _selectedCategory == SpotCategory.all
-      ? '내 주변 촬영 스팟'
-      : '${_selectedCategory.emoji} ${_selectedCategory.label} 명소';
+  String get _searchBarText {
+    if (_isKeywordMode) return '"$_activeSearchKeyword" 검색 결과';
+    if (_selectedCategory != SpotCategory.all) {
+      return '${_selectedCategory.emoji} ${_selectedCategory.label} 스팟';
+    }
+    return '장소나 분위기를 검색해 보세요';
+  }
+
+  String get _resultPanelTitle {
+    if (_isKeywordMode) return '"$_activeSearchKeyword" 검색 스팟';
+    if (_selectedCategory == SpotCategory.all) return '내 주변 촬영 스팟';
+    return '${_selectedCategory.emoji} ${_selectedCategory.label} 추천 스팟';
+  }
 
   @override
   void initState() {
@@ -222,11 +107,11 @@ class _MapSpotScreenState extends State<MapSpotScreen>
     );
     _cardSlide = Tween<Offset>(begin: const Offset(0, 1), end: Offset.zero)
         .animate(
-      CurvedAnimation(
-        parent: _cardAnimController,
-        curve: Curves.easeOutCubic,
-      ),
-    );
+          CurvedAnimation(
+            parent: _cardAnimController,
+            curve: Curves.easeOutCubic,
+          ),
+        );
 
     if (widget.focusPlace != null) {
       _focusedPlace = widget.focusPlace;
@@ -273,7 +158,8 @@ class _MapSpotScreenState extends State<MapSpotScreen>
       ).timeout(const Duration(seconds: 15));
       if (!mounted) return;
 
-      final shouldReload = lastPos == null ||
+      final shouldReload =
+          lastPos == null ||
           Geolocator.distanceBetween(
                 lastPos.latitude,
                 lastPos.longitude,
@@ -334,7 +220,7 @@ class _MapSpotScreenState extends State<MapSpotScreen>
       );
       if (!mounted) return;
       setState(() => _nearbyPlaces = places);
-      if (_selectedCategory == SpotCategory.all) {
+      if (_selectedCategory == SpotCategory.all && !_isKeywordMode) {
         await _buildMarkers();
       }
     } catch (_) {
@@ -354,6 +240,7 @@ class _MapSpotScreenState extends State<MapSpotScreen>
     setState(() {
       _activeRoute = null;
       _focusedPlace = place;
+      _recentPlace = place;
     });
 
     final lat = place.latitude;
@@ -373,7 +260,10 @@ class _MapSpotScreenState extends State<MapSpotScreen>
     }
   }
 
-  Future<NOverlayImage> _getMarkerImage(Color color, {bool small = false}) async {
+  Future<NOverlayImage> _getMarkerImage(
+    Color color, {
+    bool small = false,
+  }) async {
     final key = color.toARGB32() ^ (small ? 1 : 0);
     return _markerImageCache[key] ??= await NOverlayImage.fromWidget(
       widget: _CategoryPin(color: color, small: small),
@@ -403,12 +293,14 @@ class _MapSpotScreenState extends State<MapSpotScreen>
   }
 
   void _dismissFocus() {
+    final dismissedPlace = _focusedPlace;
     _clearRoute();
     _cardAnimController.reverse().then((_) {
       if (!mounted) return;
       setState(() {
         _activeRoute = null;
         _focusedPlace = null;
+        _recentPlace = dismissedPlace;
       });
       _buildMarkers();
     });
@@ -418,7 +310,7 @@ class _MapSpotScreenState extends State<MapSpotScreen>
     if (_mapController == null) return;
     await _mapController!.clearOverlays(type: NOverlayType.marker);
 
-    if (_selectedCategory == SpotCategory.all) {
+    if (_selectedCategory == SpotCategory.all && !_isKeywordMode) {
       final icon = await _getMarkerImage(const Color(0xFF4A9FE8));
       for (final place in _nearbyPlaces) {
         final lat = place.latitude;
@@ -458,17 +350,20 @@ class _MapSpotScreenState extends State<MapSpotScreen>
   }
 
   Future<void> _restoreFocusMarkerIfNeeded() async {
-    final place = _focusedPlace;
+    final place = _focusedPlace ?? _recentPlace;
     if (_mapController == null || place == null) return;
     final lat = place.latitude;
     final lng = place.longitude;
     if (lat == null || lng == null) return;
 
     final icon = await _getMarkerImage(const Color(0xFF4A9FE8));
-    final marker = NMarker(id: '__tour_focus__', position: NLatLng(lat, lng));
+    final marker = NMarker(
+      id: _focusedPlace != null ? '__tour_focus__' : '__tour_recent__',
+      position: NLatLng(lat, lng),
+    );
     marker.setIcon(icon);
     marker.setOnTapListener((_) {
-      _cardAnimController.forward(from: 0);
+      _selectNearbyPlace(place);
       return true;
     });
     await _mapController!.addOverlay(marker);
@@ -480,6 +375,8 @@ class _MapSpotScreenState extends State<MapSpotScreen>
     setState(() {
       _activeRoute = null;
       _focusedPlace = null;
+      _recentPlace = null;
+      _activeSearchKeyword = null;
       _selectedCategory = category;
       _keywordPlaces = [];
     });
@@ -487,7 +384,8 @@ class _MapSpotScreenState extends State<MapSpotScreen>
     if (category != SpotCategory.all) {
       await _buildMarkers();
 
-      final config = _categorySearchConfigs[category];
+      final rules = await _themeRuleService.loadRules();
+      final config = rules[category];
       if (config != null) {
         if (mounted) setState(() => _isLoadingKeywords = true);
 
@@ -496,6 +394,7 @@ class _MapSpotScreenState extends State<MapSpotScreen>
           count: 360,
           pages: 4,
           rowsPerPage: 50,
+          prioritizePhotoSpots: false,
         );
 
         try {
@@ -519,7 +418,7 @@ class _MapSpotScreenState extends State<MapSpotScreen>
         final raw = await rawFuture;
         if (!mounted || _selectedCategory != category) return;
 
-        final filtered = _filterCategoryPlaces(raw, config);
+        final filtered = await _filterCategoryPlaces(raw, config);
         final sorted = _sortedByDistance(filtered);
 
         setState(() {
@@ -553,32 +452,95 @@ class _MapSpotScreenState extends State<MapSpotScreen>
     }
   }
 
-  Future<void> _addKeywordMarkers(List<TourPlace> places, Color color) async {
-    if (_mapController == null) return;
-    final icon = await _getMarkerImage(color, small: true);
-    for (final place in places) {
-      final lat = place.latitude;
-      final lng = place.longitude;
-      if (lat == null || lng == null) continue;
-      final marker = NMarker(
-        id: 'kw_${place.contentId}',
-        position: NLatLng(lat, lng),
-      );
-      marker.setIcon(icon);
-      marker.setOnTapListener((_) {
-        _selectNearbyPlace(place);
-        return true;
+  Future<void> _showCategoryPicker() async {
+    final selected = await showModalBottomSheet<SpotCategory>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _CategoryPickerSheet(selectedCategory: _selectedCategory),
+    );
+    if (selected == null || selected == _selectedCategory) return;
+    await _onCategoryChanged(selected);
+  }
+
+  Future<void> _showSearchSheet() async {
+    final keyword = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _SpotSearchSheet(initialKeyword: _activeSearchKeyword),
+    );
+    final trimmed = keyword?.trim();
+    if (trimmed == null || trimmed.isEmpty) return;
+    await _searchSpots(trimmed);
+  }
+
+  Future<void> _searchSpots(String keyword) async {
+    if (_focusedPlace != null) _dismissFocus();
+    await _clearRoute();
+    if (!mounted) return;
+
+    setState(() {
+      _activeRoute = null;
+      _focusedPlace = null;
+      _recentPlace = null;
+      _activeSearchKeyword = keyword;
+      _selectedCategory = SpotCategory.all;
+      _keywordPlaces = [];
+      _isLoadingKeywords = true;
+    });
+
+    await _buildMarkers();
+
+    try {
+      final raw = await _tourApiService.searchByKeyword(keyword, count: 80);
+      if (!mounted || _activeSearchKeyword != keyword) return;
+      final filtered = _filterSearchPlaces(raw);
+      final sorted = _sortedByDistance(filtered);
+      setState(() {
+        _keywordPlaces = sorted;
+        _isLoadingKeywords = false;
       });
-      await _mapController!.addOverlay(marker);
+      await _buildMarkers();
+      await _fitPlacesToScreen(sorted);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _keywordPlaces = [];
+        _isLoadingKeywords = false;
+      });
     }
   }
 
-  List<TourPlace> _filterCategoryPlaces(
-    List<TourPlace> places,
-    _CategorySearchConfig config,
-  ) {
+  List<TourPlace> _filterSearchPlaces(List<TourPlace> places) {
     final seenIds = <String>{};
     final filtered = <TourPlace>[];
+    for (final place in places) {
+      final title = place.title.trim();
+      if (place.contentId.isEmpty || !seenIds.add(place.contentId)) continue;
+      if (title.isEmpty || place.latitude == null || place.longitude == null) {
+        continue;
+      }
+      if (_excludedBusinessTitleTokens.any(title.contains) ||
+          !place.isPhotoSpotCandidate) {
+        continue;
+      }
+      filtered.add(place);
+    }
+    filtered.sort((a, b) {
+      final scoreCompare = b.photoSpotScore.compareTo(a.photoSpotScore);
+      if (scoreCompare != 0) return scoreCompare;
+      return a.title.compareTo(b.title);
+    });
+    return filtered;
+  }
+
+  Future<List<TourPlace>> _filterCategoryPlaces(
+    List<TourPlace> places,
+    SpotThemeRule config,
+  ) async {
+    final seenIds = <String>{};
+    final filtered = <TourPlace>[];
+    final overviewCandidates = <TourPlace>[];
 
     for (final place in places) {
       final title = place.title.trim();
@@ -588,15 +550,30 @@ class _MapSpotScreenState extends State<MapSpotScreen>
       if (title.isEmpty || place.latitude == null || place.longitude == null) {
         continue;
       }
-      if (_excludedBusinessTitleTokens.any(title.contains)) {
+      final matchesTitle = config.matchesTitle(title);
+      if (_excludedBusinessTitleTokens.any(title.contains) ||
+          config.excludes(title)) {
         continue;
       }
-      filtered.add(place);
+      if (matchesTitle) {
+        filtered.add(place);
+        continue;
+      }
+      overviewCandidates.add(place);
+    }
+
+    for (final place in overviewCandidates.take(80)) {
+      final overview = await _tourApiService.fetchOverview(place);
+      if (overview != null && config.matchesOverview(overview)) {
+        filtered.add(place);
+      }
     }
 
     filtered.sort((a, b) {
-      final scoreCompare =
-          _scoreCategoryPlace(b, config).compareTo(_scoreCategoryPlace(a, config));
+      final scoreCompare = _scoreCategoryPlace(
+        b,
+        config,
+      ).compareTo(_scoreCategoryPlace(a, config));
       if (scoreCompare != 0) {
         return scoreCompare;
       }
@@ -606,10 +583,11 @@ class _MapSpotScreenState extends State<MapSpotScreen>
     return filtered;
   }
 
-  int _scoreCategoryPlace(TourPlace place, _CategorySearchConfig config) {
+  int _scoreCategoryPlace(TourPlace place, SpotThemeRule config) {
     var score = 0;
+    score += place.photoSpotScore;
     if (place.photoUrl != null) score += 4;
-    if (config.preferredTitleTokens.any(place.title.contains)) score += 6;
+    if (config.matchesTitle(place.title)) score += 6;
     if (place.contentTypeId == '15') score += 2;
 
     switch (place.placeTag) {
@@ -644,10 +622,7 @@ class _MapSpotScreenState extends State<MapSpotScreen>
 
     if (coords.length == 1) {
       await _mapController!.updateCamera(
-        NCameraUpdate.scrollAndZoomTo(
-          target: coords.first,
-          zoom: 11.5,
-        ),
+        NCameraUpdate.scrollAndZoomTo(target: coords.first, zoom: 11.5),
       );
       return;
     }
@@ -835,6 +810,8 @@ class _MapSpotScreenState extends State<MapSpotScreen>
 
   @override
   Widget build(BuildContext context) {
+    final hasRecentPlace = _focusedPlace == null && _recentPlace != null;
+
     return Scaffold(
       body: Stack(
         children: [
@@ -871,124 +848,90 @@ class _MapSpotScreenState extends State<MapSpotScreen>
                         icon: Icons.arrow_back_ios_new_rounded,
                         onTap: () => Navigator.of(context).pop(),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 8),
+                      _CategoryFilterChip(
+                        category: SpotCategory.all,
+                        selected:
+                            _selectedCategory == SpotCategory.all &&
+                            !_isKeywordMode,
+                        compact: true,
+                        onTap: () => _onCategoryChanged(SpotCategory.all),
+                      ),
+                      _ThemeMoreChip(
+                        active: _selectedCategory != SpotCategory.all,
+                        compact: true,
+                        onTap: _showCategoryPicker,
+                      ),
+                      const SizedBox(width: 2),
                       Expanded(
-                        child: Container(
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(22),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.12),
-                                blurRadius: 10,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: Row(
-                            children: [
-                              const SizedBox(width: 14),
-                              const Icon(
-                                Icons.photo_camera_outlined,
-                                color: Color(0xFF4A9FE8),
-                                size: 18,
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  '$_visibleSpotCount\uACF3',
-                                  style: const TextStyle(
-                                    fontFamily: 'Pretendard',
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color(0xFF1A1A2E),
+                        child: GestureDetector(
+                          onTap: _showSearchSheet,
+                          child: Container(
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(22),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.12),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              children: [
+                                const SizedBox(width: 14),
+                                const Icon(
+                                  Icons.search_rounded,
+                                  color: Color(0xFF4A9FE8),
+                                  size: 19,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    _searchBarText,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontFamily: 'Pretendard',
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color:
+                                          _isKeywordMode ||
+                                              _selectedCategory !=
+                                                  SpotCategory.all
+                                          ? const Color(0xFF1A1A2E)
+                                          : const Color(0xFF888888),
+                                    ),
                                   ),
                                 ),
-                              ),
-                              Container(
-                                margin: const EdgeInsets.only(right: 8),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 3,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFE3F7FF),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Text(
-                                  '$_visibleSpotCount\uACF3',
-                                  style: const TextStyle(
-                                    fontFamily: 'Pretendard',
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color(0xFF4A9FE8),
+                                Container(
+                                  margin: const EdgeInsets.only(right: 8),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 3,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFE3F7FF),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Text(
+                                    '$_visibleSpotCount곳',
+                                    style: const TextStyle(
+                                      fontFamily: 'Pretendard',
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF4A9FE8),
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       ),
                     ],
-                  ),
-                ),
-
-                const SizedBox(height: 10),
-
-                SizedBox(
-                  height: 36,
-                  child: ListView(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    children: SpotCategory.values.map((cat) {
-                      final selected = _selectedCategory == cat;
-                      return GestureDetector(
-                        onTap: () => _onCategoryChanged(cat),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          margin: const EdgeInsets.only(right: 8),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: selected ? cat.color : Colors.white,
-                            borderRadius: BorderRadius.circular(18),
-                            boxShadow: [
-                              BoxShadow(
-                                color: selected
-                                    ? cat.color.withValues(alpha: 0.4)
-                                    : Colors.black.withValues(alpha: 0.08),
-                                blurRadius: selected ? 8 : 4,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                cat.emoji,
-                                style: const TextStyle(fontSize: 13),
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                cat.label,
-                                style: TextStyle(
-                                  fontFamily: 'Pretendard',
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: selected
-                                      ? Colors.white
-                                      : const Color(0xFF555555),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    }).toList(),
                   ),
                 ),
               ],
@@ -997,20 +940,22 @@ class _MapSpotScreenState extends State<MapSpotScreen>
 
           Positioned(
             right: 14,
-            bottom: _focusedPlace != null ? 250 : 110,
+            bottom: _focusedPlace != null ? 250 : (hasRecentPlace ? 210 : 110),
             child: _MapIconButton(
               icon: Icons.my_location_rounded,
               onTap: _goToMyLocation,
             ),
           ),
 
-          if (_focusedPlace == null && _selectedCategory == SpotCategory.all)
+          if (_focusedPlace == null &&
+              _selectedCategory == SpotCategory.all &&
+              !_isKeywordMode)
             Positioned(
               bottom: 0,
               left: 0,
               right: 0,
               child: _NearbyPlaceListPanel(
-                title: '내 주변 촬영 스팟',
+                title: _resultPanelTitle,
                 places: _sortedByDistance(_nearbyPlaces),
                 totalCount: _nearbyPlaces.length,
                 currentPosition: _currentPosition,
@@ -1020,19 +965,35 @@ class _MapSpotScreenState extends State<MapSpotScreen>
               ),
             ),
 
-          if (_focusedPlace == null && _selectedCategory != SpotCategory.all)
+          if (_focusedPlace == null &&
+              (_selectedCategory != SpotCategory.all || _isKeywordMode))
             Positioned(
               bottom: 0,
               left: 0,
               right: 0,
               child: _NearbyPlaceListPanel(
-                title: '${_selectedCategory.emoji} ${_selectedCategory.label} 추천 스팟',
+                title: _resultPanelTitle,
                 places: _visibleKeywordPlaces,
                 totalCount: _keywordPlaces.length,
                 currentPosition: _currentPosition,
                 isLoading: _isLoadingKeywords,
                 onPlaceTap: _selectNearbyPlace,
                 onLocationTap: _goToMyLocation,
+              ),
+            ),
+
+          if (hasRecentPlace)
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: 126.0 + MediaQuery.of(context).padding.bottom,
+              child: _RecentPlacePeek(
+                place: _recentPlace!,
+                onTap: () => _selectNearbyPlace(_recentPlace!),
+                onClose: () {
+                  setState(() => _recentPlace = null);
+                  _buildMarkers();
+                },
               ),
             ),
 
@@ -1083,6 +1044,341 @@ class _MapIconButton extends StatelessWidget {
           ],
         ),
         child: Icon(icon, size: 18, color: const Color(0xFF333333)),
+      ),
+    );
+  }
+}
+
+class _CategoryFilterChip extends StatelessWidget {
+  final SpotCategory category;
+  final bool selected;
+  final bool compact;
+  final VoidCallback onTap;
+
+  const _CategoryFilterChip({
+    required this.category,
+    required this.selected,
+    this.compact = false,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        margin: EdgeInsets.only(right: compact ? 6 : 8),
+        height: compact ? 36 : null,
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 10 : 12,
+          vertical: 6,
+        ),
+        decoration: BoxDecoration(
+          color: selected ? category.color : Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: selected
+                  ? category.color.withValues(alpha: 0.4)
+                  : Colors.black.withValues(alpha: 0.08),
+              blurRadius: selected ? 8 : 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (!compact) ...[
+              Text(category.emoji, style: const TextStyle(fontSize: 13)),
+              const SizedBox(width: 4),
+            ],
+            Text(
+              category.label,
+              style: TextStyle(
+                fontFamily: 'Pretendard',
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: selected ? Colors.white : const Color(0xFF555555),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ThemeMoreChip extends StatelessWidget {
+  final bool active;
+  final bool compact;
+  final VoidCallback onTap;
+
+  const _ThemeMoreChip({
+    required this.active,
+    this.compact = false,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(right: 12),
+        height: compact ? 36 : null,
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 10 : 12,
+          vertical: 6,
+        ),
+        decoration: BoxDecoration(
+          color: active ? const Color(0xFF1A1A2E) : Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.08),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.tune_rounded,
+              size: 14,
+              color: active ? Colors.white : const Color(0xFF555555),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              '\uD14C\uB9C8',
+              style: TextStyle(
+                fontFamily: 'Pretendard',
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: active ? Colors.white : const Color(0xFF555555),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SpotSearchSheet extends StatefulWidget {
+  final String? initialKeyword;
+
+  const _SpotSearchSheet({this.initialKeyword});
+
+  @override
+  State<_SpotSearchSheet> createState() => _SpotSearchSheetState();
+}
+
+class _SpotSearchSheetState extends State<_SpotSearchSheet> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialKeyword ?? '');
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final keyword = _controller.text.trim();
+    if (keyword.isEmpty) return;
+    Navigator.of(context).pop(keyword);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final bottomPad = MediaQuery.of(context).padding.bottom;
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottomInset),
+      child: Container(
+        padding: EdgeInsets.fromLTRB(20, 12, 20, bottomPad + 18),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFDDDDDD),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const Text(
+              '스팟 검색',
+              style: TextStyle(
+                fontFamily: 'Pretendard',
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF1A1A2E),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _controller,
+              autofocus: true,
+              textInputAction: TextInputAction.search,
+              onSubmitted: (_) => _submit(),
+              decoration: InputDecoration(
+                hintText: '예: 한옥마을, 바다, 전망대',
+                prefixIcon: const Icon(Icons.search_rounded),
+                filled: true,
+                fillColor: const Color(0xFFF7F8FB),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 14,
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            GestureDetector(
+              onTap: _submit,
+              child: Container(
+                height: 48,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF4A9FE8),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                alignment: Alignment.center,
+                child: const Text(
+                  '검색',
+                  style: TextStyle(
+                    fontFamily: 'Pretendard',
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CategoryPickerSheet extends StatelessWidget {
+  final SpotCategory selectedCategory;
+
+  const _CategoryPickerSheet({required this.selectedCategory});
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomPad = MediaQuery.of(context).padding.bottom;
+    return Container(
+      padding: EdgeInsets.fromLTRB(20, 12, 20, bottomPad + 18),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFDDDDDD),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const Text(
+            '\uC2A4\uD31F \uD14C\uB9C8',
+            style: TextStyle(
+              fontFamily: 'Pretendard',
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF1A1A2E),
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            '\uD544\uC694\uD55C \uCD2C\uC601 \uD14C\uB9C8\uB97C \uACE0\uB974\uBA74 \uC9C0\uB3C4\uC5D0 \uBC14\uB85C \uBC18\uC601\uD574\uC694.',
+            style: TextStyle(
+              fontFamily: 'Pretendard',
+              fontSize: 12,
+              color: Color(0xFF777777),
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: SpotCategory.values.map((category) {
+              final selected = selectedCategory == category;
+              return GestureDetector(
+                onTap: () => Navigator.of(context).pop(category),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 9,
+                  ),
+                  decoration: BoxDecoration(
+                    color: selected ? category.color : const Color(0xFFF7F8FB),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: selected
+                          ? category.color.withValues(alpha: 0.5)
+                          : const Color(0xFFE7E9EF),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        category.emoji,
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        category.label,
+                        style: TextStyle(
+                          fontFamily: 'Pretendard',
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: selected
+                              ? Colors.white
+                              : const Color(0xFF333333),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ],
       ),
     );
   }
@@ -1203,97 +1499,212 @@ class _NearbyPlaceListPanel extends StatelessWidget {
                     ),
                   )
                 : places.isEmpty
-                    ? const Center(
-                        child: Text(
-                          '내 주변에서 불러온 관광 스팟이 아직 없습니다',
-                          style: TextStyle(
-                            fontFamily: 'Pretendard',
-                            fontSize: 13,
-                            color: Color(0xFF999999),
+                ? const Center(
+                    child: Text(
+                      '내 주변에서 불러온 관광 스팟이 아직 없습니다',
+                      style: TextStyle(
+                        fontFamily: 'Pretendard',
+                        fontSize: 13,
+                        color: Color(0xFF999999),
+                      ),
+                    ),
+                  )
+                : ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    itemCount: places.length,
+                    separatorBuilder: (_, _) => const SizedBox(width: 10),
+                    itemBuilder: (_, i) {
+                      final place = places[i];
+                      return GestureDetector(
+                        onTap: () => onPlaceTap(place),
+                        child: Container(
+                          width: 180,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF7F8FB),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: const Color(0xFFF0F1F3)),
                           ),
-                        ),
-                      )
-                    : ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                        itemCount: places.length,
-                        separatorBuilder: (_, _) => const SizedBox(width: 10),
-                        itemBuilder: (_, i) {
-                          final place = places[i];
-                          return GestureDetector(
-                            onTap: () => onPlaceTap(place),
-                            child: Container(
-                              width: 180,
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFF7F8FB),
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(
-                                  color: const Color(0xFFF0F1F3),
-                                ),
-                              ),
-                              child: Row(
-                                children: [
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(10),
-                                    child: SizedBox(
-                                      width: 42,
-                                      height: 42,
-                                      child: place.photoUrl != null
-                                          ? Image.network(
-                                              place.photoUrl!,
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (_, _, _) =>
-                                                  _TourPlaceThumbFallback(
+                          child: Row(
+                            children: [
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(10),
+                                child: SizedBox(
+                                  width: 42,
+                                  height: 42,
+                                  child: place.photoUrl != null
+                                      ? Image.network(
+                                          place.photoUrl!,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, _, _) =>
+                                              _TourPlaceThumbFallback(
                                                 label: place.title,
                                               ),
-                                            )
-                                          : _TourPlaceThumbFallback(
-                                              label: place.title,
-                                            ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        Text(
-                                          place.title,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            fontFamily: 'Pretendard',
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w600,
-                                            color: Color(0xFF1A1A2E),
-                                          ),
+                                        )
+                                      : _TourPlaceThumbFallback(
+                                          label: place.title,
                                         ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          _distance(place) ?? place.areaName,
-                                          style: const TextStyle(
-                                            fontFamily: 'Pretendard',
-                                            fontSize: 10,
-                                            color: Color(0xFF4A9FE8),
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
+                                ),
                               ),
-                            ),
-                          );
-                        },
-                      ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      place.title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontFamily: 'Pretendard',
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFF1A1A2E),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      _distance(place) ?? place.areaName,
+                                      style: const TextStyle(
+                                        fontFamily: 'Pretendard',
+                                        fontSize: 10,
+                                        color: Color(0xFF4A9FE8),
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
           ),
           SizedBox(height: MediaQuery.of(context).padding.bottom),
         ],
+      ),
+    );
+  }
+}
+
+class _RecentPlacePeek extends StatelessWidget {
+  final TourPlace place;
+  final VoidCallback onTap;
+  final VoidCallback onClose;
+
+  const _RecentPlacePeek({
+    required this.place,
+    required this.onTap,
+    required this.onClose,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          height: 64,
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.16),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: SizedBox(
+                  width: 48,
+                  height: 48,
+                  child: place.photoUrl != null
+                      ? Image.network(
+                          place.photoUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, _, _) =>
+                              _TourPlaceThumbFallback(label: place.title),
+                        )
+                      : _TourPlaceThumbFallback(label: place.title),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '\uBC29\uAE08 \uBCF8 \uC2A4\uD31F',
+                      style: TextStyle(
+                        fontFamily: 'Pretendard',
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF4A9FE8),
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      place.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontFamily: 'Pretendard',
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF1A1A2E),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 7,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE3F7FF),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Text(
+                  '\uB2E4\uC2DC \uBCF4\uAE30',
+                  style: TextStyle(
+                    fontFamily: 'Pretendard',
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF4A9FE8),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 2),
+              IconButton(
+                onPressed: onClose,
+                icon: const Icon(Icons.close_rounded),
+                iconSize: 18,
+                color: const Color(0xFF999999),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints.tightFor(
+                  width: 34,
+                  height: 34,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1312,8 +1723,11 @@ class _TourPlaceThumbFallback extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.photo_camera_outlined,
-              size: 16, color: Color(0xFF90CAF9)),
+          const Icon(
+            Icons.photo_camera_outlined,
+            size: 16,
+            color: Color(0xFF90CAF9),
+          ),
           if (label.isNotEmpty) ...[
             const SizedBox(height: 2),
             Text(
@@ -1774,16 +2188,6 @@ class _ActiveDrivingRoute {
   final DrivingRoute route;
 
   const _ActiveDrivingRoute({required this.destination, required this.route});
-}
-
-class _CategorySearchConfig {
-  final List<String> queries;
-  final List<String> preferredTitleTokens;
-
-  const _CategorySearchConfig({
-    required this.queries,
-    required this.preferredTitleTokens,
-  });
 }
 
 class _CategoryPin extends StatelessWidget {
