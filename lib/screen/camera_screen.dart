@@ -91,6 +91,7 @@ class _CameraScreenState extends State<CameraScreen> {
   late ShootingMode _shootingMode;
   Offset? _focusPoint;
   bool _showFocusIndicator = false;
+  Timer? _focusIndicatorTimer;
 
   double _selectedZoom = 1.0;
   double _currentZoom = 1.0;
@@ -924,25 +925,28 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   void _onTapFocus(Offset localPosition) {
-    if (_previewSize == Size.zero || !_isObjectMode) return;
+    if (_previewSize == Size.zero || _isLandscapeMode) return;
 
-    final detection = _bestDetectionAtScreenPoint(localPosition);
-    if (detection != null) {
-      _lockToDetection(detection);
-      return;
+    if (_isObjectMode) {
+      final detection = _bestDetectionAtScreenPoint(localPosition);
+      if (detection != null) {
+        _lockToDetection(detection);
+        return;
+      }
     }
 
     final nx = (localPosition.dx / _previewSize.width).clamp(0.0, 1.0);
     final ny = (localPosition.dy / _previewSize.height).clamp(0.0, 1.0);
 
-    _cameraController.setFocusPoint(nx, ny);
+    unawaited(_cameraController.setFocusPoint(nx, ny));
+    _focusIndicatorTimer?.cancel();
 
     setState(() {
       _focusPoint = localPosition;
       _showFocusIndicator = true;
     });
 
-    Future.delayed(const Duration(milliseconds: 1200), () {
+    _focusIndicatorTimer = Timer(const Duration(milliseconds: 1200), () {
       if (mounted) {
         setState(() => _showFocusIndicator = false);
       }
@@ -1407,10 +1411,77 @@ class _CameraScreenState extends State<CameraScreen> {
     );
   }
 
+  Widget _buildFocusIndicator() {
+    final point = _focusPoint;
+    if (!_showFocusIndicator || point == null || _previewSize == Size.zero) {
+      return const SizedBox.shrink();
+    }
+
+    const size = 72.0;
+    final maxLeft = math.max(0.0, _previewSize.width - size);
+    final maxTop = math.max(0.0, _previewSize.height - size);
+    final left = (point.dx - size / 2).clamp(0.0, maxLeft).toDouble();
+    final top = (point.dy - size / 2).clamp(0.0, maxTop).toDouble();
+    const focusColor = Color(0xFFFFD54F);
+
+    return Positioned(
+      left: left,
+      top: top,
+      child: IgnorePointer(
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: focusColor, width: 2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.28),
+                        blurRadius: 8,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Positioned(
+                right: -20,
+                top: 17,
+                child: Container(
+                  width: 18,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.35),
+                    borderRadius: BorderRadius.circular(9),
+                    border: Border.all(
+                      color: focusColor.withValues(alpha: 0.85),
+                    ),
+                  ),
+                  child: const Center(
+                    child: Icon(
+                      Icons.wb_sunny_outlined,
+                      size: 12,
+                      color: focusColor,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _accelerometerSub?.cancel();
     _countdownTimer?.cancel();
+    _focusIndicatorTimer?.cancel();
     _cameraController.stop();
     _landscapeController.stop();
     _portraitHandler.dispose();
@@ -1472,19 +1543,21 @@ class _CameraScreenState extends State<CameraScreen> {
                 size: Size.infinite,
               ),
             ),
-            if (_isObjectMode)
+            if (!_isLandscapeMode)
               GestureDetector(
                 behavior: HitTestBehavior.translucent,
-                onTapUp: _isDrawingRoi
+                onTapUp: _isObjectMode && _isDrawingRoi
                     ? null
                     : (details) => _onTapFocus(details.localPosition),
-                onPanStart: _isDrawingRoi
+                onPanStart: _isObjectMode && _isDrawingRoi
                     ? (d) => _onRoiPanStart(d.localPosition)
                     : null,
-                onPanUpdate: _isDrawingRoi
+                onPanUpdate: _isObjectMode && _isDrawingRoi
                     ? (d) => _onRoiPanUpdate(d.localPosition)
                     : null,
-                onPanEnd: _isDrawingRoi ? (_) => _onRoiPanEnd() : null,
+                onPanEnd: _isObjectMode && _isDrawingRoi
+                    ? (_) => _onRoiPanEnd()
+                    : null,
               ),
             if (_isObjectMode &&
                 (_lockedRoi != null ||
@@ -1527,20 +1600,7 @@ class _CameraScreenState extends State<CameraScreen> {
                   ),
                 ),
               ),
-            if (_isObjectMode && _showFocusIndicator && _focusPoint != null)
-              Positioned(
-                left: _focusPoint!.dx - 30,
-                top: _focusPoint!.dy - 30,
-                child: IgnorePointer(
-                  child: Container(
-                    width: 60,
-                    height: 60,
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.white, width: 1.5),
-                    ),
-                  ),
-                ),
-              ),
+            if (!_isLandscapeMode) _buildFocusIndicator(),
             AnimatedPositioned(
               duration: const Duration(milliseconds: 250),
               curve: Curves.easeOutCubic,

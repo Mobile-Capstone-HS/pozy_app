@@ -2193,7 +2193,10 @@ class YOLOView @JvmOverloads constructor(
     fun setFocusPoint(x: Float, y: Float) {
         val factory = SurfaceOrientedMeteringPointFactory(1.0f, 1.0f)
         val point = factory.createPoint(x, y)
-        val action = FocusMeteringAction.Builder(point)
+        val meteringFlags = FocusMeteringAction.FLAG_AF or
+            FocusMeteringAction.FLAG_AE or
+            FocusMeteringAction.FLAG_AWB
+        val action = FocusMeteringAction.Builder(point, meteringFlags)
             .setAutoCancelDuration(3, TimeUnit.SECONDS)
             .build()
         camera?.cameraControl?.startFocusAndMetering(action)
