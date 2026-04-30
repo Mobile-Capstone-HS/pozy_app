@@ -10,8 +10,9 @@ import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
-    private val methodChannelName = "pozy.fastscnn/method"
-    private val eventChannelName = "pozy.fastscnn/event"
+    private val fastScnnMethodChannelName = "pozy.fastscnn/method"
+    private val fastScnnEventChannelName = "pozy.fastscnn/event"
+    private val gemmaMethodChannelName = "pozy.gemma_litertlm/method"
     private val mainHandler = Handler(Looper.getMainLooper())
     private val inferenceExecutor: ExecutorService = Executors.newSingleThreadExecutor()
 
@@ -19,6 +20,7 @@ class MainActivity : FlutterActivity() {
     private var eventSink: EventChannel.EventSink? = null
 
     private lateinit var fastScnnEngine: NativeFastScnnEngine
+    private lateinit var gemmaEngine: NativeGemmaLiteRtLmEngine
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -28,8 +30,11 @@ class MainActivity : FlutterActivity() {
                 mainHandler.post { eventSink?.success(event) }
             },
         )
+        gemmaEngine = NativeGemmaLiteRtLmEngine(
+            context = applicationContext,
+        )
 
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, methodChannelName)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, fastScnnMethodChannelName)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "initialize" -> {
@@ -115,7 +120,54 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
-        EventChannel(flutterEngine.dartExecutor.binaryMessenger, eventChannelName)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, gemmaMethodChannelName)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "preloadModel" -> {
+                        inferenceExecutor.execute {
+                            val modelPath = call.argument<String>("modelPath")
+                            val response = gemmaEngine.preloadModel(modelPath)
+                            mainHandler.post { result.success(response) }
+                        }
+                    }
+
+                    "isModelLoaded" -> {
+                        inferenceExecutor.execute {
+                            val response = gemmaEngine.isModelLoaded()
+                            mainHandler.post { result.success(response) }
+                        }
+                    }
+
+                    "generateAcutComment" -> {
+                        val inputJson = call.argument<String>("inputJson")
+                        if (inputJson.isNullOrBlank()) {
+                            result.success(
+                                mapOf(
+                                    "ok" to false,
+                                    "error" to "missing_input_json",
+                                ),
+                            )
+                            return@setMethodCallHandler
+                        }
+
+                        inferenceExecutor.execute {
+                            val response = gemmaEngine.generateAcutComment(inputJson)
+                            mainHandler.post { result.success(response) }
+                        }
+                    }
+
+                    "disposeModel" -> {
+                        inferenceExecutor.execute {
+                            gemmaEngine.disposeModel()
+                            mainHandler.post { result.success(mapOf("ok" to true)) }
+                        }
+                    }
+
+                    else -> result.notImplemented()
+                }
+            }
+
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, fastScnnEventChannelName)
             .setStreamHandler(object : EventChannel.StreamHandler {
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
                     eventSink = events
@@ -130,6 +182,7 @@ class MainActivity : FlutterActivity() {
 
     override fun onDestroy() {
         fastScnnEngine.dispose()
+        gemmaEngine.disposeModel()
         inferenceExecutor.shutdownNow()
         super.onDestroy()
     }

@@ -27,12 +27,15 @@ const _kBaseUrl =
 /// Structured explanation returned by [GeminiExplanationService].
 class GeminiExplanation {
   const GeminiExplanation({
+    this.commentType,
     required this.shortReason,
     required this.detailedReason,
     this.comparisonReason,
     this.eyeState = 'unknown',
     this.eyeStateReason,
   });
+
+  final String? commentType;
 
   /// One-sentence summary (map: short_reason).
   final String shortReason;
@@ -76,89 +79,104 @@ class GeminiExplanationService {
         totalCount: totalCount,
       );
 
-      final base64Image = base64Encode(imageBytes);
-      final body = jsonEncode({
-        'contents': [
-          {
-            'parts': [
-              {'text': prompt},
-              {
-                'inline_data': {
-                  'mime_type': 'image/jpeg',
-                  'data': base64Image,
-                },
-              },
-            ],
-          },
-        ],
-        'generationConfig': {
-          'responseModalities': ['TEXT'],
-        },
-      });
-
-      final response = await http.post(
-        Uri.parse('$_baseUrl?key=$_apiKey'),
-        headers: {'Content-Type': 'application/json'},
-        body: body,
-      );
-
-      if (response.statusCode != 200) {
-        debugPrint(
-          '[GeminiExplanationService] API 오류: ${response.statusCode}',
-        );
-        return null;
-      }
-
-      final json = jsonDecode(response.body) as Map<String, dynamic>;
-      final candidates = json['candidates'] as List<dynamic>?;
-      if (candidates == null || candidates.isEmpty) return null;
-
-      final content = candidates[0]['content'] as Map<String, dynamic>?;
-      final parts = (content?['parts'] as List<dynamic>?) ?? [];
-      var rawText = '';
-      for (final part in parts) {
-        if ((part as Map).containsKey('text')) rawText += part['text'];
-      }
-
-      // Strip optional markdown fences
-      rawText = rawText.trim();
-      if (rawText.startsWith('```json')) {
-        rawText = rawText.substring(7);
-      } else if (rawText.startsWith('```')) {
-        rawText = rawText.substring(3);
-      }
-      if (rawText.endsWith('```')) {
-        rawText = rawText.substring(0, rawText.length - 3);
-      }
-      rawText = rawText.trim();
-
-      final parsed = jsonDecode(rawText) as Map<String, dynamic>;
-
-      final shortReason = (parsed['short_reason'] as String? ?? '').trim();
-      final detailedReason = (parsed['detailed_reason'] as String? ?? '').trim();
-      final comparisonReason = (parsed['comparison_reason'] as String?)?.trim();
-
-      if (shortReason.isEmpty && detailedReason.isEmpty) return null;
-
-      // Eye-state: normalise case before whitelist; anything else → 'unknown'.
-      const validEyeStates = {'open', 'closed', 'unknown'};
-      final eyeStateRaw =
-          (parsed['eye_state'] as String? ?? '').trim().toLowerCase();
-      final eyeState =
-          validEyeStates.contains(eyeStateRaw) ? eyeStateRaw : 'unknown';
-      final eyeStateReason = (parsed['eye_state_reason'] as String?)?.trim();
-
-      return GeminiExplanation(
-        shortReason: shortReason,
-        detailedReason: detailedReason,
-        comparisonReason: comparisonReason?.isNotEmpty == true ? comparisonReason : null,
-        eyeState: eyeState,
-        eyeStateReason: eyeStateReason?.isNotEmpty == true ? eyeStateReason : null,
-      );
+      return await explainFromPrompt(prompt: prompt, imageBytes: imageBytes);
     } catch (e) {
       debugPrint('[GeminiExplanationService] 에러 발생: $e');
       return null;
     }
+  }
+
+  Future<GeminiExplanation?> explainFromPrompt({
+    required String prompt,
+    Uint8List? imageBytes,
+  }) async {
+    final parts = <Map<String, dynamic>>[
+      {'text': prompt},
+    ];
+    if (imageBytes != null && imageBytes.isNotEmpty) {
+      parts.add({
+        'inline_data': {
+          'mime_type': 'image/jpeg',
+          'data': base64Encode(imageBytes),
+        },
+      });
+    }
+
+    final body = jsonEncode({
+      'contents': [
+        {'parts': parts},
+      ],
+      'generationConfig': {
+        'responseModalities': ['TEXT'],
+      },
+    });
+
+    final response = await http.post(
+      Uri.parse('$_baseUrl?key=$_apiKey'),
+      headers: {'Content-Type': 'application/json'},
+      body: body,
+    );
+
+    if (response.statusCode != 200) {
+      debugPrint('[GeminiExplanationService] API 오류: ${response.statusCode}');
+      return null;
+    }
+
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    final candidates = json['candidates'] as List<dynamic>?;
+    if (candidates == null || candidates.isEmpty) return null;
+
+    final content = candidates[0]['content'] as Map<String, dynamic>?;
+    final contentParts = (content?['parts'] as List<dynamic>?) ?? [];
+    var rawText = '';
+    for (final part in contentParts) {
+      if ((part as Map).containsKey('text')) rawText += part['text'];
+    }
+
+    rawText = _stripMarkdownFence(rawText);
+    final parsed = jsonDecode(rawText) as Map<String, dynamic>;
+
+    final shortReason = (parsed['short_reason'] as String? ?? '').trim();
+    final detailedReason = (parsed['detailed_reason'] as String? ?? '').trim();
+    final comparisonReason = (parsed['comparison_reason'] as String?)?.trim();
+    final commentType = (parsed['comment_type'] as String?)?.trim();
+
+    if (shortReason.isEmpty && detailedReason.isEmpty) return null;
+
+    const validEyeStates = {'open', 'closed', 'unknown'};
+    final eyeStateRaw = (parsed['eye_state'] as String? ?? '')
+        .trim()
+        .toLowerCase();
+    final eyeState = validEyeStates.contains(eyeStateRaw)
+        ? eyeStateRaw
+        : 'unknown';
+    final eyeStateReason = (parsed['eye_state_reason'] as String?)?.trim();
+
+    return GeminiExplanation(
+      commentType: commentType?.isNotEmpty == true ? commentType : null,
+      shortReason: shortReason,
+      detailedReason: detailedReason,
+      comparisonReason: comparisonReason?.isNotEmpty == true
+          ? comparisonReason
+          : null,
+      eyeState: eyeState,
+      eyeStateReason: eyeStateReason?.isNotEmpty == true
+          ? eyeStateReason
+          : null,
+    );
+  }
+
+  String _stripMarkdownFence(String rawText) {
+    var normalized = rawText.trim();
+    if (normalized.startsWith('```json')) {
+      normalized = normalized.substring(7);
+    } else if (normalized.startsWith('```')) {
+      normalized = normalized.substring(3);
+    }
+    if (normalized.endsWith('```')) {
+      normalized = normalized.substring(0, normalized.length - 3);
+    }
+    return normalized.trim();
   }
 
   String _buildPrompt({
@@ -177,8 +195,7 @@ class GeminiExplanationService {
       if (aestheticScore != null)
         '- 미적 점수 (구도·색감·분위기): ${(aestheticScore * 100).round()}/100',
       '- 종합 점수: $finalPct/100',
-      if (rank != null && totalCount != null)
-        '- 순위: $rank위 / 전체 $totalCount장',
+      if (rank != null && totalCount != null) '- 순위: $rank위 / 전체 $totalCount장',
     ];
 
     return '''

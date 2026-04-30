@@ -47,6 +47,7 @@ app.*.map.json
 ai_env/
 __pycache__/
 .env
+*.litertlm
 
 # API 키 시크릿 파일 (절대 git에 올리지 않음)
 android/local.properties

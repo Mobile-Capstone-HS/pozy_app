@@ -1,6 +1,9 @@
 import 'package:flutter/foundation.dart';
 
-import '../../../../services/gemini_analysis_service.dart';
+import '../../../../config/experimental_features.dart';
+import '../../../../services/gemini_photo_explanation_services.dart';
+import '../../../../services/on_device_gemma_explanation_service.dart';
+import '../../../../services/photo_explanation_service.dart';
 import '../../model/photo_evaluation_result.dart';
 import 'photo_evaluation_service.dart';
 
@@ -16,18 +19,17 @@ import 'photo_evaluation_service.dart';
 /// If Gemini is unavailable the method still returns a valid result with
 /// scores but without explanation fields.
 ///
-/// To swap Gemini for VILA-full later:
-///   - Implement a class with the same return type as [GeminiExplanationService.explain]
-///   - Inject it via the [explainer] constructor parameter.
+/// To swap Gemma/Gemini/VILA later, implement [PhotoExplanationService] and
+/// inject it via the [explainer] constructor parameter.
 class HybridPhotoEvaluationService implements PhotoEvaluationService {
   HybridPhotoEvaluationService({
     OnDevicePhotoEvaluationService? scorer,
-    GeminiExplanationService? explainer,
+    PhotoExplanationService? explainer,
   }) : _scorer = scorer ?? OnDevicePhotoEvaluationService(),
-       _explainer = explainer ?? GeminiExplanationService();
+       _explainer = explainer ?? _defaultExplainer();
 
   final OnDevicePhotoEvaluationService _scorer;
-  final GeminiExplanationService _explainer;
+  final PhotoExplanationService _explainer;
 
   @override
   Future<PhotoEvaluationResult> evaluate(
@@ -37,27 +39,57 @@ class HybridPhotoEvaluationService implements PhotoEvaluationService {
     // Step 1: deterministic on-device scores.
     final scored = await _scorer.evaluate(imageBytes, fileName: fileName);
 
-    // Step 2: Gemini explanation — non-fatal if it fails.
+    // Step 2: explanation backend — non-fatal if it fails.
     try {
       final explanation = await _explainer.explain(
-        imageBytes: imageBytes,
-        technicalScore: scored.technicalScore,
-        aestheticScore: scored.aestheticScore,
-        finalScore: scored.finalScore,
+        PhotoExplanationRequest(
+          imageBytes: imageBytes,
+          fileName: fileName,
+          technicalScore: scored.technicalScore,
+          aestheticScore: scored.aestheticScore,
+          finalScore: scored.finalScore,
+        ),
       );
 
-      if (explanation != null) {
+      if (explanation.isSuccessful) {
         return scored.copyWith(
           shortExplanation: explanation.shortReason,
           detailedExplanation: explanation.detailedReason,
+          comparisonExplanation: explanation.comparisonReason,
+          explanationBackend: explanation.backendLabel,
           eyeState: explanation.eyeState,
           eyeStateReason: explanation.eyeStateReason,
         );
       }
     } catch (e) {
-      debugPrint('[HybridPhotoEvaluationService] Gemini explanation failed: $e');
+      debugPrint(
+        '[HybridPhotoEvaluationService] explanation backend failed: $e',
+      );
     }
 
     return scored;
+  }
+
+  static PhotoExplanationService _defaultExplainer() {
+    if (ExperimentalFeatures.preferOnDeviceGemmaExplanation) {
+      return FallbackPhotoExplanationService(
+        primary: OnDeviceGemmaExplanationService(),
+        fallbacks: [
+          GeminiImageScoresPhotoExplanationService(useLegacyGeminiPrompt: true),
+          const TemplatePhotoExplanationService(),
+        ],
+        backendId: 'experimental_gemma_chain',
+        backendLabel: 'Gemma -> Gemini -> Template',
+      );
+    }
+
+    return FallbackPhotoExplanationService(
+      primary: GeminiImageScoresPhotoExplanationService(
+        useLegacyGeminiPrompt: true,
+      ),
+      fallbacks: const [TemplatePhotoExplanationService()],
+      backendId: 'gemini_template_chain',
+      backendLabel: 'Gemini -> Template',
+    );
   }
 }

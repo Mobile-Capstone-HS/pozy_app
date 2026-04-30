@@ -49,6 +49,7 @@ android {
 
     androidResources {
         noCompress.add("tflite")
+        noCompress.add("litertlm")
     }
 
     packaging {
@@ -64,5 +65,6 @@ flutter {
 
 dependencies {
     implementation("com.google.ai.edge.litert:litert:1.4.0")
+    implementation("com.google.ai.edge.litertlm:litertlm-android:latest.release")
     implementation("com.google.guava:guava:32.1.3-android")
 }
