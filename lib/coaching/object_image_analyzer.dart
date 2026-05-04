@@ -11,6 +11,8 @@ class AnalyzeRequest {
   });
 }
 
+/// 광원 방향 — 이미지 분석 결과용 (int로 전달)
+/// 0=unknown, 1=left, 2=right, 3=top, 4=bottom, 5=behind
 class ObjectImageMetrics {
   final double brightness;
   final double subjectBrightness;
@@ -21,6 +23,10 @@ class ObjectImageMetrics {
   final double shadowRatio;
   final double subjectHighlightRatio;
   final double subjectShadowRatio;
+
+  /// 광원 방향 (0~5, LightDirection 인덱스와 대응)
+  final int lightDirectionIndex;
+
   const ObjectImageMetrics({
     required this.brightness,
     required this.subjectBrightness,
@@ -31,6 +37,7 @@ class ObjectImageMetrics {
     required this.shadowRatio,
     required this.subjectHighlightRatio,
     required this.subjectShadowRatio,
+    this.lightDirectionIndex = 0,
   });
 }
 
@@ -70,6 +77,8 @@ ObjectImageMetrics _analyzeIsolate(AnalyzeRequest request) {
   final subjectHighlightRatio = _computeHighlightRatio(small, roi, subjectOnly: true);
   final subjectShadowRatio = _computeShadowRatio(small, roi, subjectOnly: true);
 
+  final lightDir = _estimateLightDirection(small, roi);
+
   return ObjectImageMetrics(
     brightness: brightness,
     subjectBrightness: subjectBrightness,
@@ -80,6 +89,7 @@ ObjectImageMetrics _analyzeIsolate(AnalyzeRequest request) {
     shadowRatio: shadowRatio,
     subjectHighlightRatio: subjectHighlightRatio,
     subjectShadowRatio: subjectShadowRatio,
+    lightDirectionIndex: lightDir,
   );
 }
 
@@ -265,4 +275,89 @@ double _luma(img.Pixel pixel) =>
     0.299 * pixel.r.toDouble() +
     0.587 * pixel.g.toDouble() +
     0.114 * pixel.b.toDouble();
+
+/// 이미지를 4분면(왼/오/위/아래)으로 나눠 평균 밝기를 비교해 광원 방향을 추정한다.
+/// 역광은 피사체(ROI) 밝기가 배경보다 현저히 낮을 때 판정.
+/// 반환값: 0=unknown, 1=left, 2=right, 3=top, 4=bottom, 5=behind
+int _estimateLightDirection(img.Image image, List<double>? roi) {
+  final w = image.width;
+  final h = image.height;
+  final midX = w ~/ 2;
+  final midY = h ~/ 2;
+
+  double sumLeft = 0, sumRight = 0, sumTop = 0, sumBottom = 0;
+  int cntLeft = 0, cntRight = 0, cntTop = 0, cntBottom = 0;
+
+  for (int y = 0; y < h; y++) {
+    for (int x = 0; x < w; x++) {
+      final l = _luma(image.getPixel(x, y));
+      if (x < midX) {
+        sumLeft += l;
+        cntLeft++;
+      } else {
+        sumRight += l;
+        cntRight++;
+      }
+      if (y < midY) {
+        sumTop += l;
+        cntTop++;
+      } else {
+        sumBottom += l;
+        cntBottom++;
+      }
+    }
+  }
+
+  if (cntLeft == 0 || cntRight == 0 || cntTop == 0 || cntBottom == 0) return 0;
+
+  final avgLeft = sumLeft / cntLeft;
+  final avgRight = sumRight / cntRight;
+  final avgTop = sumTop / cntTop;
+  final avgBottom = sumBottom / cntBottom;
+
+  // 역광 판정: ROI가 있고 피사체가 배경보다 많이 어두우면 역광
+  if (roi != null) {
+    final bounds = _roiBounds(image, roi);
+    double subjectSum = 0;
+    int subjectCnt = 0;
+    double bgSum = 0;
+    int bgCnt = 0;
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        final l = _luma(image.getPixel(x, y));
+        final inRoi = x >= bounds.left && x < bounds.right &&
+            y >= bounds.top && y < bounds.bottom;
+        if (inRoi) {
+          subjectSum += l;
+          subjectCnt++;
+        } else {
+          bgSum += l;
+          bgCnt++;
+        }
+      }
+    }
+    if (subjectCnt > 0 && bgCnt > 0) {
+      final subjectAvg = subjectSum / subjectCnt;
+      final bgAvg = bgSum / bgCnt;
+      // 배경이 충분히 밝고 피사체와 차이가 클 때 역광
+      if (bgAvg > 150 && (bgAvg - subjectAvg) > 50) return 5; // behind
+    }
+  }
+
+  // 방향별 밝기 차이 — 가장 밝은 쪽이 광원 방향
+  const threshold = 20.0; // 최소 차이
+  final hDiff = avgRight - avgLeft; // 양수면 오른쪽이 밝음
+  final vDiff = avgBottom - avgTop; // 양수면 아래가 밝음
+
+  final absH = hDiff.abs();
+  final absV = vDiff.abs();
+
+  if (absH < threshold && absV < threshold) return 0; // unknown
+
+  if (absH >= absV) {
+    return hDiff > 0 ? 2 : 1; // right : left
+  } else {
+    return vDiff > 0 ? 4 : 3; // bottom : top
+  }
+}
 

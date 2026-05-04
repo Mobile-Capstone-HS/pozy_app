@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -139,6 +140,7 @@ class _ACutResultScreenState extends State<ACutResultScreen> {
           fileName: scored.fileName,
           assetId: scored.asset.id,
           evaluationService: _PrecomputedEvalService(scored.evaluation!),
+          saveHistory: false,
         ),
       ),
     );
@@ -548,24 +550,32 @@ class _BestShotHighlight extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      _HighlightPill(
-                        label: '종합 ${evaluation.finalPct}점',
-                        background: const Color(0xFF111827),
-                        foreground: Colors.white,
+                      _AnimatedScoreRing(
+                        score: evaluation.finalPct,
+                        size: 68,
+                        color: const Color(0xFF111827),
                       ),
-                      _HighlightPill(
-                        label: evaluation.verdict,
-                        background: const Color(0xFFF8FAFC),
-                        foreground: AppColors.primaryText,
-                      ),
-                      _HighlightPill(
-                        label: result.recommendationLabel,
-                        background: const Color(0xFFFFF7CC),
-                        foreground: const Color(0xFF92400E),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            _HighlightPill(
+                              label: evaluation.verdict,
+                              background: const Color(0xFFF8FAFC),
+                              foreground: AppColors.primaryText,
+                            ),
+                            _HighlightPill(
+                              label: result.recommendationLabel,
+                              background: const Color(0xFFFFF7CC),
+                              foreground: const Color(0xFF92400E),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -779,15 +789,27 @@ class _ResultCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      _MetaPill(label: result.rankLabel),
-                      _MetaPill(label: evaluation.verdict),
-                      if (result.isACut && !result.isTopThree)
-                        const _MetaPill(label: 'A컷 후보'),
-                      _MetaPill(label: '종합 ${evaluation.finalPct}점'),
+                      _AnimatedScoreRing(
+                        score: evaluation.finalPct,
+                        size: 44,
+                        color: AppColors.primaryText,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            _MetaPill(label: result.rankLabel),
+                            _MetaPill(label: evaluation.verdict),
+                            if (result.isACut && !result.isTopThree)
+                              const _MetaPill(label: 'A컷 후보'),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ],
@@ -1048,6 +1070,123 @@ class _PhotoTypeRow extends StatelessWidget {
       ),
     );
   }
+}
+
+class _AnimatedScoreRing extends StatefulWidget {
+  final int score;
+  final double size;
+  final Color color;
+
+  const _AnimatedScoreRing({
+    required this.score,
+    required this.size,
+    required this.color,
+  });
+
+  @override
+  State<_AnimatedScoreRing> createState() => _AnimatedScoreRingState();
+}
+
+class _AnimatedScoreRingState extends State<_AnimatedScoreRing>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _anim;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
+    _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic);
+    _ctrl.forward();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final strokeWidth = widget.size <= 44 ? 5.0 : 7.0;
+    final fontSize = widget.size <= 44 ? 11.0 : 15.0;
+
+    return AnimatedBuilder(
+      animation: _anim,
+      builder: (_, _) {
+        final progress = _anim.value;
+        final displayed = (widget.score * progress).round();
+        return SizedBox(
+          width: widget.size,
+          height: widget.size,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              CustomPaint(
+                size: Size(widget.size, widget.size),
+                painter: _ScoreArcPainter(
+                  progress: widget.score / 100.0 * progress,
+                  color: widget.color,
+                  bgColor: widget.color.withValues(alpha: 0.1),
+                  strokeWidth: strokeWidth,
+                ),
+              ),
+              Text(
+                '$displayed',
+                style: TextStyle(
+                  fontSize: fontSize,
+                  fontWeight: FontWeight.w900,
+                  color: widget.color,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _ScoreArcPainter extends CustomPainter {
+  final double progress;
+  final Color color;
+  final Color bgColor;
+  final double strokeWidth;
+
+  const _ScoreArcPainter({
+    required this.progress,
+    required this.color,
+    required this.bgColor,
+    required this.strokeWidth,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = (size.width - strokeWidth) / 2;
+    final rect = Rect.fromCircle(center: center, radius: radius);
+
+    final bgPaint = Paint()
+      ..color = bgColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round;
+    canvas.drawCircle(center, radius, bgPaint);
+
+    final fgPaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round;
+    canvas.drawArc(rect, -pi / 2, 2 * pi * progress, false, fgPaint);
+  }
+
+  @override
+  bool shouldRepaint(_ScoreArcPainter old) =>
+      old.progress != progress || old.color != color;
 }
 
 class _PrecomputedEvalService implements PhotoEvaluationService {

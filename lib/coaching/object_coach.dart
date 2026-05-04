@@ -26,6 +26,10 @@ class ObjectFeatures {
   final double shadowRatio;
   final double subjectHighlightRatio;
   final double subjectShadowRatio;
+
+  /// 광원 방향 인덱스 (LightDirection enum 순서)
+  final int lightDirectionIndex;
+
   const ObjectFeatures({
     this.numObjects = 0,
     this.areaRatio = 0,
@@ -41,6 +45,7 @@ class ObjectFeatures {
     this.shadowRatio = 0,
     this.subjectHighlightRatio = 0,
     this.subjectShadowRatio = 0,
+    this.lightDirectionIndex = 0,
   });
 }
 
@@ -159,6 +164,7 @@ class _EmaSmoother {
   double? _shadowRatio;
   double? _subjectHighlightRatio;
   double? _subjectShadowRatio;
+  int _lightDirectionIndex = 0;
 
   ObjectFeatures _current = const ObjectFeatures();
   ObjectFeatures get current => _current;
@@ -189,6 +195,8 @@ class _EmaSmoother {
     _subjectShadowRatio =
         _ema(_subjectShadowRatio, m.subjectShadowRatio, _alphaExposure);
 
+    _lightDirectionIndex = m.lightDirectionIndex;
+
     return _current = _snapshot();
   }
 
@@ -208,6 +216,7 @@ class _EmaSmoother {
     _shadowRatio = null;
     _subjectHighlightRatio = null;
     _subjectShadowRatio = null;
+    _lightDirectionIndex = 0;
 
     _current = const ObjectFeatures();
   }
@@ -227,6 +236,7 @@ class _EmaSmoother {
         shadowRatio: _shadowRatio ?? 0,
         subjectHighlightRatio: _subjectHighlightRatio ?? 0,
         subjectShadowRatio: _subjectShadowRatio ?? 0,
+        lightDirectionIndex: _lightDirectionIndex,
       );
 
   static double _ema(double? prev, double value, double alpha) {
@@ -424,71 +434,110 @@ class _CoachingEngine {
       updateImageQuality: updateImageQuality,
     );
 
+    // 공통: 점수 및 광원 방향 계산
+    final rawScore = _computeGoodScore(s, tiltDeg, subjectLocked: subjectLocked);
+    // 객체가 충분히 인식되지 않았으면 점수를 숨김 (EMA 딜레이 대응)
+    final double? score = s.numObjects >= 0.5 ? rawScore : null;
+    final lightDir = LightDirection.values[
+        s.lightDirectionIndex.clamp(0, LightDirection.values.length - 1)];
+
+    // 방향 힌트 헬퍼
+    DirectionHint directionFromCenter(ObjectFeatures f) {
+      final dx = f.sceneCenterX - 0.5;
+      final dy = f.sceneCenterY - 0.5;
+      if (dx.abs() > dy.abs()) {
+        return dx > 0 ? DirectionHint.left : DirectionHint.right;
+      } else {
+        return dy > 0 ? DirectionHint.up : DirectionHint.down;
+      }
+    }
+
     // 피사체 고정 조건은 다른 모든 코칭보다 우선한다.
-    // clippedSubject: 피사체가 프레임 가장자리에 걸쳐 잘리는 경우 (즉시 감지)
     if (_acc.clippedSubject >= 0.24) {
-      return const CoachingResult(
+      return CoachingResult(
         guidance: '피사체가 화면에서 잘리고 있어요',
         subGuidance: '피사체 전체가 보이도록 조금 뒤로 가거나 프레임 안쪽으로 옮겨보세요',
         level: CoachingLevel.warning,
+        score: score,
+        directionHint: DirectionHint.back,
+        lightDirection: lightDir,
       );
     }
 
     if (_acc.tooClose >= 0.48) {
-      return const CoachingResult(
+      return CoachingResult(
         guidance: '고정한 피사체가 너무 가까워요',
         subGuidance: '피사체가 답답하지 않게 보이도록 조금 뒤로 가서 여백을 만들어보세요',
         level: CoachingLevel.caution,
+        score: score,
+        directionHint: DirectionHint.back,
+        lightDirection: lightDir,
       );
     }
 
     if (_acc.blur >= 0.52) {
-      return const CoachingResult(
+      return CoachingResult(
         guidance: '화면이 흐릿해요',
         subGuidance: '잠시 멈추고 초점이나 손떨림을 확인해보세요',
         level: CoachingLevel.warning,
+        score: score,
+        lightDirection: lightDir,
       );
     }
 
     if (_acc.dark >= 0.52) {
-      return const CoachingResult(
+      return CoachingResult(
         guidance: '장면이 어두워요',
-        subGuidance: '조명을 켜거나 더 밝은 곳으로 이동해보세요',
+        subGuidance: lightDir == LightDirection.behind
+            ? '역광이에요 — 빛을 등지고 촬영해보세요'
+            : '조명을 켜거나 더 밝은 곳으로 이동해보세요',
         level: CoachingLevel.warning,
+        score: score,
+        lightDirection: lightDir,
       );
     }
 
     if (_acc.over >= 0.52) {
-      return const CoachingResult(
+      return CoachingResult(
         guidance: '빛이 너무 강해요',
-        subGuidance: '각도나 위치를 조금 바꿔보세요',
+        subGuidance: _lightSubGuidance(lightDir, '각도나 위치를 조금 바꿔보세요'),
         level: CoachingLevel.warning,
+        score: score,
+        lightDirection: lightDir,
       );
     }
 
     if (_acc.backlight >= 0.52) {
-      return const CoachingResult(
-        guidance: '피사체가 배경보다 어두워요',
-        subGuidance: '촬영 각도를 바꾸거나 피사체 쪽 빛을 늘려보세요',
+      return CoachingResult(
+        guidance: '역광이 감지됐어요',
+        subGuidance: '빛이 뒤에서 들어오고 있어요 — 방향을 돌려보세요',
         level: CoachingLevel.warning,
+        score: score,
+        lightDirection: LightDirection.behind,
       );
     }
 
     if (_acc.smallSubject >= 0.56) {
-      return const CoachingResult(
+      return CoachingResult(
         guidance: '조금 더 가까이 담아도 좋아요',
         subGuidance: '피사체가 더 또렷하게 보일 수 있어요',
         level: CoachingLevel.caution,
+        score: score,
+        directionHint: DirectionHint.closer,
+        lightDirection: lightDir,
       );
     }
 
     if (_acc.imbalance >= 0.58) {
+      final hint = directionFromCenter(s);
       if (ruleActive) {
-        // 선택한 구도 규칙에 맞춘 안내.
         return CoachingResult(
           guidance: '${_rule.label} 구도에 맞춰보세요',
           subGuidance: _rule.guidance(subjectCenter),
           level: CoachingLevel.caution,
+          score: score,
+          directionHint: hint,
+          lightDirection: lightDir,
         );
       }
       final moveRight = s.sceneCenterX < 0.5;
@@ -500,14 +549,20 @@ class _CoachingEngine {
             ? '카메라를 조금 오른쪽으로 옮겨보세요'
             : '카메라를 조금 왼쪽으로 옮겨보세요',
         level: CoachingLevel.caution,
+        score: score,
+        directionHint: moveRight ? DirectionHint.right : DirectionHint.left,
+        lightDirection: lightDir,
       );
     }
 
     if (_acc.tightFraming >= 0.62) {
-      return const CoachingResult(
+      return CoachingResult(
         guidance: '조금 더 넓게 담아도 좋아요',
         subGuidance: '여백이 생기면 장면이 더 편안해 보여요',
         level: CoachingLevel.caution,
+        score: score,
+        directionHint: DirectionHint.back,
+        lightDirection: lightDir,
       );
     }
 
@@ -519,26 +574,33 @@ class _CoachingEngine {
         _acc.clippedSubject >= 0.35 ||
         _acc.tooClose >= 0.35;
 
-    if (!hasCriticalIssue) {
-      final score = _computeGoodScore(
-        s,
-        tiltDeg,
-        subjectLocked: subjectLocked,
+    if (!hasCriticalIssue && rawScore >= 70.0) {
+      return CoachingResult(
+        guidance: '지금 찍어보세요',
+        subGuidance: '현재 장면이 비교적 안정적이에요',
+        level: CoachingLevel.good,
+        score: score,
+        lightDirection: lightDir,
       );
-      if (score >= 70.0) {
-        return const CoachingResult(
-          guidance: '지금 찍어보세요',
-          subGuidance: '현재 장면이 비교적 안정적이에요',
-          level: CoachingLevel.good,
-        );
-      }
     }
 
-    return const CoachingResult(
+    return CoachingResult(
       guidance: '원하는 장면대로 담아보세요',
       subGuidance: '크게 문제는 없어요. 필요하면 각도만 조금 조정해보세요',
       level: CoachingLevel.caution,
+      score: score,
+      lightDirection: lightDir,
     );
+  }
+
+  String _lightSubGuidance(LightDirection dir, String fallback) {
+    return switch (dir) {
+      LightDirection.left => '왼쪽에서 빛이 들어오고 있어요 — 각도를 조절해보세요',
+      LightDirection.right => '오른쪽에서 빛이 들어오고 있어요 — 각도를 조절해보세요',
+      LightDirection.top => '위에서 빛이 들어오고 있어요 — 그림자를 확인해보세요',
+      LightDirection.behind => '역광이에요 — 빛을 등지고 촬영해보세요',
+      _ => fallback,
+    };
   }
 
   // 0~100점 환산. 블러 35점 + 밝기 30점 + 기울기 15점 + 구도 12점 + 균형 8점
@@ -692,6 +754,7 @@ class ObjectCoach {
       subjectShadowRatio: metrics['subjectShadowRatio'] ?? 0.0,
       globalBlurScore: metrics['globalBlurScore'] ?? 999.0,
       subjectBlurScore: metrics['subjectBlurScore'] ?? 999.0,
+      lightDirectionIndex: (metrics['lightDirectionIndex'] ?? 0).toInt(),
     );
     _smoother.updateImageMetrics(m);
     if (_subjectLocked && !_subjectInFrame) {

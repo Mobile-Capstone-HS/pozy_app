@@ -26,6 +26,7 @@ class _BestCutGalleryScreenState extends State<BestCutGalleryScreen> {
   AssetPathEntity? _selectedAlbum;
   List<AssetEntity> _photos = [];
   final Map<String, AssetEntity> _selectedAssetsById = {};
+  final Map<String, Future<Uint8List?>> _thumbCache = {};
   final PhotoTypeMode _photoTypeMode = PhotoTypeMode.auto;
 
   @override
@@ -56,6 +57,7 @@ class _BestCutGalleryScreenState extends State<BestCutGalleryScreen> {
           _albums = [];
           _selectedAlbum = null;
           _photos = [];
+          _thumbCache.clear();
           _selectedAssetsById.clear();
           _errorMessage = null;
         });
@@ -82,6 +84,7 @@ class _BestCutGalleryScreenState extends State<BestCutGalleryScreen> {
           _albums = [];
           _selectedAlbum = null;
           _photos = [];
+          _thumbCache.clear();
           _selectedAssetsById.clear();
           _errorMessage = null;
         });
@@ -99,6 +102,11 @@ class _BestCutGalleryScreenState extends State<BestCutGalleryScreen> {
         _albums = albums;
         _selectedAlbum = firstAlbum;
         _photos = photos;
+        _thumbCache
+          ..clear()
+          ..addEntries(
+            photos.map((asset) => MapEntry(asset.id, _loadThumb(asset))),
+          );
         _errorMessage = null;
       });
     } catch (e) {
@@ -112,6 +120,7 @@ class _BestCutGalleryScreenState extends State<BestCutGalleryScreen> {
         _albums = [];
         _selectedAlbum = null;
         _photos = [];
+        _thumbCache.clear();
         _selectedAssetsById.clear();
         _errorMessage = '갤러리 정보를 불러오는 중 문제가 발생했습니다.';
       });
@@ -135,6 +144,7 @@ class _BestCutGalleryScreenState extends State<BestCutGalleryScreen> {
   Future<void> _selectAlbum(AssetPathEntity album) async {
     if (_selectedAlbum?.id == album.id) return;
 
+    _thumbCache.clear();
     setState(() {
       _loading = true;
       _selectedAlbum = album;
@@ -146,17 +156,24 @@ class _BestCutGalleryScreenState extends State<BestCutGalleryScreen> {
 
     setState(() {
       _photos = photos;
+      _thumbCache.addEntries(
+        photos.map((asset) => MapEntry(asset.id, _loadThumb(asset))),
+      );
       _loading = false;
     });
   }
 
-  Future<Uint8List?> _thumb(AssetEntity asset) async {
+  Future<Uint8List?> _loadThumb(AssetEntity asset) async {
     try {
       return await asset.thumbnailDataWithSize(const ThumbnailSize(500, 500));
     } catch (e) {
       debugPrint('Best cut thumbnail error: $e');
       return null;
     }
+  }
+
+  Future<Uint8List?> _thumb(AssetEntity asset) {
+    return _thumbCache.putIfAbsent(asset.id, () => _loadThumb(asset));
   }
 
   String _albumLabel(AssetPathEntity album) {
@@ -271,7 +288,11 @@ class _BestCutGalleryScreenState extends State<BestCutGalleryScreen> {
                                       color: AppColors.soft,
                                       shape: BoxShape.circle,
                                     ),
-                                    child: const Icon(Icons.refresh, size: 18, color: AppColors.primaryText),
+                                    child: const Icon(
+                                      Icons.refresh,
+                                      size: 18,
+                                      color: AppColors.primaryText,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -281,7 +302,10 @@ class _BestCutGalleryScreenState extends State<BestCutGalleryScreen> {
                         SliverPadding(
                           padding: const EdgeInsets.fromLTRB(18, 0, 18, 24),
                           sliver: SliverGrid(
-                            delegate: SliverChildBuilderDelegate((context, index) {
+                            delegate: SliverChildBuilderDelegate((
+                              context,
+                              index,
+                            ) {
                               final asset = _photos[index];
                               return GestureDetector(
                                 onTap: () => _toggleAssetSelection(asset),
@@ -570,10 +594,7 @@ class _BestCutPermissionView extends StatelessWidget {
   final VoidCallback onRetry;
   final VoidCallback? onOpenSettings;
 
-  const _BestCutPermissionView({
-    required this.onRetry,
-    this.onOpenSettings,
-  });
+  const _BestCutPermissionView({required this.onRetry, this.onOpenSettings});
 
   @override
   Widget build(BuildContext context) {

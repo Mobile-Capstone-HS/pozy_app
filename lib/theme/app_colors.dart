@@ -8,6 +8,7 @@ class AppColors {
   static const lightText = Color(0xFFB9C0CC);
   static const border = Color(0xFFF7F8FB);
   static const soft = Color(0xFFF1F5F9);
+  static const blue = Color(0xFF4A9FE8);
   static const buttonDark = Color(0xFF2F2F2F);
   static const pass = Color(0xFF22C58B);
   static const track = Color(0xFFD9DEE7);

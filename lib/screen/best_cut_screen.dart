@@ -5,14 +5,16 @@ import 'package:gal/gal.dart';
 import 'package:photo_manager/photo_manager.dart';
 
 import '../feature/a_cut/model/photo_type_mode.dart';
-import '../theme/app_colors.dart';
-import '../theme/app_text_styles.dart';
 import 'a_cut_result_screen.dart';
 import 'best_cut_gallery_screen.dart';
 import 'camera_screen.dart';
 import 'history_screen.dart';
 
-const _kBlue = Color(0xFF64B5F6);
+const _kBg = Color(0xFFF7F8FB);
+const _kBlue = Color(0xFF3182F6);
+const _kDark = Color(0xFF191F28);
+const _kGrey600 = Color(0xFF6B7684);
+const _kGrey100 = Color(0xFFF2F4F6);
 
 class BestCutScreen extends StatefulWidget {
   final ValueChanged<int> onMoveTab;
@@ -32,10 +34,8 @@ class _BestCutScreenState extends State<BestCutScreen> {
           onMoveTab: (_) {},
           onBack: () => Navigator.of(routeContext).pop(),
           onCapture: (Uint8List bytes) async {
-            // 갤러리에 저장
             final name = 'pozy_${DateTime.now().millisecondsSinceEpoch}';
             await Gal.putImageBytes(bytes, name: name);
-            // 갤러리 인덱싱 대기
             await Future<void>.delayed(const Duration(milliseconds: 600));
 
             final permission = await PhotoManager.requestPermissionExtend();
@@ -58,7 +58,6 @@ class _BestCutScreenState extends State<BestCutScreen> {
                 await albums.first.getAssetListRange(start: 0, end: 1);
             if (recent.isEmpty || !routeContext.mounted) return;
 
-            // 카메라 화면을 ACutResultScreen으로 교체
             Navigator.of(routeContext).pushReplacement(
               MaterialPageRoute<void>(
                 builder: (_) => ACutResultScreen(
@@ -75,43 +74,26 @@ class _BestCutScreenState extends State<BestCutScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final h = constraints.maxHeight;
-          // 모든 섹션 간격을 하나의 값으로 통일
-          final gap = (h * 0.04).clamp(12.0, 24.0);
-          final featurePad = (h * 0.015).clamp(8.0, 14.0);
-          final btnHeight = (h * 0.067).clamp(42.0, 52.0);
-          final lineH = (h * 0.04).clamp(16.0, 30.0);
-
-          return SingleChildScrollView(
-            padding: EdgeInsets.fromLTRB(22, gap * 1.5, 22, gap),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // ── 헤더 ────────────────────────────────────
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+    return Scaffold(
+      backgroundColor: _kBg,
+      body: SafeArea(
+        child: CustomScrollView(
+          physics: const BouncingScrollPhysics(),
+          slivers: [
+            // ── 헤더 ──
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                child: Row(
                   children: [
-                    Container(
-                      width: 4,
-                      height: 26,
-                      decoration: BoxDecoration(
-                        color: _kBlue,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
                     const Expanded(
                       child: Text(
-                        '실시간 구도 코칭은 그대로,\n촬영 후엔 베스트 컷 추천까지',
+                        'Best Cut',
                         style: TextStyle(
-                          fontSize: 19,
+                          fontSize: 22,
                           fontWeight: FontWeight.w800,
-                          color: AppColors.primaryText,
-                          height: 1.35,
-                          letterSpacing: -0.3,
+                          color: _kDark,
+                          letterSpacing: -0.5,
                         ),
                       ),
                     ),
@@ -125,239 +107,335 @@ class _BestCutScreenState extends State<BestCutScreen> {
                         width: 36,
                         height: 36,
                         decoration: BoxDecoration(
-                          color: _kBlue.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(10),
+                          color: _kGrey100,
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                        child: const Icon(Icons.history_rounded, color: _kBlue, size: 20),
+                        child: const Icon(
+                          Icons.history_rounded,
+                          color: _kGrey600,
+                          size: 20,
+                        ),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 6),
-                const Text(
-                  '한 장은 간단 평가, 여러 장은 A컷 랭킹으로 이어져요.',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AppColors.secondaryText,
-                    height: 1.4,
-                  ),
-                ),
-
-                SizedBox(height: gap * 0.5),
-                const _DashedDivider(),
-                SizedBox(height: gap * 0.5),
-
-                // ── 특징 목록 ──────────────────────────────
-                _FeatureRow(
-                  icon: Icons.content_cut_rounded,
-                  title: '여러 장 A컷 랭킹',
-                  subtitle: 'BEST, Top 3, 추천 컷 중심으로 빠르게 비교',
-                  vertPad: featurePad,
-                ),
-                const Divider(height: 1, color: Color(0xFFF0F0F0)),
-                _FeatureRow(
-                  icon: Icons.auto_awesome_rounded,
-                  title: '한 장 빠른 평가',
-                  subtitle: '촬영 직후 또는 갤러리 1장 선택 후 바로 확인',
-                  vertPad: featurePad,
-                ),
-                const Divider(height: 1, color: Color(0xFFF0F0F0)),
-                _FeatureRow(
-                  icon: Icons.camera_alt_outlined,
-                  title: '카메라 코칭 유지',
-                  subtitle: '실시간 구도 가이드는 기존 카메라 흐름 그대로',
-                  vertPad: featurePad,
-                ),
-
-                SizedBox(height: gap * 0.5),
-
-                // ── 추천 흐름 (타임라인) ──────────────────
-                const Row(
-                  children: [
-                    Icon(Icons.route_rounded, color: _kBlue, size: 17),
-                    SizedBox(width: 6),
-                    Text(
-                      '추천 흐름',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.primaryText,
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: gap * 0.5),
-                _TimelineStep(
-                  index: 1,
-                  text: '"한 장 평가하기"로 실시간 구도 가이드와 함께 촬영 후 바로 평가를 받아볼 수 있어요.',
-                  isLast: false,
-                  lineHeight: lineH,
-                ),
-                _TimelineStep(
-                  index: 2,
-                  text: '갤러리에서 1장 선택 시 간단한 단일 평가, 2장 이상 선택 시 A컷 랭킹으로 분석해줘요.',
-                  isLast: false,
-                  lineHeight: lineH,
-                ),
-                _TimelineStep(
-                  index: 3,
-                  text: 'A컷 결과에서 Best 1장, Top 3, 이 외 추천 컷 순서를 우선적으로 보여줘요.',
-                  isLast: true,
-                  lineHeight: lineH,
-                ),
-
-                SizedBox(height: gap * 0.5),
-
-                // ── 버튼 2개 ──────────────────────────────
-                _OutlineButton(
-                  height: btnHeight,
-                  icon: Icons.photo_library_outlined,
-                  label: '갤러리에서 분석하기',
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const BestCutGalleryScreen(),
-                    ),
-                  ),
-                ),
-                SizedBox(height: gap * 0.5),
-                _OutlineButton(
-                  height: btnHeight,
-                  icon: Icons.camera_alt_outlined,
-                  label: '카메라로 촬영해 한 장 평가하기',
-                  onTap: _openCameraForEval,
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-// ── 점선 구분선 ──────────────────────────────────────────
-class _DashedDivider extends StatelessWidget {
-  const _DashedDivider();
-
-  @override
-  Widget build(BuildContext context) {
-    return CustomPaint(
-      size: const Size(double.infinity, 1),
-      painter: _DashedLinePainter(),
-    );
-  }
-}
-
-class _DashedLinePainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = const Color(0xFFDDE3EA)
-      ..strokeWidth = 1;
-
-    const dashWidth = 10.0;
-    const dashSpace = 8.0;
-    double x = 0;
-    while (x < size.width) {
-      canvas.drawLine(Offset(x, 0), Offset(x + dashWidth, 0), paint);
-      x += dashWidth + dashSpace;
-    }
-  }
-
-  @override
-  bool shouldRepaint(_DashedLinePainter old) => false;
-}
-
-// ── 특징 행 ──────────────────────────────────────────────
-class _FeatureRow extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final double vertPad;
-
-  const _FeatureRow({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    this.vertPad = 14,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.symmetric(vertical: vertPad),
-      child: Row(
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: _kBlue.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(11),
-            ),
-            child: Icon(icon, color: _kBlue, size: 18),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.primaryText,
-                    )),
-                const SizedBox(height: 2),
-                Text(subtitle, style: AppTextStyles.body13),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── 아웃라인 버튼 ─────────────────────────────────────────
-class _OutlineButton extends StatelessWidget {
-  final double height;
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  const _OutlineButton({
-    required this.height,
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        height: height,
-        decoration: BoxDecoration(
-          color: Colors.transparent,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: _kBlue.withValues(alpha: 0.4), width: 1.5),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: AppColors.primaryText, size: 18),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: const TextStyle(
-                color: AppColors.primaryText,
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
               ),
             ),
+
+            const SliverToBoxAdapter(child: SizedBox(height: 20)),
+
+            // ── 히어로 배너 (블루 그라데이션) ──
+            SliverToBoxAdapter(
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF5BA8FB), Color(0xFF1B5FD1)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF3182F6).withValues(alpha: 0.25),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 뱃지
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.auto_awesome_rounded,
+                              color: Colors.white, size: 14),
+                          SizedBox(width: 4),
+                          Text(
+                            'Pozy AI',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    const Text(
+                      '내 사진 중에서 가장 잘 나온\n베스트 컷만 골라드려요',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                        height: 1.4,
+                        letterSpacing: -0.4,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Pozy가 여러 장을 한눈에 비교해드려요!',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.white.withValues(alpha: 0.8),
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SliverToBoxAdapter(child: SizedBox(height: 12)),
+
+            // ── 액션 카드 2개 (가로 배치) ──
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    // 갤러리 분석
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const BestCutGalleryScreen(),
+                          ),
+                        ),
+                        child: Container(
+                          padding: const EdgeInsets.all(18),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(18),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.04),
+                                blurRadius: 12,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                width: 44,
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFEBF4FF),
+                                  borderRadius: BorderRadius.circular(13),
+                                ),
+                                child: const Icon(
+                                  Icons.photo_library_rounded,
+                                  color: _kBlue,
+                                  size: 22,
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              const Text(
+                                '갤러리에서\n분석하기',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                  color: _kDark,
+                                  height: 1.3,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              const Text(
+                                '사진을 골라 비교해요',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w400,
+                                  color: _kGrey600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    // 촬영 평가
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: _openCameraForEval,
+                        child: Container(
+                          padding: const EdgeInsets.all(18),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(18),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.04),
+                                blurRadius: 12,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                width: 44,
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFEBF4FF),
+                                  borderRadius: BorderRadius.circular(13),
+                                ),
+                                child: const Icon(
+                                  Icons.camera_alt_rounded,
+                                  color: _kBlue,
+                                  size: 22,
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              const Text(
+                                '촬영 후\n바로 평가',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                  color: _kDark,
+                                  height: 1.3,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              const Text(
+                                '찍고 바로 평가받아요',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w400,
+                                  color: _kGrey600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SliverToBoxAdapter(child: SizedBox(height: 12)),
+
+            // ── 분석 항목 카드 ──
+            const SliverToBoxAdapter(
+              child: _Card(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Pozy가 분석하는 요소',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: _kDark,
+                      ),
+                    ),
+                    SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _AnalysisItem(
+                            icon: Icons.grid_on_rounded,
+                            label: '구도',
+                            color: Color(0xFF3182F6),
+                          ),
+                        ),
+                        Expanded(
+                          child: _AnalysisItem(
+                            icon: Icons.wb_sunny_rounded,
+                            label: '노출',
+                            color: Color(0xFF4B95F7),
+                          ),
+                        ),
+                        Expanded(
+                          child: _AnalysisItem(
+                            icon: Icons.palette_rounded,
+                            label: '색감',
+                            color: Color(0xFF6AABF8),
+                          ),
+                        ),
+                        Expanded(
+                          child: _AnalysisItem(
+                            icon: Icons.center_focus_strong_rounded,
+                            label: '선명도',
+                            color: Color(0xFF89C0FA),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SliverToBoxAdapter(child: SizedBox(height: 12)),
+
+            // ── 안내 팁 카드 ──
+            SliverToBoxAdapter(
+              child: _Card(
+                child: Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF0F6FF),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.lightbulb_outline_rounded,
+                        color: _kBlue,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '사진은 여러 장 넣으면 더 정확해요',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: _kDark,
+                            ),
+                          ),
+                          SizedBox(height: 2),
+                          Text(
+                            '비슷한 구도의 사진끼리 비교하면 효과적이에요',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w400,
+                              color: _kGrey600,
+                              height: 1.3,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SliverToBoxAdapter(child: SizedBox(height: 24)),
           ],
         ),
       ),
@@ -365,65 +443,65 @@ class _OutlineButton extends StatelessWidget {
   }
 }
 
-// ── 타임라인 단계 ─────────────────────────────────────────
-class _TimelineStep extends StatelessWidget {
-  final int index;
-  final String text;
-  final bool isLast;
-  final double lineHeight;
+// ── 카드 래퍼 ──
+class _Card extends StatelessWidget {
+  final Widget child;
 
-  const _TimelineStep({
-    required this.index,
-    required this.text,
-    required this.isLast,
-    this.lineHeight = 32,
+  const _Card({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+}
+
+// ── 분석 항목 아이템 ──
+class _AnalysisItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  const _AnalysisItem({
+    required this.icon,
+    required this.label,
+    required this.color,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
       children: [
-        SizedBox(
-          width: 24,
-          child: Column(
-            children: [
-              Container(
-                width: 24,
-                height: 24,
-                decoration: const BoxDecoration(color: _kBlue, shape: BoxShape.circle),
-                alignment: Alignment.center,
-                child: Text(
-                  '$index',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-              if (!isLast)
-                Container(
-                  width: 1.5,
-                  height: lineHeight,
-                  margin: const EdgeInsets.symmetric(vertical: 3),
-                  color: _kBlue.withValues(alpha: 0.25),
-                ),
-            ],
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(14),
           ),
+          child: Icon(icon, color: color, size: 22),
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Text(
-              text,
-              style: const TextStyle(
-                fontSize: 13,
-                color: AppColors.secondaryText,
-                height: 1.45,
-              ),
-            ),
+        const SizedBox(height: 8),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: _kDark,
           ),
         ),
       ],
