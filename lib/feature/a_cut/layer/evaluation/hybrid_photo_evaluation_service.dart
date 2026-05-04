@@ -35,6 +35,7 @@ class HybridPhotoEvaluationService implements PhotoEvaluationService {
   Future<PhotoEvaluationResult> evaluate(
     Uint8List imageBytes, {
     String? fileName,
+    String? localImagePath,
   }) async {
     // Step 1: deterministic on-device scores.
     final scored = await _scorer.evaluate(imageBytes, fileName: fileName);
@@ -45,9 +46,15 @@ class HybridPhotoEvaluationService implements PhotoEvaluationService {
         PhotoExplanationRequest(
           imageBytes: imageBytes,
           fileName: fileName,
+          localImagePath: localImagePath,
           technicalScore: scored.technicalScore,
           aestheticScore: scored.aestheticScore,
+          finalAestheticScore: scored.finalAestheticScore,
           finalScore: scored.finalScore,
+          verdict: scored.verdict,
+          usesTechnicalScoreAsFinal: scored.usesTechnicalScoreAsFinal,
+          primaryHint: scored.primaryHint,
+          qualitySummary: scored.qualitySummary,
         ),
       );
 
@@ -57,8 +64,6 @@ class HybridPhotoEvaluationService implements PhotoEvaluationService {
           detailedExplanation: explanation.detailedReason,
           comparisonExplanation: explanation.comparisonReason,
           explanationBackend: explanation.backendLabel,
-          eyeState: explanation.eyeState,
-          eyeStateReason: explanation.eyeStateReason,
         );
       }
     } catch (e) {
@@ -72,8 +77,11 @@ class HybridPhotoEvaluationService implements PhotoEvaluationService {
 
   static PhotoExplanationService _defaultExplainer() {
     if (ExperimentalFeatures.preferOnDeviceGemmaExplanation) {
+      final gemmaPrimary = ExperimentalFeatures.useOnDeviceGemmaVlmExplanation
+          ? OnDeviceGemmaExplanationService.visual()
+          : OnDeviceGemmaExplanationService();
       return FallbackPhotoExplanationService(
-        primary: OnDeviceGemmaExplanationService(),
+        primary: gemmaPrimary,
         fallbacks: [
           GeminiImageScoresPhotoExplanationService(useLegacyGeminiPrompt: true),
           const TemplatePhotoExplanationService(),

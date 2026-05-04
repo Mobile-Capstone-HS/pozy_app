@@ -1,37 +1,144 @@
-# Pose Camera App (AI 구도 코칭 카메라)
+# Pozy App
 
-이 프로젝트는 Ultralytics YOLOv8 인공지능 모델을 활용하여, 사용자가 사진을 촬영할 때 완벽한 구도를 잡을 수 있도록 실시간으로 코칭해 주는 지능형 카메라 애플리케이션입니다.
+Flutter 기반 사진 촬영, 구도 코칭, A-cut 추천 앱입니다. 기본 앱은 온디바이스 포즈/사진 평가와 Gemini API 기반 설명 생성을 사용하며, Gemma LiteRT-LM 텍스트/VLM 설명은 별도 실험 플래그와 Android 기기 내 모델 파일이 있을 때만 동작합니다.
 
-## 🌟 주요 기능 (Features)
+## Project Overview
 
-* **실시간 AI 컴포지션 코칭**: 온디바이스 AI(YOLOv8 Pose)가 사용자의 관절(코 등 주요 포인트)을 초고속으로 추적합니다.
-* **완벽한 구도 안내 (Composition Guidelines)**:
-  * 📸 **삼분할 법칙 (Rule of Thirds)**: 화면을 9등분하는 격자의 교차점 중 피사체와 가장 가까운 곳으로 배치를 유도합니다.
-  * 🌀 **황금비율 (Golden Ratio)**: 피보나치 나선을 그려 완벽한 구도의 핵심 타겟으로 렌즈를 부드럽게 이끌어줍니다.
-* **스마트 클린 캡처 (Zero-Lag Clean Capture)**:
-  * 화면에 코칭 가이드(격자, 퍼펙트 안내문구 등)가 떠 있는 라이브 상태에서, 촬영 버튼을 누르는 순간 즉시(0.1초) 코칭 UI만을 뷰에서 숨깁니다.
-  * 네이티브 카메라 스트리밍 방식의 제약을 극복하고 30FPS의 부드러운 프레임을 유지하면서, **뷰파인더의 순수 원본 화면만 깔끔하게 캡처**하여 갤러리에 즉시 저장합니다.
-* **친숙한 UI/UX**:
-  * 아이폰 기본 카메라 앱의 레이아웃(플래시, 모드 셀렉터, 하단 셔터 및 카메라 렌즈 전환 UI)을 구성하여 이질감 없는 경험을 제공합니다.
-* **베스트 컷 분석 및 평가 (A-Cut Analysis)**:
-  * 갤러리의 사진들을 대상으로 구도, 밝기, 표정 상태(눈 감음 여부 등)를 분석하여 가장 잘 나온 '베스트 컷'을 추천하는 인사이트 리포트를 제공합니다.
-* **사진 뷰어 및 에디터**:
-  * 촬영한 사진을 바로 확인할 수 있는 갤러리와 자르기(Crop) 등 간편한 편집 기능을 제공합니다.
+- 실시간 카메라 구도 코칭
+- 갤러리 사진 A-cut 평가
+- 기술/미적/구도 점수 기반 설명 생성
+- 선택적으로 Gemma LiteRT-LM 온디바이스 텍스트/VLM 설명 probe
+- 선택적으로 A-cut contact sheet 생성 도구 사용
 
-## 🛠️ 기술 스택 (Architecture)
+## Prerequisites
 
-* **프레임워크**: Flutter (Cross-platform)
-* **AI 백엔드 (Vision)**: `ultralytics_yolo` 패키지 + `yolov8n-pose_float16.tflite` (Edge AI)
-* **캡처 시스템**:
-  * 카메라 렌더링: `YOLOView` (Native Camera View)
-  * 이미지 캡처/저장: `gal` 패키지 연동 + `RepaintBoundary` 우회 캡처 파이프라인
-* **UI & 그래픽**: 
-  * `MathStabilizer`: AI가 추적하는 좌표의 떨림(Jittering) 현상을 막고 자연스럽게 타겟에 자력으로 붙도록(Sticky) 고안한 커스텀 보정 알고리즘
-  * `CustomPainter`: 코칭 격자, 피보나치 나선 구조, 타겟 트래킹 라인을 실시간으로 렌더링
+- Flutter SDK
+- Android Studio와 Android SDK
+- JDK 17
+- `adb`
+- Android 실기기 권장
 
-## 🚀 직접 실행해보기 (Getting Started)
+## Clone And Install
 
-1. 이 프로젝트를 로컬로 클론하고 환경을 구성합니다.
-2. `flutter pub get` 명령어로 패키지를 설치합니다.
-3. 카메라와 하드웨어 연산이 필요하므로 가상 에뮬레이터 대신 **실제 안드로이드 기기 또는 iOS 실기기 디바이스**에서 디버깅하는 것을 권장합니다.
-4. 앱 화면에서 제공되는 '황금 비율' 또는 '삼분할' 모드에 진입해 코칭을 체험해 보세요!
+```bash
+git clone <repo-url>
+cd pozy_app
+flutter pub get
+```
+
+Android 빌드용 `android/local.properties`는 Flutter/Android Studio가 로컬에서 생성합니다. 이 파일은 Git에 올리지 않습니다.
+
+## Environment Variables
+
+```bash
+cp .env.example .env
+```
+
+`.env`에 필요한 키를 채웁니다.
+
+```dotenv
+GEMINI_API_KEY=your_gemini_api_key_here
+```
+
+실제 API 키는 Git에 커밋하지 마세요. `lib/services/gemini_service.dart`와 `lib/services/gemini_analysis_service.dart`는 `.env` 또는 `--dart-define=GEMINI_API_KEY=...`를 통해 키를 읽습니다.
+
+## Gemma LiteRT Model Setup
+
+대용량 `.litertlm` 모델 파일은 GitHub에 저장하지 않습니다. 팀에서 승인한 배포 경로나 Google AI Edge/LiteRT-LM 모델 배포 경로에서 모델 파일을 수동으로 받은 뒤 Android 기기로 push하세요.
+
+기본 Android device path:
+
+- Gemma 4 E2B: `/data/local/tmp/llm/gemma4_e2b.litertlm`
+- Gemma 4 E4B: `/data/local/tmp/llm/gemma4_e4b.litertlm`
+
+헬퍼 스크립트:
+
+```bash
+./scripts/push_gemma_model.sh R3CWA0602GK ~/Downloads/gemma4_e2b.litertlm
+./scripts/push_gemma_model.sh R3CWA0602GK ~/Downloads/gemma4_e4b.litertlm
+```
+
+수동 명령:
+
+```bash
+adb -s R3CWA0602GK shell mkdir -p /data/local/tmp/llm
+adb -s R3CWA0602GK push ~/Downloads/gemma4_e2b.litertlm /data/local/tmp/llm/gemma4_e2b.litertlm
+adb -s R3CWA0602GK shell ls -lh /data/local/tmp/llm
+```
+
+Gemma/VLM 실험 플래그 예시:
+
+```bash
+flutter run \
+  --dart-define=POZY_PREFER_ON_DEVICE_GEMMA_EXPLANATION=true \
+  --dart-define=POZY_USE_GEMMA_VLM_EXPLANATION=true \
+  --dart-define=POZY_GEMMA_VLM_MODEL_PATH=/data/local/tmp/llm/gemma4_e2b.litertlm \
+  --dart-define=POZY_GEMMA_BACKEND_MODE=gpu_preferred
+```
+
+기본 production 동작에서는 Gemma 설명 경로가 강제로 켜지지 않습니다. 모델 파일이 없어도 일반 Flutter 빌드는 가능해야 합니다.
+
+## Running The App
+
+```bash
+flutter run
+```
+
+Android Kotlin 컴파일 확인:
+
+```bash
+cd android
+JAVA_HOME=/opt/homebrew/Cellar/openjdk@17/17.0.18/libexec/openjdk.jdk/Contents/Home ./gradlew :app:compileDebugKotlin
+cd ..
+```
+
+## Debug Screens
+
+설명 백엔드 디버그 화면에서 다음을 확인할 수 있습니다.
+
+- Gemma model file check
+- Gemma preload
+- Generate once
+- Gemma Vision Probe
+- Gemini text-only, Gemini image+scores, Gemma text/VLM 비교
+- `backend_info`, `gpu_fallback_used`, `image_input_used`, `model_path`, `file_exists`, timing, JSON parse/repair/fallback 상태
+
+모델 파일이 없으면 debug screen은 `model file missing`, expected path, setup command를 표시하고 Gemma 실행 버튼을 비활성화합니다.
+
+## Contact Sheet And Generated Outputs
+
+`src/tools/generate_acut_contact_sheets.py`는 A-cut 후보 이미지를 compact multi-scale contact sheet로 만드는 개발 도구입니다. 생성물은 `outputs/` 아래에 두고 Git에 올리지 않습니다.
+
+```bash
+python3 -m src.tools.generate_acut_contact_sheets \
+  --input-topk <topk_csv_or_json> \
+  --output-dir outputs/acut_contact_sheets \
+  --top-k 5
+```
+
+Android 기기로 contact sheet를 복사해 VLM probe에 쓸 수 있습니다.
+
+```bash
+adb -s R3CWA0602GK shell mkdir -p /data/local/tmp/acut_contact_sheets
+adb -s R3CWA0602GK push <contact_sheet.jpg> /data/local/tmp/acut_contact_sheets/test_contact_sheet.jpg
+```
+
+## Troubleshooting
+
+- `model file missing`: `./scripts/push_gemma_model.sh <device_id> <local_model.litertlm>`로 모델을 기기에 복사하세요.
+- `backend_info=CPU`: GPU backend를 요청했지만 기기/드라이버/모델 조건에 따라 CPU로 동작할 수 있습니다.
+- `gpu_fallback_used=true`: GPU 초기화 실패나 미지원으로 fallback이 발생한 상태입니다. logcat에서 `GemmaLiteRtLm` 로그를 확인하세요.
+- Gemini API key missing: `.env`에 `GEMINI_API_KEY`가 있는지 확인하세요.
+- Android device not found: `adb devices`로 연결 상태와 USB 디버깅 권한을 확인하세요.
+- macOS zsh 환경에서 Flutter/Dart 명령이 SDK cache 접근 오류를 내면, Flutter SDK 권한과 경로를 확인하세요.
+
+Logcat 예시:
+
+```bash
+adb -s R3CWA0602GK logcat | grep -E "GEMMA_VLM_GENERATE|GEMMA_VISUAL|GemmaLiteRtLm|AcutVlmInput|ACutResultScreen"
+```
+
+## Security Note
+
+- `.env`, API 키, keystore, `local.properties`, 대용량 모델 파일은 Git에 커밋하지 않습니다.
+- Firebase `google-services.json`과 `firebase_options.dart`의 API key는 Firebase 클라이언트 설정값입니다. 공개 repo에서는 Firebase Console에서 도메인/앱 제한, App Check, 보안 규칙을 반드시 확인하세요.

@@ -13,6 +13,7 @@ abstract class PhotoEvaluationService {
   Future<PhotoEvaluationResult> evaluate(
     Uint8List imageBytes, {
     String? fileName,
+    String? localImagePath,
   });
 }
 
@@ -23,6 +24,7 @@ class MockPhotoEvaluationService implements PhotoEvaluationService {
   Future<PhotoEvaluationResult> evaluate(
     Uint8List imageBytes, {
     String? fileName,
+    String? localImagePath,
   }) async {
     await Future<void>.delayed(const Duration(milliseconds: 700));
 
@@ -77,6 +79,7 @@ class OnDevicePhotoEvaluationService implements PhotoEvaluationService {
   Future<PhotoEvaluationResult> evaluate(
     Uint8List imageBytes, {
     String? fileName,
+    String? localImagePath,
   }) async {
     final technicalSummary = await _technicalTfliteService.evaluate(imageBytes);
     AestheticEnsembleScoreResult? aestheticSummary;
@@ -100,8 +103,8 @@ class OnDevicePhotoEvaluationService implements PhotoEvaluationService {
     final finalScore = usesTechnicalScoreAsFinal
         ? technicalSummary.technicalScore
         : ((technicalSummary.technicalScore * 0.5) + (aestheticScore * 0.5))
-            .clamp(0.0, 1.0)
-            .toDouble();
+              .clamp(0.0, 1.0)
+              .toDouble();
     final notes = _buildNotes(
       technicalSummary: technicalSummary,
       aestheticScore: aestheticScore,

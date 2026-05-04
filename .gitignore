@@ -47,11 +47,26 @@ app.*.map.json
 ai_env/
 __pycache__/
 .env
+.env.*
+!.env.example
 *.litertlm
+*.tflite
+*.onnx
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+outputs/
+!outputs/.gitkeep
 
 # API 키 시크릿 파일 (절대 git에 올리지 않음)
-android/local.properties
+local.properties
+**/local.properties
 ios/Flutter/Secrets.xcconfig
+*.jks
+*.keystore
+*.p12
+*.pem
 .claude/
 docs/code_snapshots/
 claude.md

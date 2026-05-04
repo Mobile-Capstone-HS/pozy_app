@@ -5,6 +5,7 @@ import 'package:photo_manager/photo_manager.dart';
 
 import '../firebase/history_service.dart';
 
+import '../config/experimental_features.dart';
 import '../feature/a_cut/layer/evaluation/hybrid_photo_evaluation_service.dart';
 import '../feature/a_cut/layer/evaluation/photo_evaluation_service.dart';
 import '../feature/a_cut/layer/scoring/image_scoring_service.dart';
@@ -12,6 +13,7 @@ import '../feature/a_cut/model/multi_photo_ranking_result.dart';
 import '../feature/a_cut/model/photo_evaluation_result.dart';
 import '../feature/a_cut/model/photo_type_mode.dart';
 import '../feature/a_cut/model/scored_photo_result.dart';
+import '../services/on_device_gemma_explanation_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_shadows.dart';
 import '../theme/app_text_styles.dart';
@@ -51,7 +53,23 @@ class _ACutResultScreenState extends State<ACutResultScreen> {
   void initState() {
     super.initState();
     _photoTypeMode = widget.initialPhotoTypeMode;
+    _preloadExperimentalVlmIfNeeded();
     _startScoring();
+  }
+
+  Future<void> _preloadExperimentalVlmIfNeeded() async {
+    if (!ExperimentalFeatures.useOnDeviceGemmaVlmExplanation) {
+      return;
+    }
+    final status = await OnDeviceGemmaExplanationService.visual()
+        .preloadModel();
+    debugPrint(
+      '[ACutResultScreen] Gemma VLM preload '
+      'ok=${status['ok']} model_loaded=${status['model_loaded']} '
+      'backend_info=${status['backend_info'] ?? '-'} '
+      'gpu_fallback_used=${status['gpu_fallback_used'] ?? false} '
+      'elapsed_ms=${status['elapsed_ms'] ?? '-'}',
+    );
   }
 
   Future<void> _startScoring() async {
@@ -147,7 +165,9 @@ class _ACutResultScreenState extends State<ACutResultScreen> {
         ? (_doneCount / _totalCount).clamp(0.0, 1.0).toDouble()
         : 0.0;
     final showInitialLoading =
-        _ranking.items.isEmpty && _isScoring && widget.selectedAssets.isNotEmpty;
+        _ranking.items.isEmpty &&
+        _isScoring &&
+        widget.selectedAssets.isNotEmpty;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF7F7F7),
@@ -224,71 +244,70 @@ class _ACutResultScreenState extends State<ACutResultScreen> {
                       description: '갤러리에서 사진을 2장 이상 선택하면 A컷 랭킹을 볼 수 있어요.',
                     )
                   : showInitialLoading
-                      ? const _RankingStateCard(
-                          icon: Icons.auto_awesome_rounded,
-                          title: '추천 순위를 준비하는 중이에요',
-                          description: 'BEST와 Top 3를 먼저 보여드릴 수 있도록 사진을 순위 중심으로 정리하고 있어요.',
-                          loading: true,
-                        )
-                      : _ranking.items.isEmpty
-                          ? const _RankingStateCard(
-                              icon: Icons.content_cut_rounded,
-                              title: '표시할 랭킹이 아직 없어요',
-                              description: '다시 시도하면 A컷 추천 결과를 만들 수 있어요.',
-                            )
-                          : ListView(
-                              padding: const EdgeInsets.fromLTRB(18, 0, 18, 24),
-                              children: [
-                                _SummaryHeader(
-                                  ranking: _ranking,
-                                  totalSelected: widget.selectedAssets.length,
-                                  photoTypeMode: _photoTypeMode,
-                                ),
-                                if (_ranking.bestShot != null) ...[
-                                  const SizedBox(height: 14),
-                                  _BestShotHighlight(
-                                    result: _ranking.bestShot!,
-                                    onTap: () => _openDetail(
-                                      context,
-                                      _ranking.bestShot!,
-                                    ),
-                                  ),
-                                ],
-                                if (_ranking.topPicks.isNotEmpty) ...[
-                                  const SizedBox(height: 18),
-                                  _TopPickSection(
-                                    picks: _ranking.topPicks,
-                                    onTap: (result) => _openDetail(context, result),
-                                  ),
-                                ],
-                                if (_ranking.failureCount > 0 ||
-                                    _ranking.pendingCount > 0) ...[
-                                  const SizedBox(height: 18),
-                                  _RankingNoticeCard(ranking: _ranking),
-                                ],
-                                const SizedBox(height: 18),
-                                const Text(
-                                  '전체 순위',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w800,
-                                    color: AppColors.primaryText,
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-                                ..._ranking.items.map(
-                                  (result) => Padding(
-                                    padding: const EdgeInsets.only(bottom: 10),
-                                    child: GestureDetector(
-                                      onTap: result.status == ScoreStatus.success
-                                          ? () => _openDetail(context, result)
-                                          : null,
-                                      child: _ResultCard(result: result),
-                                    ),
-                                  ),
-                                ),
-                              ],
+                  ? const _RankingStateCard(
+                      icon: Icons.auto_awesome_rounded,
+                      title: '추천 순위를 준비하는 중이에요',
+                      description:
+                          'BEST와 Top 3를 먼저 보여드릴 수 있도록 사진을 순위 중심으로 정리하고 있어요.',
+                      loading: true,
+                    )
+                  : _ranking.items.isEmpty
+                  ? const _RankingStateCard(
+                      icon: Icons.content_cut_rounded,
+                      title: '표시할 랭킹이 아직 없어요',
+                      description: '다시 시도하면 A컷 추천 결과를 만들 수 있어요.',
+                    )
+                  : ListView(
+                      padding: const EdgeInsets.fromLTRB(18, 0, 18, 24),
+                      children: [
+                        _SummaryHeader(
+                          ranking: _ranking,
+                          totalSelected: widget.selectedAssets.length,
+                          photoTypeMode: _photoTypeMode,
+                        ),
+                        if (_ranking.bestShot != null) ...[
+                          const SizedBox(height: 14),
+                          _BestShotHighlight(
+                            result: _ranking.bestShot!,
+                            onTap: () =>
+                                _openDetail(context, _ranking.bestShot!),
+                          ),
+                        ],
+                        if (_ranking.topPicks.isNotEmpty) ...[
+                          const SizedBox(height: 18),
+                          _TopPickSection(
+                            picks: _ranking.topPicks,
+                            onTap: (result) => _openDetail(context, result),
+                          ),
+                        ],
+                        if (_ranking.failureCount > 0 ||
+                            _ranking.pendingCount > 0) ...[
+                          const SizedBox(height: 18),
+                          _RankingNoticeCard(ranking: _ranking),
+                        ],
+                        const SizedBox(height: 18),
+                        const Text(
+                          '전체 순위',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.primaryText,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        ..._ranking.items.map(
+                          (result) => Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: GestureDetector(
+                              onTap: result.status == ScoreStatus.success
+                                  ? () => _openDetail(context, result)
+                                  : null,
+                              child: _ResultCard(result: result),
                             ),
+                          ),
+                        ),
+                      ],
+                    ),
             ),
           ],
         ),
@@ -387,10 +406,7 @@ class _SummaryStatChip extends StatelessWidget {
   final String label;
   final String value;
 
-  const _SummaryStatChip({
-    required this.label,
-    required this.value,
-  });
+  const _SummaryStatChip({required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
@@ -431,10 +447,7 @@ class _BestShotHighlight extends StatelessWidget {
   final ScoredPhotoResult result;
   final VoidCallback onTap;
 
-  const _BestShotHighlight({
-    required this.result,
-    required this.onTap,
-  });
+  const _BestShotHighlight({required this.result, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -453,7 +466,9 @@ class _BestShotHighlight extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(22),
+              ),
               child: Stack(
                 children: [
                   AspectRatio(
@@ -568,10 +583,7 @@ class _TopPickSection extends StatelessWidget {
   final List<ScoredPhotoResult> picks;
   final ValueChanged<ScoredPhotoResult> onTap;
 
-  const _TopPickSection({
-    required this.picks,
-    required this.onTap,
-  });
+  const _TopPickSection({required this.picks, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -659,10 +671,7 @@ class _ResultCard extends StatelessWidget {
   final ScoredPhotoResult result;
   final bool compact;
 
-  const _ResultCard({
-    required this.result,
-    this.compact = false,
-  });
+  const _ResultCard({required this.result, this.compact = false});
 
   @override
   Widget build(BuildContext context) {
@@ -712,11 +721,7 @@ class _ResultCard extends StatelessWidget {
                   ),
                 ),
               ),
-              Positioned(
-                left: 8,
-                top: 8,
-                child: _RankBadge(result: result),
-              ),
+              Positioned(left: 8, top: 8, child: _RankBadge(result: result)),
             ],
           ),
           const SizedBox(width: 12),
@@ -1054,6 +1059,6 @@ class _PrecomputedEvalService implements PhotoEvaluationService {
   Future<PhotoEvaluationResult> evaluate(
     Uint8List imageBytes, {
     String? fileName,
-  }) async =>
-      _result;
+    String? localImagePath,
+  }) async => _result;
 }

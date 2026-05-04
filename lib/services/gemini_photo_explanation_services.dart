@@ -65,8 +65,6 @@ class GeminiImageScoresPhotoExplanationService
         shortReason: explanation.shortReason,
         detailedReason: explanation.detailedReason,
         comparisonReason: explanation.comparisonReason,
-        eyeState: explanation.eyeState,
-        eyeStateReason: explanation.eyeStateReason,
         jsonParseSuccess: true,
         totalGenerationTimeMs: stopwatch.elapsedMilliseconds,
       );
