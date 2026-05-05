@@ -702,9 +702,9 @@ class _EditorScreenState extends State<EditorScreen> {
                   children: [
                     // 사진 영역
                     if (_comparisonMode &&
-                        _originalPreviewSourceBytes != null)
+                        _previewSourceBytes != null)
                       ComparisonView(
-                        originalBytes: _originalPreviewSourceBytes!,
+                        originalBytes: _previewSourceBytes!,
                         editedBytes:
                             _previewBytes ?? _previewSourceBytes!,
                         width: w,

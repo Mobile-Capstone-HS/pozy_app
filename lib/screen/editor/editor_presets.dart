@@ -115,7 +115,7 @@ class PresetStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 44,
+      height: 40,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: editorPresets.length,
@@ -128,29 +128,26 @@ class PresetStrip extends StatelessWidget {
             onTap: () => onSelect(preset),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 180),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: selected ? AppColors.primaryText : AppColors.soft,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: selected ? AppColors.primaryText : AppColors.border,
-                ),
+                color: selected ? const Color(0xFF191F28) : const Color(0xFFF2F4F6),
+                borderRadius: BorderRadius.circular(10),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(
                     preset.icon,
-                    size: 16,
-                    color: selected ? Colors.white : AppColors.primaryText,
+                    size: 14,
+                    color: selected ? Colors.white : const Color(0xFF191F28),
                   ),
                   const SizedBox(width: 6),
                   Text(
                     preset.name,
                     style: TextStyle(
                       fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: selected ? Colors.white : AppColors.primaryText,
+                      fontWeight: FontWeight.w600,
+                      color: selected ? Colors.white : const Color(0xFF191F28),
                     ),
                   ),
                 ],
