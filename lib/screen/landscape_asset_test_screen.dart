@@ -5,6 +5,7 @@ import 'package:pose_camera_app/feature/landscape/landscape_overlay_painter.dart
 import 'package:pose_camera_app/segmentation/composition_engine.dart';
 import 'package:pose_camera_app/segmentation/composition_resolver.dart';
 import 'package:pose_camera_app/segmentation/composition_summary.dart';
+import 'package:pose_camera_app/segmentation/composition_temporal_filter.dart';
 import 'package:pose_camera_app/segmentation/fastscnn_pipeline.dart';
 import 'package:pose_camera_app/segmentation/fastscnn_segmentor.dart';
 import 'package:pose_camera_app/segmentation/landscape_analyzer.dart';
@@ -23,6 +24,7 @@ class _LandscapeAssetTestScreenState extends State<LandscapeAssetTestScreen> {
   final LandscapeAnalyzer _analyzer = LandscapeAnalyzer();
   final CompositionResolver _resolver = const CompositionResolver();
   final CompositionEngine _engine = CompositionEngine();
+  final CompositionTemporalFilter _temporalFilter = CompositionTemporalFilter();
 
   bool _isLoading = true;
   String _loadingMessage = 'Fast-SCNN 초기화 중...';
@@ -41,6 +43,7 @@ class _LandscapeAssetTestScreenState extends State<LandscapeAssetTestScreen> {
   void dispose() {
     _analyzer.reset();
     _engine.reset();
+    _temporalFilter.reset();
     _pipeline.dispose();
     super.dispose();
   }
@@ -80,6 +83,7 @@ class _LandscapeAssetTestScreenState extends State<LandscapeAssetTestScreen> {
       for (final path in assetPaths) {
         _analyzer.reset();
         _engine.reset();
+        _temporalFilter.reset();
 
         final data = await rootBundle.load(path);
         final bytes = data.buffer.asUint8List();
@@ -96,12 +100,21 @@ class _LandscapeAssetTestScreenState extends State<LandscapeAssetTestScreen> {
         }
 
         LandscapeAnalysisFrame analysis = _analyzer.analyze(segmentation);
+        var smoothed = _temporalFilter.smooth(analysis.features);
+        var decision = _temporalFilter.stabilize(
+          _resolver.resolve(smoothed),
+          smoothed,
+        );
         for (int pass = 1; pass < _warmupPasses; pass++) {
           analysis = _analyzer.analyze(segmentation);
+          smoothed = _temporalFilter.smooth(analysis.features);
+          decision = _temporalFilter.stabilize(
+            _resolver.resolve(smoothed),
+            smoothed,
+          );
         }
-        final decision = _resolver.resolve(analysis.features);
         final summary = _engine.evaluate(
-          features: analysis.features,
+          features: smoothed,
           decision: decision,
         );
 
