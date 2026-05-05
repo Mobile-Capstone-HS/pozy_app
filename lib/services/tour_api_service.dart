@@ -270,8 +270,7 @@ class TourApiService {
 
       final places = _prioritizePhotoSpots(_parseItems(resp.body));
       final seenIds = <String>{};
-      final withPhoto = <TourPlace>[];
-      final withoutPhoto = <TourPlace>[];
+      final candidates = <TourPlace>[];
 
       for (final place in places) {
         if (place.contentId.isEmpty ||
@@ -280,14 +279,22 @@ class TourApiService {
           continue;
         }
         seenIds.add(place.contentId);
-        if (place.photoUrl != null) {
-          withPhoto.add(place);
-        } else {
-          withoutPhoto.add(place);
-        }
+        candidates.add(place);
       }
 
-      return [...withPhoto, ...withoutPhoto].take(count).toList();
+      candidates.sort((a, b) {
+        final da = _distanceFrom(latitude, longitude, a);
+        final db = _distanceFrom(latitude, longitude, b);
+        final distanceCompare = da.compareTo(db);
+        if (distanceCompare != 0) return distanceCompare;
+        final scoreCompare = b.photoSpotScore.compareTo(a.photoSpotScore);
+        if (scoreCompare != 0) return scoreCompare;
+        if (a.photoUrl != null && b.photoUrl == null) return -1;
+        if (a.photoUrl == null && b.photoUrl != null) return 1;
+        return a.title.compareTo(b.title);
+      });
+
+      return candidates.take(count).toList();
     } catch (error) {
       debugPrint('TourApiService.fetchNearbySpots error: $error');
       return [];
@@ -481,6 +488,25 @@ class TourApiService {
       places.where((place) => place.isPhotoSpotCandidate).toList(),
     );
   }
+
+  double _distanceFrom(double latitude, double longitude, TourPlace place) {
+    final lat = place.latitude;
+    final lng = place.longitude;
+    if (lat == null || lng == null) return double.infinity;
+
+    const earthRadiusMeters = 6371000.0;
+    final dLat = _degreesToRadians(lat - latitude);
+    final dLng = _degreesToRadians(lng - longitude);
+    final a =
+        sin(dLat / 2) * sin(dLat / 2) +
+        cos(_degreesToRadians(latitude)) *
+            cos(_degreesToRadians(lat)) *
+            sin(dLng / 2) *
+            sin(dLng / 2);
+    return earthRadiusMeters * 2 * atan2(sqrt(a), sqrt(1 - a));
+  }
+
+  double _degreesToRadians(double degrees) => degrees * pi / 180;
 
   List<TourPlace> _sortPhotoSpots(List<TourPlace> places) {
     return places.toList()..sort((a, b) {
