@@ -335,7 +335,7 @@ class _ResultCard extends StatelessWidget {
             ],
             const SizedBox(height: 12),
             Text(
-              'skyOnly ${features.skyOnlyRatio.toStringAsFixed(2)}  topOpen ${features.topOpenAreaRatio.toStringAsFixed(2)}  horizon ${features.horizonConfidence.toStringAsFixed(2)}  stability ${features.horizonStability.toStringAsFixed(2)}',
+              'landscape ${features.landscapeConfidence.toStringAsFixed(2)}  skyOnly ${features.skyOnlyRatio.toStringAsFixed(2)}  topOpen ${features.topOpenAreaRatio.toStringAsFixed(2)}  horizon ${features.horizonConfidence.toStringAsFixed(2)}  stability ${features.horizonStability.toStringAsFixed(2)}',
               style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.72),
                 fontSize: 12,
