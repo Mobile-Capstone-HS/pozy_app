@@ -28,6 +28,9 @@ import 'package:pose_camera_app/coaching/portrait/portrait_mode_handler.dart';
 import 'package:pose_camera_app/coaching/portrait/portrait_overlay_painter.dart';
 import 'package:pose_camera_app/coaching/portrait/portrait_scene_state.dart'
     as portrait;
+import 'package:pose_camera_app/coaching/portrait/silhouette_shapes.dart';
+import 'package:pose_camera_app/screen/camera/widgets/silhouette_painter.dart';
+import 'package:pose_camera_app/screen/camera/widgets/silhouette_selector.dart';
 import 'package:pose_camera_app/coaching/subject/subject_detection.dart'
     show detectModelPath, detectionConfidenceThreshold;
 import 'package:pose_camera_app/feature/landscape/landscape_overlay_painter.dart';
@@ -161,6 +164,7 @@ class _CameraScreenState extends State<CameraScreen> {
   CompositionRuleType _selectedRule = CompositionRuleType.none;
   CompositionRule get _activeRule => CompositionRuleRegistry.of(_selectedRule);
   portrait.PortraitIntent _portraitIntent = portrait.PortraitIntent.single;
+  SilhouetteType _selectedSilhouette = SilhouetteType.none;
 
   @override
   void initState() {
@@ -872,6 +876,7 @@ class _CameraScreenState extends State<CameraScreen> {
       _landscapeDecision = null;
       _landscapeOverlayAdvice = const LandscapeOverlayAdvice.none();
       _landscapeSegmentation = null;
+      _selectedSilhouette = SilhouetteType.none;
     });
 
     if (_isLandscapeMode) {
@@ -917,6 +922,7 @@ class _CameraScreenState extends State<CameraScreen> {
       _landscapeDecision = null;
       _landscapeOverlayAdvice = const LandscapeOverlayAdvice.none();
       _landscapeSegmentation = null;
+      _selectedSilhouette = SilhouetteType.none;
     });
   }
 
@@ -1455,6 +1461,13 @@ class _CameraScreenState extends State<CameraScreen> {
                 size: Size.infinite,
               ),
             ),
+            if (_isPortraitMode && _selectedSilhouette != SilhouetteType.none)
+              IgnorePointer(
+                child: CustomPaint(
+                  painter: SilhouettePainter(type: _selectedSilhouette),
+                  size: Size.infinite,
+                ),
+              ),
             if (_isObjectMode)
               GestureDetector(
                 behavior: HitTestBehavior.translucent,
@@ -1528,7 +1541,7 @@ class _CameraScreenState extends State<CameraScreen> {
               duration: const Duration(milliseconds: 250),
               curve: Curves.easeOutCubic,
               top: _isPortraitMode
-                  ? (_isRuleSelectorExpanded ? 212 : 150)
+                  ? (_isRuleSelectorExpanded ? 256 : 194)
                   : (_isRuleSelectorExpanded ? 164 : 108),
               right: 12,
               child: IgnorePointer(
@@ -1557,7 +1570,7 @@ class _CameraScreenState extends State<CameraScreen> {
               AnimatedPositioned(
                 duration: const Duration(milliseconds: 250),
                 curve: Curves.easeOutCubic,
-                top: _isRuleSelectorExpanded ? 212 : 150,
+                top: _isRuleSelectorExpanded ? 256 : 194,
                 left: 16,
                 child: IgnorePointer(child: _buildPortraitGroupCounter()),
               ),
@@ -1646,6 +1659,21 @@ class _CameraScreenState extends State<CameraScreen> {
                     // Phase 4에서 코칭 엔진에도 전달.
                     _sceneCoach.setRule(_activeRule);
                     _portraitHandler.setRule(_activeRule);
+                  },
+                ),
+              ),
+            if (_isPortraitMode)
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeOutCubic,
+                top: _isRuleSelectorExpanded ? 212 : 148,
+                left: 0,
+                right: 0,
+                child: SilhouetteSelector(
+                  selected: _selectedSilhouette,
+                  onChanged: (type) {
+                    if (type == _selectedSilhouette) return;
+                    setState(() => _selectedSilhouette = type);
                   },
                 ),
               ),
