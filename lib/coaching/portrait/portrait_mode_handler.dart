@@ -26,6 +26,66 @@ import 'portrait_coach_engine.dart';
 import 'portrait_overlay_painter.dart';
 import 'portrait_scene_state.dart';
 
+// Face analysis source selection. Default: previewCapture (existing behavior).
+enum FaceAnalysisSource { previewCapture, imageAnalysis }
+
+class NativeFaceResult {
+  final Rect boundingBox;
+  final double? leftEyeOpenProbability;
+  final double? rightEyeOpenProbability;
+  final double? smilingProbability;
+  final double? headEulerAngleY;
+  final double? headEulerAngleZ;
+  final double? headEulerAngleX;
+  final int imageWidth;
+  final int imageHeight;
+  final int rotationDegrees;
+  final bool isFrontCamera;
+  final int? timestampMs;
+  final int? frameNumber;
+
+  const NativeFaceResult({
+    required this.boundingBox,
+    required this.imageWidth,
+    required this.imageHeight,
+    required this.rotationDegrees,
+    required this.isFrontCamera,
+    this.leftEyeOpenProbability,
+    this.rightEyeOpenProbability,
+    this.smilingProbability,
+    this.headEulerAngleY,
+    this.headEulerAngleZ,
+    this.headEulerAngleX,
+    this.timestampMs,
+    this.frameNumber,
+  });
+
+  factory NativeFaceResult.fromMap(Map<String, dynamic> map) {
+    return NativeFaceResult(
+      boundingBox: Rect.fromLTRB(
+        (map['left'] as num?)?.toDouble() ?? 0.0,
+        (map['top'] as num?)?.toDouble() ?? 0.0,
+        (map['right'] as num?)?.toDouble() ?? 0.0,
+        (map['bottom'] as num?)?.toDouble() ?? 0.0,
+      ),
+      leftEyeOpenProbability:
+          (map['leftEyeOpenProbability'] as num?)?.toDouble(),
+      rightEyeOpenProbability:
+          (map['rightEyeOpenProbability'] as num?)?.toDouble(),
+      smilingProbability: (map['smilingProbability'] as num?)?.toDouble(),
+      headEulerAngleY: (map['headEulerAngleY'] as num?)?.toDouble(),
+      headEulerAngleZ: (map['headEulerAngleZ'] as num?)?.toDouble(),
+      headEulerAngleX: (map['headEulerAngleX'] as num?)?.toDouble(),
+      imageWidth: (map['imageWidth'] as num?)?.toInt() ?? 0,
+      imageHeight: (map['imageHeight'] as num?)?.toInt() ?? 0,
+      rotationDegrees: (map['rotationDegrees'] as num?)?.toInt() ?? 0,
+      isFrontCamera: map['isFrontCamera'] == true,
+      timestampMs: (map['timestampMs'] as num?)?.toInt(),
+      frameNumber: (map['frameNumber'] as num?)?.toInt(),
+    );
+  }
+}
+
 // ─── YOLO Pose 키포인트 인덱스 (COCO 17) ────────────────────
 
 class PoseKeypointIndex {
@@ -145,6 +205,19 @@ class PortraitModeHandler {
   Rect? _trackedMainBox;
   Rect? _smoothedFaceRect;
   final Map<int, Offset> _smoothedPosePoints = <int, Offset>{};
+  List<NativeFaceResult> _latestNativeFaceResults = const [];
+  int _nativeFaceImageWidth = 0;
+  int _nativeFaceImageHeight = 0;
+  int _nativeFaceRotationDegrees = 0;
+  int _nativeFaceFrameNumber = -1;
+  bool _nativeFaceIsFrontCamera = false;
+  int _nativeFaceTimestampMs = 0;
+  int _lastNativeFaceCount = -1;
+  int _lastNativeFaceSummaryLogMs = 0;
+  int _lastNonEmptyNativeFaceAtMs = 0;
+  int _lastNonEmptyNativeFaceFrame = -1;
+  static const int _nativeFaceGraceMs = 400;
+  static const int _nativeFaceGraceFrames = 8;
 
   /// 그룹샷 전용: ML Kit으로 감지한 모든 얼굴 중 눈 감긴 사람이 있는지 여부
   bool _anyFaceEyesClosed = false;
@@ -173,9 +246,17 @@ class PortraitModeHandler {
   bool isFrontCamera = false;
   PortraitIntent intent = PortraitIntent.single;
 
+  // Face analysis source selection (previewCapture by default).
+  FaceAnalysisSource _faceAnalysisSource = FaceAnalysisSource.previewCapture;
+  void setFaceAnalysisSource(FaceAnalysisSource s) => _faceAnalysisSource = s;
+  FaceAnalysisSource get faceAnalysisSource => _faceAnalysisSource;
+
   /// 기기 방향 (0=세로, 90=가로 왼쪽, 180=거꾸로, 270=가로 오른쪽)
   /// camera_screen.dart에서 가속도계 기반으로 갱신합니다.
   int deviceOrientationDeg = 0;
+
+  String get _portraitModeLabel =>
+      intent == PortraitIntent.group ? 'group' : 'single';
 
   /// 현재 카메라 프레임을 JPEG bytes로 캡처하는 콜백.
   /// camera_screen.dart에서 _cameraController.captureFrame을 주입합니다.
@@ -256,6 +337,17 @@ class PortraitModeHandler {
     _trackedMainBox = null;
     _smoothedFaceRect = null;
     _smoothedPosePoints.clear();
+    _latestNativeFaceResults = const [];
+    _nativeFaceImageWidth = 0;
+    _nativeFaceImageHeight = 0;
+    _nativeFaceRotationDegrees = 0;
+    _nativeFaceFrameNumber = -1;
+    _nativeFaceIsFrontCamera = false;
+    _nativeFaceTimestampMs = 0;
+    _lastNativeFaceCount = -1;
+    _lastNativeFaceSummaryLogMs = 0;
+    _lastNonEmptyNativeFaceAtMs = 0;
+    _lastNonEmptyNativeFaceFrame = -1;
     _anyFaceEyesClosed = false;
     _closedFaceCount = 0;
     _closedFaceRects = const [];
@@ -339,6 +431,156 @@ class PortraitModeHandler {
         0.0;
   }
 
+  void updateNativeFaceResults(
+    List<NativeFaceResult> results, {
+    int? imageWidth,
+    int? imageHeight,
+    int? rotationDegrees,
+    int? frameNumber,
+    bool? isFrontCamera,
+    int? timestampMs,
+  }) {
+    _nativeFaceImageWidth = imageWidth ?? _nativeFaceImageWidth;
+    _nativeFaceImageHeight = imageHeight ?? _nativeFaceImageHeight;
+    _nativeFaceRotationDegrees = rotationDegrees ?? _nativeFaceRotationDegrees;
+    _nativeFaceFrameNumber = frameNumber ?? _nativeFaceFrameNumber;
+    _nativeFaceIsFrontCamera = isFrontCamera ?? _nativeFaceIsFrontCamera;
+    _nativeFaceTimestampMs = timestampMs ?? _nativeFaceTimestampMs;
+
+    final rawCount = results.length;
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final hasRecentFace =
+        _latestNativeFaceResults.isNotEmpty &&
+        (nowMs - _lastNonEmptyNativeFaceAtMs <= _nativeFaceGraceMs ||
+            (_nativeFaceFrameNumber >= 0 &&
+                _lastNonEmptyNativeFaceFrame >= 0 &&
+                _nativeFaceFrameNumber - _lastNonEmptyNativeFaceFrame <=
+                    _nativeFaceGraceFrames));
+
+    if (results.isNotEmpty) {
+      _latestNativeFaceResults = List<NativeFaceResult>.unmodifiable(results);
+      _lastNonEmptyNativeFaceAtMs = nowMs;
+      _lastNonEmptyNativeFaceFrame = _nativeFaceFrameNumber;
+    } else if (!hasRecentFace) {
+      _latestNativeFaceResults = const [];
+    }
+
+    final effectiveResults = _latestNativeFaceResults;
+    final effectiveFirst = effectiveResults.isNotEmpty ? effectiveResults.first : null;
+
+    final countChanged = rawCount != _lastNativeFaceCount;
+    final shouldLogSummary =
+        countChanged || nowMs - _lastNativeFaceSummaryLogMs >= 1000;
+    if (shouldLogSummary) {
+      _lastNativeFaceSummaryLogMs = nowMs;
+      _lastNativeFaceCount = rawCount;
+      debugPrint(
+        '[NATIVE_FACE] count=$rawCount '
+        'image=${_nativeFaceImageWidth}x$_nativeFaceImageHeight '
+        'rotation=$_nativeFaceRotationDegrees',
+      );
+      debugPrint(
+        '[NATIVE_FACE_DEBUG] mode=$_portraitModeLabel '
+        'subscribed=true rawCount=$rawCount effectiveCount=${effectiveResults.length} '
+        'image=${_nativeFaceImageWidth}x$_nativeFaceImageHeight '
+        'rotation=$_nativeFaceRotationDegrees '
+        'frame=$_nativeFaceFrameNumber source=$_faceAnalysisSource',
+      );
+    }
+
+    if (_faceAnalysisSource != FaceAnalysisSource.imageAnalysis) return;
+
+    if (effectiveResults.isNotEmpty) {
+      final mainFace = _selectPrimaryNativeFace(effectiveResults);
+      _faceYaw = _smoothMetric(_faceYaw, mainFace.headEulerAngleY);
+      _facePitch = _smoothMetric(_facePitch, mainFace.headEulerAngleX);
+      _faceRoll = _smoothMetric(_faceRoll, mainFace.headEulerAngleZ);
+      _leftEyeOpen = _smoothEyeMetric(
+        _leftEyeOpen,
+        mainFace.leftEyeOpenProbability,
+      );
+      _rightEyeOpen = _smoothEyeMetric(
+        _rightEyeOpen,
+        mainFace.rightEyeOpenProbability,
+      );
+      _smileProb = _smoothMetric(_smileProb, mainFace.smilingProbability);
+      _smoothedFaceRect = _smoothRect(
+        _smoothedFaceRect,
+        _normalizeFaceRect(
+          mainFace.boundingBox,
+          mainFace.imageWidth,
+          mainFace.imageHeight,
+        ),
+      );
+
+      final rawL = mainFace.leftEyeOpenProbability;
+      final rawR = mainFace.rightEyeOpenProbability;
+      if (rawL != null && rawR != null && rawL < 0.35 && rawR < 0.35) {
+        _eyeClosedStreak++;
+      } else {
+        _eyeClosedStreak = 0;
+      }
+
+      final visibleFaces = effectiveResults.where(_hasUsableNativeEyeData).toList();
+      final closedFaces = visibleFaces.where(_isNativeFaceLikelyEyesClosed).toList();
+      final closedFaceCount = closedFaces.length;
+      _closedFaceRects = closedFaces
+          .map(
+            (face) => _normalizeFaceRect(
+              face.boundingBox,
+              face.imageWidth,
+              face.imageHeight,
+            ),
+          )
+          .whereType<Rect>()
+          .toList(growable: false);
+
+      if (closedFaceCount > 0) {
+        _anyEyeClosedStreak++;
+        _closedFaceCount = math.max(_closedFaceCount, closedFaceCount);
+      } else if (visibleFaces.length >= 2 || _stablePersonCount <= 1) {
+        _anyEyeClosedStreak = 0;
+        _closedFaceCount = 0;
+        _closedFaceRects = const [];
+      } else {
+        _anyEyeClosedStreak = math.max(0, _anyEyeClosedStreak - 1);
+        if (_anyEyeClosedStreak == 0) {
+          _closedFaceCount = 0;
+          _closedFaceRects = const [];
+        }
+      }
+      _anyFaceEyesClosed = _anyEyeClosedStreak >= 1;
+    } else if (_stablePersonCount <= 1) {
+      _anyFaceEyesClosed = false;
+      _closedFaceCount = 0;
+      _closedFaceRects = const [];
+      _anyEyeClosedStreak = 0;
+    }
+
+    if (shouldLogSummary) {
+      debugPrint(
+        '[FACE_IMAGE_ANALYSIS] use native results count=${effectiveResults.length} '
+        'rawCount=$rawCount image=${_nativeFaceImageWidth}x$_nativeFaceImageHeight '
+        'rotation=$_nativeFaceRotationDegrees '
+        'front=$_nativeFaceIsFrontCamera frame=$_nativeFaceFrameNumber',
+      );
+      for (final face in effectiveResults.take(1)) {
+        debugPrint(
+          '[FACE_IMAGE_ANALYSIS] '
+          'bbox=${face.boundingBox.left.toStringAsFixed(1)},'
+          '${face.boundingBox.top.toStringAsFixed(1)},'
+          '${face.boundingBox.right.toStringAsFixed(1)},'
+          '${face.boundingBox.bottom.toStringAsFixed(1)} '
+          'eyeL=${face.leftEyeOpenProbability?.toStringAsFixed(3) ?? 'null'} '
+          'eyeR=${face.rightEyeOpenProbability?.toStringAsFixed(3) ?? 'null'} '
+          'yaw=${face.headEulerAngleY?.toStringAsFixed(2) ?? 'null'} '
+          'roll=${face.headEulerAngleZ?.toStringAsFixed(2) ?? 'null'} '
+          'pitch=${face.headEulerAngleX?.toStringAsFixed(2) ?? 'null'}',
+        );
+      }
+    }
+  }
+
   // ─── 메인 처리 ────────────────────────────────────
 
   int _portraitDebugFrame = 0;
@@ -358,6 +600,7 @@ class PortraitModeHandler {
         'personsRaw=${rawPersons.length} persons=${persons.length} '
         'streak=$_personStreak stable=$stable',
       );
+      debugPrint('[PORTRAIT_MODE] mode=$_portraitModeLabel frame=$_frameCount');
     }
 
     if (!stable) {
@@ -906,6 +1149,10 @@ class PortraitModeHandler {
     Offset? lShoulder,
     Offset? rShoulder,
   ) {
+    if (_faceAnalysisSource == FaceAnalysisSource.imageAnalysis) {
+      return;
+    }
+
     // 결정: 어떤 분석이 필요한가
     // 조명(Lighting)은 네이티브 메트릭(updateNativeMetrics)을 통해 처리합니다.
     // captureFrame 기반 조명 분석은 프레임 드랍을 유발하므로 사용하지 않습니다.
@@ -938,6 +1185,11 @@ class PortraitModeHandler {
     // captureFrame은 얼굴 분석(needFace)이 필요한 경우에만 호출
     if (!needFace) return;
 
+    debugPrint(
+      '[FACE_PATH] request source=$_faceAnalysisSource '
+      'mode=$_portraitModeLabel frame=$_frameCount',
+    );
+
     _isAnalyzing = true;
 
     unawaited(() async {
@@ -946,7 +1198,10 @@ class PortraitModeHandler {
         if (needFace) reasons.add('face');
         if (needFaceQuality) reasons.add('faceQuality');
 
-        debugPrint('[CAPTURE] RUN reason=${reasons.join('+')} frame=$_frameCount');
+        debugPrint(
+          '[CAPTURE] RUN reason=${reasons.join('+')} '
+          'mode=$_portraitModeLabel frame=$_frameCount',
+        );
 
         // captureFrame 호출(타임아웃으로 UI 블로킹 완화)
         final bytes = await captureFrame().timeout(
@@ -1059,10 +1314,33 @@ class PortraitModeHandler {
     }
   }
 
+  // Dispatcher: routes to configured face analysis source implementation.
   Future<void> _analyzeFace(
     Uint8List bytes, {
     bool analyzeQuality = false,
   }) async {
+    debugPrint(
+      '[FACE_PATH] request source=$_faceAnalysisSource '
+      'mode=$_portraitModeLabel frame=$_frameCount',
+    );
+    switch (_faceAnalysisSource) {
+      case FaceAnalysisSource.previewCapture:
+        return _analyzeFaceFromPreviewCapture(bytes, analyzeQuality: analyzeQuality);
+      case FaceAnalysisSource.imageAnalysis:
+        return _analyzeFaceFromImageAnalysis(bytes, analyzeQuality: analyzeQuality);
+    }
+  }
+
+  // Existing preview-capture-based face analysis (original path).
+  // Kept as fallback and renamed for clarity.
+  Future<void> _analyzeFaceFromPreviewCapture(
+    Uint8List bytes, {
+    bool analyzeQuality = false,
+  }) async {
+    final startedAt = DateTime.now().millisecondsSinceEpoch;
+    debugPrint(
+      '[FACE_PREVIEW] start mode=$_portraitModeLabel frame=$_frameCount',
+    );
     try {
       final decoded = img.decodeImage(bytes);
       if (decoded == null) return;
@@ -1183,9 +1461,29 @@ class PortraitModeHandler {
         _closedFaceRects = const [];
         _anyEyeClosedStreak = 0;
       }
+      final elapsedMs = DateTime.now().millisecondsSinceEpoch - startedAt;
+      debugPrint('[FACE_PREVIEW] end faces=${faces.length} elapsedMs=$elapsedMs');
     } catch (e) {
       debugPrint('[FACE] error=$e');
     }
+  }
+
+  // TODO: ImageAnalysis-based face analysis stub. Implement in next step.
+  Future<void> _analyzeFaceFromImageAnalysis(
+    Uint8List bytes, {
+    bool analyzeQuality = false,
+  }) async {
+    debugPrint(
+      '[FACE_IMAGE_ANALYSIS] stub called '
+      'mode=$_portraitModeLabel frame=$_frameCount',
+    );
+    debugPrint(
+      '[NATIVE_FACE] count=${_latestNativeFaceResults.length} '
+      'image=${_nativeFaceImageWidth}x$_nativeFaceImageHeight '
+      'rotation=$_nativeFaceRotationDegrees '
+      'source=imageAnalysis',
+    );
+    return;
   }
 
   // ─── 키포인트 추출 ────────────────────────────────
@@ -1351,6 +1649,11 @@ class PortraitModeHandler {
         face.rightEyeOpenProbability != null;
   }
 
+  bool _hasUsableNativeEyeData(NativeFaceResult face) {
+    return face.leftEyeOpenProbability != null ||
+        face.rightEyeOpenProbability != null;
+  }
+
   bool _isFaceLikelyEyesClosed(Face face) {
     final l = face.leftEyeOpenProbability;
     final r = face.rightEyeOpenProbability;
@@ -1363,6 +1666,28 @@ class PortraitModeHandler {
     if (l != null) return l < 0.18;
     if (r != null) return r < 0.18;
     return false;
+  }
+
+  bool _isNativeFaceLikelyEyesClosed(NativeFaceResult face) {
+    final l = face.leftEyeOpenProbability;
+    final r = face.rightEyeOpenProbability;
+
+    if (l != null && r != null) {
+      final avg = (l + r) / 2;
+      return (l < 0.38 && r < 0.38) || (avg < 0.32 && (l < 0.45 || r < 0.45));
+    }
+
+    if (l != null) return l < 0.18;
+    if (r != null) return r < 0.18;
+    return false;
+  }
+
+  NativeFaceResult _selectPrimaryNativeFace(List<NativeFaceResult> faces) {
+    return faces.reduce((a, b) {
+      final areaA = a.boundingBox.width * a.boundingBox.height;
+      final areaB = b.boundingBox.width * b.boundingBox.height;
+      return areaA >= areaB ? a : b;
+    });
   }
 
   Rect? _normalizeFaceRect(Rect rect, int imageWidth, int imageHeight) {

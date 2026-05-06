@@ -68,6 +68,7 @@ class CameraScreen extends StatefulWidget {
 
 class _CameraScreenState extends State<CameraScreen> {
   static const _cameraAspect = 3.0 / 4.0;
+  static const bool _debugUseImageAnalysisFace = true;
 
   final _cameraController = YOLOViewController();
   final _landscapeController = FastScnnViewController();
@@ -199,6 +200,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
     _startTiltMonitoring();
     _cameraController.onImageMetrics = _onImageMetrics;
+    _cameraController.onPortraitFaceResults = _onPortraitFaceResults;
   }
 
   void _startTiltMonitoring() {
@@ -296,6 +298,39 @@ class _CameraScreenState extends State<CameraScreen> {
         _lightDirection = coaching.lightDirection;
       });
     }
+  }
+
+  void _onPortraitFaceResults(Map<String, dynamic> payload) {
+    if (!mounted || !_isPortraitMode) return;
+
+    final rawFaces = payload['faces'];
+    final results = <NativeFaceResult>[];
+    if (rawFaces is List) {
+      for (final item in rawFaces) {
+        if (item is Map) {
+          results.add(
+            NativeFaceResult.fromMap(Map<String, dynamic>.from(item)),
+          );
+        }
+      }
+    }
+
+    final imageWidth = (payload['imageWidth'] as num?)?.toInt() ?? 0;
+    final imageHeight = (payload['imageHeight'] as num?)?.toInt() ?? 0;
+    final rotation = (payload['rotationDegrees'] as num?)?.toInt() ?? 0;
+    final frameNumber = (payload['frameNumber'] as num?)?.toInt() ?? -1;
+    final timestampMs = (payload['timestampMs'] as num?)?.toInt();
+    final isFrontCamera = payload['isFrontCamera'] == true;
+
+    _portraitHandler.updateNativeFaceResults(
+      results,
+      imageWidth: imageWidth,
+      imageHeight: imageHeight,
+      rotationDegrees: rotation,
+      frameNumber: frameNumber,
+      timestampMs: timestampMs,
+      isFrontCamera: isFrontCamera,
+    );
   }
 
   List<YOLOResult> _filterResultsForMode(List<YOLOResult> results) {
@@ -811,6 +846,11 @@ class _CameraScreenState extends State<CameraScreen> {
     _portraitHandler.deviceOrientationDeg = _deviceOrientationDeg;
     _portraitHandler.isFrontCamera = _isFrontCamera;
     _portraitHandler.setIntent(_portraitIntent);
+    _portraitHandler.setFaceAnalysisSource(
+      _debugUseImageAnalysisFace
+          ? FaceAnalysisSource.imageAnalysis
+          : FaceAnalysisSource.previewCapture,
+    );
     final currentOrientation = _deviceOrientationDeg;
     if (currentOrientation != _lastSentOrientationDeg) {
       _lastSentOrientationDeg = currentOrientation;

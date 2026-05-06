@@ -170,6 +170,7 @@ class YOLOView @JvmOverloads constructor(
 
     // Image metrics analysis — callback set by YOLOPlatformView
     var onImageMetrics: ((Map<String, Any>) -> Unit)? = null
+    var onPortraitFaceResults: ((Map<String, Any>) -> Unit)? = null
     private var metricsFrameCount: Int = 0
     private val metricsFrameInterval: Int = 2  // analyze every 2nd YOLO frame for faster coaching feedback
 
@@ -964,8 +965,15 @@ class YOLOView @JvmOverloads constructor(
                         )
                         val metrics = HashMap<String, Any>(baseMetrics)
                         if (task == YOLOTask.POSE) {
-                            portraitNativeAnalyzer.schedule(imageProxy, bitmap)
+                            portraitNativeAnalyzer.schedule(
+                                imageProxy = imageProxy,
+                                bitmap = bitmap,
+                                isFrontCamera = isFrontCamera,
+                            )
                             metrics.putAll(portraitNativeAnalyzer.latestMetrics())
+                            onPortraitFaceResults?.invoke(
+                                portraitNativeAnalyzer.latestFaceResults()
+                            )
                         }
                         if (locked != null) {
                             metrics["subjectLocked"] = 1.0

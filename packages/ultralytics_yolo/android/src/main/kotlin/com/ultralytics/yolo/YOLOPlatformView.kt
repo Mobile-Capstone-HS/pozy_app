@@ -26,6 +26,7 @@ class YOLOPlatformView(
     private val methodChannel: MethodChannel?,
     private val factory: YOLOPlatformViewFactory,
     private val metricsHandler: CustomStreamHandler? = null,
+    private val faceResultsHandler: CustomStreamHandler? = null,
 ) : PlatformView, MethodChannel.MethodCallHandler {
 
     private val yoloView: YOLOView = YOLOView(context)
@@ -118,6 +119,13 @@ class YOLOPlatformView(
                 yoloView.onImageMetrics = { metrics ->
                     mainHandler.post {
                         metricsHandler.sink?.success(metrics)
+                    }
+                }
+            }
+            if (faceResultsHandler != null) {
+                yoloView.onPortraitFaceResults = { payload ->
+                    mainHandler.post {
+                        faceResultsHandler.sink?.success(payload)
                     }
                 }
             }
@@ -535,6 +543,8 @@ class YOLOPlatformView(
             yoloView.setStreamCallback { }
             yoloView.setOnInferenceCallback { }
             yoloView.setOnModelLoadCallback { }
+            yoloView.onImageMetrics = null
+            yoloView.onPortraitFaceResults = null
         } catch (e: Exception) {
             Log.e(TAG, "Error during disposal", e)
         }
