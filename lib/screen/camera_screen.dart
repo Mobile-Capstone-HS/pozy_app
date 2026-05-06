@@ -39,7 +39,6 @@ import 'package:pose_camera_app/segmentation/composition_engine.dart';
 import 'package:pose_camera_app/segmentation/composition_resolver.dart';
 import 'package:pose_camera_app/segmentation/composition_summary.dart';
 import 'package:pose_camera_app/segmentation/composition_temporal_filter.dart';
-import 'package:pose_camera_app/segmentation/fastscnn_segmentor.dart';
 import 'package:pose_camera_app/segmentation/fastscnn_view.dart';
 import 'package:pose_camera_app/segmentation/landscape_analyzer.dart';
 
@@ -144,8 +143,6 @@ class _CameraScreenState extends State<CameraScreen> {
   CompositionDecision? _landscapeDecision;
   LandscapeOverlayAdvice _landscapeOverlayAdvice =
       const LandscapeOverlayAdvice.none();
-  SegmentationResult? _landscapeSegmentation;
-
   Timer? _countdownTimer;
   StreamSubscription<AccelerometerEvent>? _accelerometerSub;
   bool _loggedFirstBuild = false;
@@ -155,11 +152,6 @@ class _CameraScreenState extends State<CameraScreen> {
   bool get _isObjectMode => _shootingMode == ShootingMode.object;
 
   /// 현재 기기 방향 기준 상대 기울기 (isLevel 판단 전용)
-  double get _relativeTilt {
-    final base = (_tiltX / 90.0).round() * 90.0;
-    return _tiltX - base;
-  }
-
   /// 사용자가 상단 selector에서 선택한 구도 규칙. 인물/객체 모드에서만 사용.
   CompositionRuleType _selectedRule = CompositionRuleType.none;
   CompositionRule get _activeRule => CompositionRuleRegistry.of(_selectedRule);
@@ -875,7 +867,6 @@ class _CameraScreenState extends State<CameraScreen> {
       _lastSentOrientationDeg = -1;
       _landscapeDecision = null;
       _landscapeOverlayAdvice = const LandscapeOverlayAdvice.none();
-      _landscapeSegmentation = null;
       _selectedSilhouette = SilhouetteType.none;
     });
 
@@ -921,7 +912,6 @@ class _CameraScreenState extends State<CameraScreen> {
       _lastSentOrientationDeg = -1;
       _landscapeDecision = null;
       _landscapeOverlayAdvice = const LandscapeOverlayAdvice.none();
-      _landscapeSegmentation = null;
       _selectedSilhouette = SilhouetteType.none;
     });
   }
@@ -1191,6 +1181,7 @@ class _CameraScreenState extends State<CameraScreen> {
     final smoothed = _landscapeTemporalFilter.smooth(analysis.features);
     final decision = _landscapeTemporalFilter.stabilize(
       _landscapeResolver.resolve(smoothed),
+      smoothed,
     );
     final summary = _landscapeCompositionEngine.evaluate(
       features: smoothed,
@@ -1205,7 +1196,6 @@ class _CameraScreenState extends State<CameraScreen> {
     final landscapeLevel = _landscapeCoachingLevel(summary.guideState);
 
     setState(() {
-      _landscapeSegmentation = frame.result;
       _landscapeDecision = decision;
       _landscapeOverlayAdvice = analysis.advice;
       _isFrontCamera = frame.isFrontCamera;
@@ -1250,21 +1240,6 @@ class _CameraScreenState extends State<CameraScreen> {
         onZoomChanged: (zoomLevel) {
           if (!mounted) return;
           setState(() => _currentZoom = zoomLevel);
-        },
-        overlayBuilder: (context, frame) {
-          return IgnorePointer(
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                CustomPaint(
-                  painter: LandscapeSegmentationDotPainter(
-                    result: frame?.result ?? _landscapeSegmentation,
-                  ),
-                  size: Size.infinite,
-                ),
-              ],
-            ),
-          );
         },
       );
     }
@@ -1360,8 +1335,9 @@ class _CameraScreenState extends State<CameraScreen> {
         color: Colors.black.withValues(alpha: 0.58),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: (hasIssue ? const Color(0xFFFBBF24) : Colors.white)
-              .withValues(alpha: 0.45),
+          color: (hasIssue ? const Color(0xFFFBBF24) : Colors.white).withValues(
+            alpha: 0.45,
+          ),
         ),
       ),
       child: Row(

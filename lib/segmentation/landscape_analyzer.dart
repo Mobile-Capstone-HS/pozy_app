@@ -16,8 +16,6 @@ enum HorizonValidity { valid, weak, invalid }
 
 enum TiltDirection { uphillLeft, uphillRight, level, unknown }
 
-enum HorizonTargetZone { upperThird, lowerThird, centerSafe, none }
-
 enum OverlayGuidanceState {
   hidden,
   searching,
@@ -131,36 +129,30 @@ class HorizonDetectionResult {
 
 class LandscapeOverlayAdvice {
   final OverlayGuidanceState overlayState;
-  final HorizonTargetZone targetZone;
   final double? targetHorizonY;
   final double? recommendedAdjustmentY;
   final TiltDirection tiltDirection;
   final String primaryGuidance;
   final String? secondaryGuidance;
-  final bool showThirdsGrid;
   final bool showHorizonGuide;
 
   const LandscapeOverlayAdvice({
     required this.overlayState,
-    required this.targetZone,
     required this.targetHorizonY,
     required this.recommendedAdjustmentY,
     required this.tiltDirection,
     required this.primaryGuidance,
     required this.secondaryGuidance,
-    required this.showThirdsGrid,
     required this.showHorizonGuide,
   });
 
   const LandscapeOverlayAdvice.none()
     : overlayState = OverlayGuidanceState.hidden,
-      targetZone = HorizonTargetZone.none,
       targetHorizonY = null,
       recommendedAdjustmentY = null,
       tiltDirection = TiltDirection.unknown,
       primaryGuidance = '구도를 분석 중입니다.',
       secondaryGuidance = null,
-      showThirdsGrid = true,
       showHorizonGuide = false;
 }
 
@@ -401,15 +393,34 @@ class LandscapeAnalyzer {
     final buildingRatio = result.classRatio(CityscapesClass.building);
     final openness = _computeOpenness(result);
     final leading = _computeLeadingLineMetrics(result);
-    final confidence = (0.28 * skyOnlyRatio +
-            0.10 * topOpenAreaRatio +
-            0.24 * (vegRatio + terrainRatio).clamp(0.0, 1.0) +
-            0.12 * roadRatio +
-            0.08 * buildingRatio +
-            0.18 * openness)
-        .clamp(0.0, 1.0);
     final midCol = result.width ~/ 2;
     final foregroundStart = result.height * 2 ~/ 3;
+    final foregroundRatio =
+        result.classRatioInRows(
+          CityscapesClass.vegetation,
+          foregroundStart,
+          result.height,
+        ) +
+        result.classRatioInRows(
+          CityscapesClass.terrain,
+          foregroundStart,
+          result.height,
+        );
+    final confidence = _computeLandscapeConfidence(
+      skyOnlyRatio: skyOnlyRatio,
+      topOpenAreaRatio: topOpenAreaRatio,
+      vegRatio: vegRatio,
+      terrainRatio: terrainRatio,
+      roadRatio: roadRatio,
+      buildingRatio: buildingRatio,
+      openness: openness,
+      foregroundRatio: foregroundRatio,
+      horizonDetected: horizon.horizonDetected,
+      horizonPosition: horizon.averageY,
+      horizonConfidence: horizon.confidence,
+      horizonStability: horizon.stability,
+      leading: leading,
+    );
 
     return LandscapeFeatures(
       skyRatio: skyRatio,
@@ -459,17 +470,76 @@ class LandscapeAnalyzer {
         midCol,
         result.width,
       ),
-      foregroundRatio:
-          result.classRatioInRows(
-            CityscapesClass.vegetation,
-            foregroundStart,
-            result.height,
-          ) +
-          result.classRatioInRows(
-            CityscapesClass.terrain,
-            foregroundStart,
-            result.height,
-          ),
+      foregroundRatio: foregroundRatio,
+    );
+  }
+
+  static double _computeLandscapeConfidence({
+    required double skyOnlyRatio,
+    required double topOpenAreaRatio,
+    required double vegRatio,
+    required double terrainRatio,
+    required double roadRatio,
+    required double buildingRatio,
+    required double openness,
+    required double foregroundRatio,
+    required bool horizonDetected,
+    required double? horizonPosition,
+    required double horizonConfidence,
+    required double horizonStability,
+    required _LeadingLineMetrics leading,
+  }) {
+    final naturalCoverage = (vegRatio + terrainRatio).clamp(0.0, 1.0);
+    final urbanCoverage = (buildingRatio + roadRatio).clamp(0.0, 1.0);
+    final scenicCoverage = (naturalCoverage + roadRatio + buildingRatio * 0.8)
+        .clamp(0.0, 1.0);
+    final leadingPresence =
+        (0.55 * leading.confidence + 0.45 * leading.strength).clamp(0.0, 1.0);
+    final openPresence = math.max(openness, topOpenAreaRatio * 0.85);
+    final horizonPresence = horizonDetected ? horizonConfidence.clamp(0.0, 1.0) : 0.0;
+
+    final horizonScene = (0.30 * skyOnlyRatio +
+            0.16 * topOpenAreaRatio +
+            0.30 * horizonPresence +
+            0.12 * naturalCoverage +
+            0.12 * openPresence)
+        .clamp(0.0, 1.0);
+    final naturalScene = (0.36 * naturalCoverage +
+            0.24 * foregroundRatio.clamp(0.0, 1.0) +
+            0.24 * leadingPresence +
+            0.16 * openPresence)
+        .clamp(0.0, 1.0);
+    final urbanScene = (0.22 * buildingRatio +
+            0.18 * roadRatio +
+            0.28 * leadingPresence +
+            0.16 * topOpenAreaRatio +
+            0.16 * openPresence)
+        .clamp(0.0, 1.0);
+    final blendedBase = (0.24 * scenicCoverage +
+            0.22 * leadingPresence +
+            0.18 * openPresence +
+            0.16 * foregroundRatio.clamp(0.0, 1.0) +
+            0.12 * skyOnlyRatio +
+            0.08 * urbanCoverage)
+        .clamp(0.0, 1.0);
+    final sunsetBandScene =
+        horizonDetected &&
+            horizonPosition != null &&
+            horizonPosition >= 0.22 &&
+            horizonPosition <= 0.62 &&
+            topOpenAreaRatio >= 0.10 &&
+            horizonPresence >= 0.24
+        ? (0.36 +
+                0.18 * topOpenAreaRatio +
+                0.22 * horizonPresence +
+                0.14 * horizonStability.clamp(0.0, 1.0) +
+                0.10 * openPresence)
+            .clamp(0.0, 1.0)
+        : 0.0;
+
+    return math.max(
+      math.max(blendedBase, sunsetBandScene),
+      math.max(horizonScene, math.max(naturalScene, urbanScene)),
     );
   }
 
@@ -541,15 +611,13 @@ class LandscapeAnalyzer {
             ? 1.0
             : id == CityscapesClass.sidewalk
             ? 0.85
-            : id == CityscapesClass.terrain
-            ? 0.25
             : 0.0;
         if (weight <= 0.0) continue;
         weightedCount += weight;
         sumX += x * weight;
       }
       final coverage = weightedCount / result.width;
-      if (coverage < 0.08) continue;
+      if (coverage < 0.10) continue;
       centers.add((sumX / weightedCount) / math.max(1, result.width - 1));
       rowNorms.add(y / math.max(1, result.height - 1));
       rowCoverages.add(coverage);
@@ -574,7 +642,7 @@ class LandscapeAnalyzer {
     final targetX = centers.first;
     final centerBias =
         (1.0 - (((targetX - 0.5).abs()) / 0.35)).clamp(0.0, 1.0);
-    if (bottomCoverage < 0.12 || taperScore < 0.12) {
+    if (bottomCoverage < 0.16 || taperScore < 0.18) {
       return const _LeadingLineMetrics.none();
     }
     final confidence =
@@ -1303,6 +1371,7 @@ class HorizonTemporalStabilizer {
 }
 
 class LandscapeCompositionAdvisor {
+  static const double _landscapeGuideMin = 0.38;
   static const double _skyGuideMin = 0.12;
   static const bool _useLegacySkyRatioTargeting = false;
   static const double _alignedDistance = 0.06;
@@ -1314,9 +1383,56 @@ class LandscapeCompositionAdvisor {
 
   const LandscapeCompositionAdvisor();
 
+  bool _hasSufficientLandscapeContext(LandscapeFeatures features) {
+    final naturalCoverage =
+        (features.vegRatio + features.terrainRatio).clamp(0.0, 1.0);
+    final urbanCoverage =
+        (features.roadRatio + features.buildingRatio).clamp(0.0, 1.0);
+    final openSkyCue = features.skyOnlyRatio >= 0.05;
+    final topOpenCue = features.topOpenAreaRatio >= 0.10;
+    final horizonCue =
+        features.horizonDetected &&
+        features.horizonPosition != null &&
+        features.horizonConfidence >= 0.20 &&
+        features.horizonValidity != HorizonValidity.invalid;
+    final naturalScene =
+        naturalCoverage >= 0.20 &&
+        (features.foregroundRatio >= 0.10 || topOpenCue || openSkyCue);
+    final urbanScene =
+        features.roadRatio >= 0.10 &&
+        features.buildingRatio >= 0.10 &&
+        (topOpenCue || openSkyCue || horizonCue);
+    final openScene =
+        features.landscapeConfidence >= _landscapeGuideMin &&
+        (naturalCoverage + urbanCoverage) >= 0.22 &&
+        (topOpenCue || openSkyCue);
+
+    return horizonCue || naturalScene || urbanScene || openScene;
+  }
+
+  bool _hasOutdoorLeadingContext(LandscapeFeatures features) {
+    final naturalCoverage =
+        (features.vegRatio + features.terrainRatio).clamp(0.0, 1.0);
+    final strongNaturalScene =
+        naturalCoverage >= 0.22 && features.foregroundRatio >= 0.10;
+    final streetScene =
+        features.roadRatio >= 0.12 &&
+        (features.buildingRatio >= 0.10 ||
+            features.skyOnlyRatio >= 0.05 ||
+            (features.horizonDetected && features.horizonConfidence >= 0.20));
+    final skylineScene =
+        features.skyOnlyRatio >= 0.05 ||
+        (features.horizonDetected && features.horizonConfidence >= 0.20);
+
+    return strongNaturalScene || streetScene || skylineScene;
+  }
+
   LandscapeOverlayAdvice build(LandscapeFeatures features) {
+    final hasSufficientLandscapeContext =
+        _hasSufficientLandscapeContext(features);
     final hasLeadingGuide = features.leadingConfidence >= _leadingConfidenceMin &&
         features.leadingLineStrength >= _leadingStrengthMin;
+    final hasOutdoorLeadingContext = _hasOutdoorLeadingContext(features);
     final hasWeakHorizonScene = features.horizonPosition != null &&
         features.horizonConfidence >= _weakHorizonSceneMin &&
         features.topOpenAreaRatio >= 0.10;
@@ -1325,14 +1441,29 @@ class LandscapeCompositionAdvisor {
         features.horizonConfidence >= _unstableConfidence &&
         features.horizonPosition != null;
 
-    if (!reliableHorizon && hasLeadingGuide && !hasWeakHorizonScene) {
+    if (!hasSufficientLandscapeContext && !reliableHorizon) {
+      return const LandscapeOverlayAdvice(
+        overlayState: OverlayGuidanceState.searching,
+        targetHorizonY: null,
+        recommendedAdjustmentY: null,
+        tiltDirection: TiltDirection.unknown,
+        primaryGuidance: '풍경이 더 잘 보이도록 프레임에 배경을 조금 더 담아보세요.',
+        secondaryGuidance: null,
+        showHorizonGuide: false,
+      );
+    }
+
+    if (hasSufficientLandscapeContext &&
+        !reliableHorizon &&
+        hasLeadingGuide &&
+        hasOutdoorLeadingContext &&
+        !hasWeakHorizonScene) {
       final targetX = features.leadingTargetX ?? 0.5;
       final offset = targetX - 0.5;
       return LandscapeOverlayAdvice(
         overlayState: offset.abs() <= 0.10
             ? OverlayGuidanceState.aligned
             : OverlayGuidanceState.searching,
-        targetZone: HorizonTargetZone.none,
         targetHorizonY: null,
         recommendedAdjustmentY: null,
         tiltDirection: features.tiltDirection,
@@ -1341,15 +1472,13 @@ class LandscapeCompositionAdvisor {
             : offset < 0
             ? '장면의 중심축이 왼쪽에 있어요. 화면 중앙으로 조금 맞춰보세요.'
             : '장면의 중심축이 오른쪽에 있어요. 화면 중앙으로 조금 맞춰보세요.',
-        secondaryGuidance: '이 장면은 수평선보다 시선의 흐름을 먼저 보는 편이 좋아요.',
-        showThirdsGrid: true,
+        secondaryGuidance: '이 장면은 수평선보다 길이나 경계선 방향을 먼저 맞추는 편이 좋아요.',
         showHorizonGuide: false,
       );
     }
 
     if (!reliableHorizon && hasWeakHorizonScene) {
       final targetY = _targetY(features);
-      final targetZone = _targetZoneForY(targetY);
       final delta = targetY == null || features.horizonPosition == null
           ? null
           : features.horizonPosition! - targetY;
@@ -1360,7 +1489,6 @@ class LandscapeCompositionAdvisor {
             : delta > 0
             ? OverlayGuidanceState.adjustDown
             : OverlayGuidanceState.adjustUp,
-        targetZone: targetZone,
         targetHorizonY: targetY,
         recommendedAdjustmentY: delta == null ? null : -delta,
         tiltDirection: features.tiltDirection,
@@ -1370,7 +1498,6 @@ class LandscapeCompositionAdvisor {
             ? '카메라를 조금 내려 노을 수평선을 맞춰보세요.'
             : '카메라를 조금 올려 노을 수평선을 맞춰보세요.',
         secondaryGuidance: '하늘 색이 강한 장면이라 수평선 위치를 먼저 보는 편이 좋아요.',
-        showThirdsGrid: true,
         showHorizonGuide: targetY != null,
       );
     }
@@ -1378,29 +1505,24 @@ class LandscapeCompositionAdvisor {
     if (!reliableHorizon) {
       return const LandscapeOverlayAdvice(
         overlayState: OverlayGuidanceState.searching,
-        targetZone: HorizonTargetZone.none,
         targetHorizonY: null,
         recommendedAdjustmentY: null,
         tiltDirection: TiltDirection.unknown,
         primaryGuidance: '수평선이 안정적으로 보이도록 프레임을 단순하게 잡아보세요.',
         secondaryGuidance: null,
-        showThirdsGrid: true,
         showHorizonGuide: false,
       );
     }
 
     final targetY = _targetY(features);
-    final targetZone = _targetZoneForY(targetY);
     if (targetY == null) {
       return LandscapeOverlayAdvice(
         overlayState: OverlayGuidanceState.unstable,
-        targetZone: targetZone,
         targetHorizonY: null,
         recommendedAdjustmentY: null,
         tiltDirection: features.tiltDirection,
         primaryGuidance: '장면 경계는 보이지만 수평선이 아직 불안정해요.',
         secondaryGuidance: _tiltHint(features),
-        showThirdsGrid: true,
         showHorizonGuide: false,
       );
     }
@@ -1416,7 +1538,6 @@ class LandscapeCompositionAdvisor {
 
     return LandscapeOverlayAdvice(
       overlayState: overlayState,
-      targetZone: targetZone,
       targetHorizonY: targetY,
       recommendedAdjustmentY: aligned ? null : -delta,
       tiltDirection: features.tiltDirection,
@@ -1426,7 +1547,6 @@ class LandscapeCompositionAdvisor {
           ? '카메라를 조금 내려 수평선을 맞춰보세요.'
           : '카메라를 조금 올려 수평선을 맞춰보세요.',
       secondaryGuidance: _tiltHint(features),
-      showThirdsGrid: true,
       showHorizonGuide: true,
     );
   }
@@ -1467,13 +1587,6 @@ class LandscapeCompositionAdvisor {
     final upperDistance = (horizonY - (1 / 3)).abs();
     final lowerDistance = (horizonY - (2 / 3)).abs();
     return upperDistance <= lowerDistance ? 1 / 3 : 2 / 3;
-  }
-
-  HorizonTargetZone _targetZoneForY(double? targetY) {
-    if (targetY == null) return HorizonTargetZone.centerSafe;
-    if ((targetY - (1 / 3)).abs() < 0.001) return HorizonTargetZone.upperThird;
-    if ((targetY - (2 / 3)).abs() < 0.001) return HorizonTargetZone.lowerThird;
-    return HorizonTargetZone.centerSafe;
   }
 
   String? _tiltHint(LandscapeFeatures features) {
