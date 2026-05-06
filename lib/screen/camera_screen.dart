@@ -1272,7 +1272,11 @@ class _CameraScreenState extends State<CameraScreen> {
 
     return YOLOView(
       key: ValueKey(
-        'yolo_${_isGroupPortraitMode ? 'group_detect' : _isPortraitMode ? 'pose' : 'detect'}_${_isFrontCamera ? 'front' : 'back'}',
+        'yolo_${_isGroupPortraitMode
+            ? 'group_detect'
+            : _isPortraitMode
+            ? 'pose'
+            : 'detect'}_${_isFrontCamera ? 'front' : 'back'}',
       ),
       controller: _cameraController,
       modelPath: _isGroupPortraitMode
@@ -1375,8 +1379,9 @@ class _CameraScreenState extends State<CameraScreen> {
         color: Colors.black.withValues(alpha: 0.58),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: (hasIssue ? const Color(0xFFFBBF24) : Colors.white)
-              .withValues(alpha: 0.45),
+          color: (hasIssue ? const Color(0xFFFBBF24) : Colors.white).withValues(
+            alpha: 0.45,
+          ),
         ),
       ),
       child: Row(
@@ -1543,7 +1548,8 @@ class _CameraScreenState extends State<CameraScreen> {
                 size: Size.infinite,
               ),
             ),
-            if (!_isLandscapeMode)
+            if (!_isLandscapeMode &&
+                !(_isPortraitMode && _showPortraitDebugOverlay))
               GestureDetector(
                 behavior: HitTestBehavior.translucent,
                 onTapUp: _isObjectMode && _isDrawingRoi
@@ -1668,6 +1674,111 @@ class _CameraScreenState extends State<CameraScreen> {
                     : null,
               ),
             ),
+            // Portrait debug toggles (visible when portrait debug overlay enabled)
+            if (_isPortraitMode && _showPortraitDebugOverlay)
+              Positioned(
+                top: 64,
+                right: 16,
+                child: Material(
+                  color: Colors.black.withOpacity(0.45),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 6,
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              'Face',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Switch.adaptive(
+                              value: _portraitHandler.isFaceAnalysisEnabled,
+                              activeColor: const Color(0xFF38BDF8),
+                              onChanged: (v) => setState(() {
+                                _portraitHandler.setFaceAnalysisEnabled(v);
+                              }),
+                            ),
+                          ],
+                        ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              'Lighting',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Switch.adaptive(
+                              value: _portraitHandler.isLightingAnalysisEnabled,
+                              activeColor: const Color(0xFF38BDF8),
+                              onChanged: (v) => setState(() {
+                                _portraitHandler.setLightingAnalysisEnabled(v);
+                              }),
+                            ),
+                          ],
+                        ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              'FQuality',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Switch.adaptive(
+                              value: _portraitHandler.isFaceQualityEnabled,
+                              activeColor: const Color(0xFF38BDF8),
+                              onChanged: (v) => setState(() {
+                                _portraitHandler.setFaceQualityEnabled(v);
+                              }),
+                            ),
+                          ],
+                        ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              'Capture',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Switch.adaptive(
+                              value: _portraitHandler
+                                  .isBitmapCaptureForFaceEnabled,
+                              activeColor: const Color(0xFF38BDF8),
+                              onChanged: (v) => setState(() {
+                                _portraitHandler.setBitmapCaptureForFaceEnabled(
+                                  v,
+                                );
+                              }),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             // 구도 규칙 selector — 인물/객체 모드만. 풍경은 자동 감지 사용.
             if (_isLandscapeMode)
               Positioned(
@@ -1698,14 +1809,17 @@ class _CameraScreenState extends State<CameraScreen> {
                 top: 60,
                 left: 0,
                 right: 0,
-                child: PortraitIntentSelector(
-                  selected: _portraitIntent,
-                  onChanged: (intent) {
-                    if (intent == _portraitIntent) return;
-                    setState(() => _portraitIntent = intent);
-                    _portraitHandler.setIntent(intent);
-                    _resetPortraitState();
-                  },
+                child: IgnorePointer(
+                  ignoring: _showPortraitDebugOverlay,
+                  child: PortraitIntentSelector(
+                    selected: _portraitIntent,
+                    onChanged: (intent) {
+                      if (intent == _portraitIntent) return;
+                      setState(() => _portraitIntent = intent);
+                      _portraitHandler.setIntent(intent);
+                      _resetPortraitState();
+                    },
+                  ),
                 ),
               ),
             if (!_isLandscapeMode)
