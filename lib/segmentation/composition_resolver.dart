@@ -38,25 +38,86 @@ class CompositionDecision {
 }
 
 class CompositionResolver {
-  static const double _noneLandscapeThreshold = 0.10;
+  static const double _noneLandscapeThreshold = 0.38;
   static const double _skyRatioGuideMin = 0.14;
   static const double _horizonConfidenceMin = 0.28;
   static const bool _useLegacySkyRatioTargeting = false;
   static const double _horizonGoodDistance = 0.16;
-  static const double _ruleOfThirdsLandscapeMin = 0.42;
+  static const double _ruleOfThirdsLandscapeMin = 0.50;
   static const double _leadingConfidenceMin = 0.30;
   static const double _leadingStrengthMin = 0.26;
   static const double _weakHorizonSceneMin = 0.24;
 
   const CompositionResolver();
 
+  bool _hasSufficientLandscapeContext(LandscapeFeatures f) {
+    final naturalCoverage = (f.vegRatio + f.terrainRatio).clamp(0.0, 1.0);
+    final urbanCoverage = (f.roadRatio + f.buildingRatio).clamp(0.0, 1.0);
+    final openSkyCue = f.skyOnlyRatio >= 0.05;
+    final topOpenCue = f.topOpenAreaRatio >= 0.10;
+    final horizonCue =
+        f.horizonDetected &&
+        f.horizonPosition != null &&
+        f.horizonConfidence >= 0.20 &&
+        f.horizonValidity != HorizonValidity.invalid;
+    final naturalScene =
+        naturalCoverage >= 0.20 &&
+        (f.foregroundRatio >= 0.10 || topOpenCue || openSkyCue);
+    final urbanScene =
+        f.roadRatio >= 0.10 &&
+        f.buildingRatio >= 0.10 &&
+        (topOpenCue || openSkyCue || horizonCue);
+    final openScene =
+        f.landscapeConfidence >= _noneLandscapeThreshold &&
+        (naturalCoverage + urbanCoverage) >= 0.22 &&
+        (topOpenCue || openSkyCue);
+
+    return horizonCue || naturalScene || urbanScene || openScene;
+  }
+
+  bool _hasOutdoorLeadingContext(LandscapeFeatures f) {
+    final naturalCoverage = (f.vegRatio + f.terrainRatio).clamp(0.0, 1.0);
+    final strongNaturalScene =
+        naturalCoverage >= 0.22 && f.foregroundRatio >= 0.10;
+    final streetScene =
+        f.roadRatio >= 0.12 &&
+        (f.buildingRatio >= 0.10 ||
+            f.skyOnlyRatio >= 0.05 ||
+            (f.horizonDetected && f.horizonConfidence >= 0.20));
+    final skylineScene =
+        f.skyOnlyRatio >= 0.05 ||
+        (f.horizonDetected && f.horizonConfidence >= 0.20);
+
+    return strongNaturalScene || streetScene || skylineScene;
+  }
+
   CompositionDecision resolve(LandscapeFeatures f) {
-    if (f.landscapeConfidence < _noneLandscapeThreshold) {
+    final hasSufficientLandscapeContext = _hasSufficientLandscapeContext(f);
+    final hasLeadingGuide = f.leadingConfidence >= _leadingConfidenceMin &&
+        f.leadingLineStrength >= _leadingStrengthMin;
+    final hasOutdoorLeadingContext = _hasOutdoorLeadingContext(f);
+    final structuredScene = hasSufficientLandscapeContext &&
+        hasLeadingGuide &&
+        hasOutdoorLeadingContext &&
+        (f.foregroundRatio >= 0.12 ||
+            f.roadRatio >= 0.10 ||
+            f.buildingRatio >= 0.12 ||
+            (f.vegRatio + f.terrainRatio) >= 0.28);
+    final scenicHorizonScene = f.horizonDetected &&
+        f.horizonPosition != null &&
+        f.horizonPosition! >= 0.22 &&
+        f.horizonPosition! <= 0.62 &&
+        f.topOpenAreaRatio >= 0.10 &&
+        f.horizonConfidence >= 0.24;
+
+    if (!hasSufficientLandscapeContext &&
+        !structuredScene &&
+        !scenicHorizonScene) {
       return CompositionDecision(
         compositionMode: CompositionMode.none,
         secondaryComposition: null,
         overlayType: 'none',
-        primaryGuidance: '하늘과 지면이 함께 보이도록 프레임을 다시 잡아보세요.',
+        primaryGuidance: '풍경이 더 잘 보이도록 프레임에 배경을 조금 더 담아보세요.',
         secondaryGuidance: null,
         confidence: 1.0 - f.landscapeConfidence,
       );
@@ -84,7 +145,7 @@ class CompositionResolver {
       final overlayType =
           preferredTarget <= 0.5 ? 'horizon_upper_third' : 'horizon_lower_third';
       final guidance = horizonDistance <= _horizonGoodDistance
-          ? '좋아요. 수평선을 3분할선 근처에 잘 맞추고 있어요.'
+          ? '좋아요. 수평선이 3분할 구도에 안정적으로 맞고 있어요.'
           : preferredTarget <= 0.5
               ? '수평선을 위쪽 3분할선에 맞춰보세요.'
               : '수평선을 아래쪽 3분할선에 맞춰보세요.';
@@ -108,23 +169,23 @@ class CompositionResolver {
             .clamp(0.0, 1.0)
         : f.landscapeConfidence.clamp(0.0, 1.0);
 
-    final hasLeadingGuide = f.leadingConfidence >= _leadingConfidenceMin &&
-        f.leadingLineStrength >= _leadingStrengthMin;
-
-    if (hasLeadingGuide && !hasWeakHorizonScene) {
+    if (hasSufficientLandscapeContext &&
+        hasLeadingGuide &&
+        hasOutdoorLeadingContext &&
+        !hasWeakHorizonScene) {
       final vanishingX = f.leadingTargetX ?? 0.5;
       final offset = vanishingX - 0.5;
       final guidance = offset.abs() <= 0.10
-          ? '장면의 중심축이 잘 맞아요. 원근감을 살려 촬영해보세요.'
+          ? '길이나 경계선이 화면 가운데로 잘 향하고 있어요. 이 구도를 유지해보세요.'
           : offset < 0
-          ? '장면의 중심축이 왼쪽에 있어요. 화면 중심으로 조금 맞춰보세요.'
-          : '장면의 중심축이 오른쪽에 있어요. 화면 중심으로 조금 맞춰보세요.';
+              ? '길이나 경계선이 왼쪽으로 치우쳐 있어요. 화면 가운데 쪽으로 조금 맞춰보세요.'
+              : '길이나 경계선이 오른쪽으로 치우쳐 있어요. 화면 가운데 쪽으로 조금 맞춰보세요.';
       return CompositionDecision(
         compositionMode: CompositionMode.genericLandscape,
         secondaryComposition: null,
         overlayType: 'leading_center',
         primaryGuidance: guidance,
-        secondaryGuidance: '수평선보다 장면의 중심 흐름을 먼저 맞추는 편이 좋아요.',
+        secondaryGuidance: '수평선이 잘 안 보일 때는 길이나 경계선 방향부터 먼저 맞추면 좋아요.',
         confidence: (0.55 * f.leadingConfidence + 0.45 * f.leadingLineStrength)
             .clamp(0.0, 1.0),
         leadingCenterScore: 1.0 - offset.abs().clamp(0.0, 1.0),
@@ -149,8 +210,8 @@ class CompositionResolver {
       secondaryComposition: null,
       overlayType: 'thirds_grid',
       primaryGuidance: applySkyRatioLogic
-          ? '하늘과 지면 비율을 보면서 3분할선에 맞춰 구도를 잡아보세요.'
-          : '수평선이 보이면 3분할선에 맞춰 구도를 잡아보세요.',
+          ? '풍경을 조금 더 담은 뒤 3분할선을 기준으로 구도를 맞춰보세요.'
+          : '풍경이 충분히 보이면 3분할선을 기준으로 구도를 안내해드릴게요.',
       secondaryGuidance: null,
       confidence: ruleConfidence,
     );

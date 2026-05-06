@@ -122,16 +122,6 @@ class _LandscapeCameraScreenState extends State<LandscapeCameraScreen> {
                   _uiState = _uiState.copyWith(currentZoom: zoom);
                 });
               },
-              overlayBuilder: (context, frame) {
-                return IgnorePointer(
-                  child: CustomPaint(
-                    painter: LandscapeSegmentationDotPainter(
-                      result: frame?.result ?? _uiState.segmentation,
-                    ),
-                    size: Size.infinite,
-                  ),
-                );
-              },
             ),
             IgnorePointer(
               child: CustomPaint(
