@@ -25,7 +25,10 @@ class LandscapeModeController {
   }) {
     final analysis = _landscapeAnalyzer.analyze(frame.result);
     final smoothed = _temporalFilter.smooth(analysis.features);
-    final decision = _temporalFilter.stabilize(_resolver.resolve(smoothed));
+    final decision = _temporalFilter.stabilize(
+      _resolver.resolve(smoothed),
+      smoothed,
+    );
     final summary = _compositionEngine.evaluate(
       features: smoothed,
       decision: decision,
@@ -40,7 +43,6 @@ class LandscapeModeController {
     return currentState.copyWith(
       decision: decision,
       overlayAdvice: analysis.advice,
-      segmentation: frame.result,
       isFrontCamera: frame.isFrontCamera,
       currentZoom: frame.zoomLevel,
       guidance: analysis.advice.primaryGuidance,
