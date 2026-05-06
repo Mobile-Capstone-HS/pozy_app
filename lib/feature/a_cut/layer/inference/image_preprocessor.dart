@@ -3,10 +3,34 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 
+import 'acut_perf.dart';
+
 enum ImageNormalization { zeroToOne, minusOneToOne }
 
 class ImagePreprocessor {
   const ImagePreprocessor();
+
+  Future<AcutImagePreprocessBundle> createBundle(Uint8List imageBytes) async {
+    final sw = Stopwatch()..start();
+    final decoded = img.decodeImage(imageBytes);
+    sw.stop();
+    if (decoded == null) {
+      throw Exception('Cannot decode image bytes.');
+    }
+    final bundle = AcutImagePreprocessBundle._(
+      sourceBytes: imageBytes,
+      decoded: decoded,
+      sourceWidth: decoded.width,
+      sourceHeight: decoded.height,
+      decodeMs: sw.elapsedMilliseconds,
+    );
+    AcutPerfCollector.recordPreprocess(sw.elapsedMilliseconds);
+    debugPrint(
+      '[AcutPerf] preprocess_decode_ms=${sw.elapsedMilliseconds} '
+      'source=${decoded.width}x${decoded.height}',
+    );
+    return bundle;
+  }
 
   Future<Uint8List> preprocessToRgbFloat32(
     Uint8List imageBytes, {
@@ -42,6 +66,94 @@ class ImagePreprocessor {
         normalization: normalization,
       ),
     );
+  }
+}
+
+class AcutImagePreprocessBundle {
+  final Uint8List sourceBytes;
+  final img.Image decoded;
+  final int sourceWidth;
+  final int sourceHeight;
+  final int decodeMs;
+
+  final Map<String, Uint8List> _tensorCache = <String, Uint8List>{};
+  final Map<String, int> _timings = <String, int>{};
+
+  AcutImagePreprocessBundle._({
+    required this.sourceBytes,
+    required this.decoded,
+    required this.sourceWidth,
+    required this.sourceHeight,
+    required this.decodeMs,
+  }) {
+    _timings['decode'] = decodeMs;
+  }
+
+  int get preprocessTotalMs =>
+      _timings.values.fold<int>(0, (sum, value) => sum + value);
+
+  Future<Uint8List> rgbFloat32({
+    required int width,
+    required int height,
+    ImageNormalization normalization = ImageNormalization.zeroToOne,
+  }) async {
+    final key = 'rgb_${width}x$height:${normalization.name}';
+    final existing = _tensorCache[key];
+    if (existing != null) {
+      return existing;
+    }
+
+    final sw = Stopwatch()..start();
+    final buffer = _preprocessDecodedToRgbFloat32(
+      decoded,
+      width: width,
+      height: height,
+      normalization: normalization,
+    );
+    sw.stop();
+    _tensorCache[key] = buffer;
+    _recordTiming('rgb_$width', sw.elapsedMilliseconds);
+    debugPrint('[AcutPerf] preprocess_${width}_ms=${sw.elapsedMilliseconds}');
+    return buffer;
+  }
+
+  Future<Uint8List> alampPatchesFloat32({
+    required int patchWidth,
+    required int patchHeight,
+    required int patchCount,
+    ImageNormalization normalization = ImageNormalization.zeroToOne,
+  }) async {
+    final key =
+        'alamp_patches_${patchWidth}x$patchHeight:$patchCount:${normalization.name}';
+    final existing = _tensorCache[key];
+    if (existing != null) {
+      return existing;
+    }
+
+    final sw = Stopwatch()..start();
+    final buffer = _preprocessDecodedPatchBatchToRgbFloat32(
+      decoded,
+      patchWidth: patchWidth,
+      patchHeight: patchHeight,
+      patchCount: patchCount,
+      normalization: normalization,
+    );
+    sw.stop();
+    _tensorCache[key] = buffer;
+    _recordTiming('alamp_patches', sw.elapsedMilliseconds);
+    debugPrint(
+      '[AcutPerf] preprocess_alamp_patches_ms=${sw.elapsedMilliseconds}',
+    );
+    return buffer;
+  }
+
+  void logTotal() {
+    debugPrint('[AcutPerf] preprocess_total_ms=$preprocessTotalMs');
+  }
+
+  void _recordTiming(String key, int ms) {
+    _timings[key] = (_timings[key] ?? 0) + ms;
+    AcutPerfCollector.recordPreprocess(ms);
   }
 }
 
@@ -81,22 +193,36 @@ Uint8List _preprocessToRgbFloat32(_PreprocessRequest request) {
     throw Exception('Cannot decode image bytes.');
   }
 
-  final resized = img.copyResize(
+  return _preprocessDecodedToRgbFloat32(
     decoded,
     width: request.width,
     height: request.height,
+    normalization: request.normalization,
+  );
+}
+
+Uint8List _preprocessDecodedToRgbFloat32(
+  img.Image decoded, {
+  required int width,
+  required int height,
+  required ImageNormalization normalization,
+}) {
+  final resized = img.copyResize(
+    decoded,
+    width: width,
+    height: height,
     interpolation: img.Interpolation.linear,
   );
 
-  final output = Float32List(request.width * request.height * 3);
+  final output = Float32List(width * height * 3);
   var cursor = 0;
 
-  for (var y = 0; y < request.height; y++) {
-    for (var x = 0; x < request.width; x++) {
+  for (var y = 0; y < height; y++) {
+    for (var x = 0; x < width; x++) {
       final pixel = resized.getPixel(x, y);
-      output[cursor++] = _normalize(pixel.r, request.normalization);
-      output[cursor++] = _normalize(pixel.g, request.normalization);
-      output[cursor++] = _normalize(pixel.b, request.normalization);
+      output[cursor++] = _normalize(pixel.r, normalization);
+      output[cursor++] = _normalize(pixel.g, normalization);
+      output[cursor++] = _normalize(pixel.b, normalization);
     }
   }
 
@@ -111,15 +237,29 @@ Uint8List _preprocessPatchBatchToRgbFloat32(
     throw Exception('Cannot decode image bytes.');
   }
 
-  final patchCount = request.patchCount < 1 ? 1 : request.patchCount;
+  return _preprocessDecodedPatchBatchToRgbFloat32(
+    decoded,
+    patchWidth: request.patchWidth,
+    patchHeight: request.patchHeight,
+    patchCount: request.patchCount,
+    normalization: request.normalization,
+  );
+}
+
+Uint8List _preprocessDecodedPatchBatchToRgbFloat32(
+  img.Image decoded, {
+  required int patchWidth,
+  required int patchHeight,
+  required int patchCount,
+  required ImageNormalization normalization,
+}) {
+  final safePatchCount = patchCount < 1 ? 1 : patchCount;
   final cropSide = math.max(
     1,
     (math.min(decoded.width, decoded.height) * 0.6).round(),
   );
-  final anchors = _buildPatchAnchors(patchCount);
-  final output = Float32List(
-    patchCount * request.patchWidth * request.patchHeight * 3,
-  );
+  final anchors = _buildPatchAnchors(safePatchCount);
+  final output = Float32List(safePatchCount * patchWidth * patchHeight * 3);
   var cursor = 0;
 
   for (final anchor in anchors) {
@@ -139,17 +279,17 @@ Uint8List _preprocessPatchBatchToRgbFloat32(
     );
     final resized = img.copyResize(
       cropped,
-      width: request.patchWidth,
-      height: request.patchHeight,
+      width: patchWidth,
+      height: patchHeight,
       interpolation: img.Interpolation.linear,
     );
 
-    for (var y = 0; y < request.patchHeight; y++) {
-      for (var x = 0; x < request.patchWidth; x++) {
+    for (var y = 0; y < patchHeight; y++) {
+      for (var x = 0; x < patchWidth; x++) {
         final pixel = resized.getPixel(x, y);
-        output[cursor++] = _normalize(pixel.r, request.normalization);
-        output[cursor++] = _normalize(pixel.g, request.normalization);
-        output[cursor++] = _normalize(pixel.b, request.normalization);
+        output[cursor++] = _normalize(pixel.r, normalization);
+        output[cursor++] = _normalize(pixel.g, normalization);
+        output[cursor++] = _normalize(pixel.b, normalization);
       }
     }
   }

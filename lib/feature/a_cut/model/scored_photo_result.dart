@@ -38,26 +38,34 @@ class ScoredPhotoResult {
       status == ScoreStatus.success && rank != null && rank! <= 3;
 
   bool get isRecommendedPick =>
-      status == ScoreStatus.success && (isBestShot || isTopThree || isACut);
+      status == ScoreStatus.success && evaluation?.acutLabel == '추천';
 
   String get rankLabel => rank == null ? '-' : '#$rank';
 
   String get highlightLabel {
     if (isBestShot) return 'BEST';
     if (isTopThree) return 'TOP ${rank!}';
-    if (isACut) return '추천 컷';
+    if (isACut) return 'A컷 후보';
     if (status == ScoreStatus.failed) return '실패';
     if (status == ScoreStatus.pending) return '분석 중';
     return rankLabel;
   }
 
+  String get acutLabel {
+    if (status == ScoreStatus.failed) return '실패';
+    if (status == ScoreStatus.pending) return '분석 중';
+    return evaluation?.acutLabel ?? '-';
+  }
+
   String get recommendationLabel {
-    if (isBestShot) return '가장 추천하는 베스트 컷';
-    if (isTopThree) return '상위 추천 컷';
-    if (isACut) return 'A컷 후보';
     if (status == ScoreStatus.failed) return '분석에 실패했어요';
     if (status == ScoreStatus.pending) return '추천 순위를 계산 중이에요';
-    return '순위를 확인해 보세요';
+    return switch (acutLabel) {
+      '추천' => '추천 후보로 볼 만한 컷이에요',
+      '아쉬움' => '조금 아쉬운 후보예요',
+      '탈락' => '이번 선택에서는 제외하는 편이 좋아요',
+      _ => '순위를 확인해 보세요',
+    };
   }
 
   ScoredPhotoResult copyWith({

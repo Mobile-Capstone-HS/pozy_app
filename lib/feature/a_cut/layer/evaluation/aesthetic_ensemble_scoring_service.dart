@@ -4,6 +4,7 @@ import '../../model/aesthetic_ensemble_score_result.dart';
 import '../../model/aesthetic_ensemble_weights.dart';
 import '../../model/model_score_detail.dart';
 import '../inference/aesthetic_model_contract.dart';
+import '../inference/image_preprocessor.dart';
 import '../inference/tflite_aesthetic_service.dart';
 
 class AestheticEnsembleScoringService {
@@ -27,14 +28,24 @@ class AestheticEnsembleScoringService {
   Future<AestheticEnsembleScoreResult> evaluate(
     Uint8List imageBytes, {
     AestheticEnsembleWeights? weights,
+    int? imageIndex,
+    AcutImagePreprocessBundle? preprocessBundle,
+    Map<String, Future<Uint8List>>? sharedInputCache,
   }) async {
     final effectiveWeights = weights ?? _defaultWeights;
+    final inputCache = sharedInputCache ?? <String, Future<Uint8List>>{};
     final runs = <String, TfliteSingleModelRun>{};
     final warnings = <String>[];
 
     for (final model in _models) {
       try {
-        final run = await _modelRunner.evaluateSingleModel(imageBytes, model);
+        final run = await _modelRunner.evaluateSingleModel(
+          imageBytes,
+          model,
+          imageIndex: imageIndex,
+          preprocessBundle: preprocessBundle,
+          inputCache: inputCache,
+        );
         runs[model.id] = run;
       } catch (error) {
         final warning = '${model.label} 모델을 실행하지 못했습니다: $error';
@@ -56,14 +67,49 @@ class AestheticEnsembleScoringService {
     final nimaScore = nimaRun?.detail.normalizedScore;
     final rgnetScore = rgnetRun?.detail.normalizedScore;
     final alampScore = alampRun?.detail.normalizedScore;
-    final finalAestheticScore =
-        nimaScore != null && rgnetScore != null && alampScore != null
-        ? normalizedWeights.weightedScore(
-            nimaScore: nimaScore,
-            rgnetScore: rgnetScore,
-            alampScore: alampScore,
-          )
-        : null;
+
+    double? finalAestheticScore;
+
+    if (nimaScore != null && rgnetScore != null && alampScore != null) {
+      finalAestheticScore = normalizedWeights.weightedScore(
+        nimaScore: nimaScore,
+        rgnetScore: rgnetScore,
+        alampScore: alampScore,
+      );
+    } else if (nimaScore != null || rgnetScore != null || alampScore != null) {
+      var weightSum = 0.0;
+      var scoreSum = 0.0;
+      if (nimaScore != null) {
+        weightSum += normalizedWeights.nimaWeight;
+        scoreSum += nimaScore * normalizedWeights.nimaWeight;
+      }
+      if (rgnetScore != null) {
+        weightSum += normalizedWeights.rgnetWeight;
+        scoreSum += rgnetScore * normalizedWeights.rgnetWeight;
+      }
+      if (alampScore != null) {
+        weightSum += normalizedWeights.alampWeight;
+        scoreSum += alampScore * normalizedWeights.alampWeight;
+      }
+      if (weightSum > 0.0) {
+        finalAestheticScore = scoreSum / weightSum;
+      }
+      final missing = <String>[
+        if (nimaScore == null) 'nima',
+        if (rgnetScore == null) 'rgnet',
+        if (alampScore == null) 'alamp',
+      ];
+      debugPrint(
+        '[AestheticEnsembleScoringService] missingComponents=$missing',
+      );
+      debugPrint(
+        '[AestheticEnsembleScoringService] effectiveWeights=nima:${normalizedWeights.nimaWeight}, rgnet:${normalizedWeights.rgnetWeight}, alamp:${normalizedWeights.alampWeight}',
+      );
+      debugPrint(
+        '[AestheticEnsembleScoringService] finalWeightedScore=$finalAestheticScore',
+      );
+      debugPrint('[AestheticEnsembleScoringService] degraded=true');
+    }
 
     debugPrint(
       '[AestheticEnsembleScoringService] weights='

@@ -4,14 +4,16 @@ import android.os.Handler
 import android.os.Looper
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
-    private val methodChannelName = "pozy.fastscnn/method"
-    private val eventChannelName = "pozy.fastscnn/event"
+    private val fastScnnMethodChannelName = "pozy.fastscnn/method"
+    private val fastScnnEventChannelName = "pozy.fastscnn/event"
+    private val gemmaMethodChannelName = "pozy.gemma_litertlm/method"
     private val mainHandler = Handler(Looper.getMainLooper())
     private val inferenceExecutor: ExecutorService = Executors.newSingleThreadExecutor()
 
@@ -19,6 +21,8 @@ class MainActivity : FlutterActivity() {
     private var eventSink: EventChannel.EventSink? = null
 
     private lateinit var fastScnnEngine: NativeFastScnnEngine
+    private lateinit var gemmaEngine: NativeGemmaLiteRtLmEngine
+    private val gemmaGenerationBusy = AtomicBoolean(false)
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -28,8 +32,11 @@ class MainActivity : FlutterActivity() {
                 mainHandler.post { eventSink?.success(event) }
             },
         )
+        gemmaEngine = NativeGemmaLiteRtLmEngine(
+            context = applicationContext,
+        )
 
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, methodChannelName)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, fastScnnMethodChannelName)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "initialize" -> {
@@ -115,7 +122,169 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
-        EventChannel(flutterEngine.dartExecutor.binaryMessenger, eventChannelName)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, gemmaMethodChannelName)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "checkModelFile" -> {
+                        val responded = AtomicBoolean(false)
+                        inferenceExecutor.execute {
+                            try {
+                                val modelPath = call.argument<String>("modelPath")
+                                val response = gemmaEngine.checkModelFile(modelPath)
+                                postSuccessOnce(result, responded, response)
+                            } catch (t: Throwable) {
+                                postErrorOnce(
+                                    result = result,
+                                    responded = responded,
+                                    code = "gemma_check_model_failed",
+                                    message = t.message.orEmpty(),
+                                )
+                            }
+                        }
+                    }
+
+                    "preloadModel" -> {
+                        val responded = AtomicBoolean(false)
+                        inferenceExecutor.execute {
+                            try {
+                                val modelPath = call.argument<String>("modelPath")
+                                val backendMode = call.argument<String>("backendMode")
+                                val response = gemmaEngine.preloadModel(modelPath, backendMode)
+                                postSuccessOnce(result, responded, response)
+                            } catch (t: Throwable) {
+                                postErrorOnce(
+                                    result = result,
+                                    responded = responded,
+                                    code = "gemma_preload_failed",
+                                    message = t.message.orEmpty(),
+                                )
+                            }
+                        }
+                    }
+
+                    "isModelLoaded" -> {
+                        val responded = AtomicBoolean(false)
+                        inferenceExecutor.execute {
+                            try {
+                                val response = gemmaEngine.isModelLoaded()
+                                postSuccessOnce(result, responded, response)
+                            } catch (t: Throwable) {
+                                postErrorOnce(
+                                    result = result,
+                                    responded = responded,
+                                    code = "gemma_status_failed",
+                                    message = t.message.orEmpty(),
+                                )
+                            }
+                        }
+                    }
+
+                    "generateAcutComment" -> {
+                        val inputJson = call.argument<String>("inputJson")
+                        if (inputJson.isNullOrBlank()) {
+                            result.error(
+                                "missing_input_json",
+                                "missing_input_json",
+                                null,
+                            )
+                            return@setMethodCallHandler
+                        }
+                        if (!gemmaGenerationBusy.compareAndSet(false, true)) {
+                            result.error(
+                                "gemma_generation_busy",
+                                "gemma_generation_busy",
+                                null,
+                            )
+                            return@setMethodCallHandler
+                        }
+
+                        val responded = AtomicBoolean(false)
+                        inferenceExecutor.execute {
+                            try {
+                                val backendMode = call.argument<String>("backendMode")
+                                val response = gemmaEngine.generateAcutComment(
+                                    inputJson = inputJson,
+                                    backendMode = backendMode,
+                                )
+                                postSuccessOnce(result, responded, response)
+                            } catch (t: Throwable) {
+                                postErrorOnce(
+                                    result = result,
+                                    responded = responded,
+                                    code = "gemma_generate_failed",
+                                    message = t.message.orEmpty(),
+                                )
+                            } finally {
+                                gemmaGenerationBusy.set(false)
+                            }
+                        }
+                    }
+
+                    "generateAcutVisualComment" -> {
+                        if (!gemmaGenerationBusy.compareAndSet(false, true)) {
+                            result.error(
+                                "gemma_generation_busy",
+                                "gemma_generation_busy",
+                                null,
+                            )
+                            return@setMethodCallHandler
+                        }
+
+                        val responded = AtomicBoolean(false)
+                        inferenceExecutor.execute {
+                            try {
+                                val prompt = call.argument<String>("prompt")
+                                val imagePath = call.argument<String>("imagePath")
+                                val modelPath = call.argument<String>("modelPath")
+                                val backendMode = call.argument<String>("backendMode")
+                                val defaultCommentType =
+                                    call.argument<String>("defaultCommentType")
+                                val forceNullComparisonReason =
+                                    call.argument<Boolean>("forceNullComparisonReason") != false
+                                val response = gemmaEngine.generateAcutVisualComment(
+                                    prompt = prompt,
+                                    imagePath = imagePath,
+                                    modelPath = modelPath,
+                                    backendMode = backendMode,
+                                    defaultCommentType = defaultCommentType,
+                                    forceNullComparisonReason = forceNullComparisonReason,
+                                )
+                                postSuccessOnce(result, responded, response)
+                            } catch (t: Throwable) {
+                                postErrorOnce(
+                                    result = result,
+                                    responded = responded,
+                                    code = "gemma_visual_probe_failed",
+                                    message = t.message.orEmpty(),
+                                )
+                            } finally {
+                                gemmaGenerationBusy.set(false)
+                            }
+                        }
+                    }
+
+                    "disposeModel" -> {
+                        val responded = AtomicBoolean(false)
+                        inferenceExecutor.execute {
+                            try {
+                                gemmaEngine.disposeModel()
+                                postSuccessOnce(result, responded, mapOf("ok" to true))
+                            } catch (t: Throwable) {
+                                postErrorOnce(
+                                    result = result,
+                                    responded = responded,
+                                    code = "gemma_dispose_failed",
+                                    message = t.message.orEmpty(),
+                                )
+                            }
+                        }
+                    }
+
+                    else -> result.notImplemented()
+                }
+            }
+
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, fastScnnEventChannelName)
             .setStreamHandler(object : EventChannel.StreamHandler {
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
                     eventSink = events
@@ -130,7 +299,31 @@ class MainActivity : FlutterActivity() {
 
     override fun onDestroy() {
         fastScnnEngine.dispose()
+        gemmaEngine.disposeModel()
         inferenceExecutor.shutdownNow()
         super.onDestroy()
+    }
+
+    private fun postSuccessOnce(
+        result: MethodChannel.Result,
+        responded: AtomicBoolean,
+        value: Any?,
+    ) {
+        if (!responded.compareAndSet(false, true)) {
+            return
+        }
+        mainHandler.post { result.success(value) }
+    }
+
+    private fun postErrorOnce(
+        result: MethodChannel.Result,
+        responded: AtomicBoolean,
+        code: String,
+        message: String,
+    ) {
+        if (!responded.compareAndSet(false, true)) {
+            return
+        }
+        mainHandler.post { result.error(code, message, null) }
     }
 }

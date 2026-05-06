@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:gal/gal.dart';
 import 'package:photo_manager/photo_manager.dart';
 
-import '../feature/a_cut/model/photo_type_mode.dart';
 import 'a_cut_result_screen.dart';
 import 'best_cut_gallery_screen.dart';
 import 'camera_screen.dart';
@@ -54,16 +53,15 @@ class _BestCutScreenState extends State<BestCutScreen> {
             );
             if (albums.isEmpty || !routeContext.mounted) return;
 
-            final recent =
-                await albums.first.getAssetListRange(start: 0, end: 1);
+            final recent = await albums.first.getAssetListRange(
+              start: 0,
+              end: 1,
+            );
             if (recent.isEmpty || !routeContext.mounted) return;
 
             Navigator.of(routeContext).pushReplacement(
               MaterialPageRoute<void>(
-                builder: (_) => ACutResultScreen(
-                  selectedAssets: recent,
-                  initialPhotoTypeMode: PhotoTypeMode.auto,
-                ),
+                builder: (_) => ACutResultScreen(selectedAssets: recent),
               ),
             );
           },
@@ -150,7 +148,9 @@ class _BestCutScreenState extends State<BestCutScreen> {
                     // 뱃지
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 5),
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(8),
@@ -158,8 +158,11 @@ class _BestCutScreenState extends State<BestCutScreen> {
                       child: const Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.auto_awesome_rounded,
-                              color: Colors.white, size: 14),
+                          Icon(
+                            Icons.auto_awesome_rounded,
+                            color: Colors.white,
+                            size: 14,
+                          ),
                           SizedBox(width: 4),
                           Text(
                             'Pozy AI',
