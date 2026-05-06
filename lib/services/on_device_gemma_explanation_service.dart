@@ -486,6 +486,7 @@ class OnDeviceGemmaExplanationService implements PhotoExplanationService {
   Future<PhotoExplanationResult> _explainVisual(
     PhotoExplanationRequest request,
   ) async {
+    final prepSw = Stopwatch()..start();
     final imagePath = await _prepareVlmImage(request);
     if (imagePath == null) {
       return PhotoExplanationResult.failure(
@@ -496,6 +497,7 @@ class OnDeviceGemmaExplanationService implements PhotoExplanationService {
         promptMode: GemmaExplanationMode.visualImageContext.id,
       );
     }
+    prepSw.stop();
 
     final promptPayload =
         AcutCommentPromptBuilder.buildVisualOnDeviceGemmaPrompt(
@@ -536,6 +538,7 @@ class OnDeviceGemmaExplanationService implements PhotoExplanationService {
         promptPayload: promptPayload,
         elapsedMs: elapsedMs,
       );
+      debugPrint('[AcutPerf] VLM image_prep_ms=${prepSw.elapsedMilliseconds} native_generation_ms=${result.nativeGenerationTimeMs} total_ms=$elapsedMs');
       debugPrint(
         '[OnDeviceGemmaExplanationService] GEMMA_VLM_GENERATE_RESULT '
         'selected_image_path=$imagePath elapsed_ms=$elapsedMs '

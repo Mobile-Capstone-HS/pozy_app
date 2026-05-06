@@ -3,7 +3,6 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:photo_manager/photo_manager.dart';
 
-import '../feature/a_cut/model/photo_type_mode.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_shadows.dart';
 import '../theme/app_text_styles.dart';
@@ -27,7 +26,6 @@ class _BestCutGalleryScreenState extends State<BestCutGalleryScreen> {
   List<AssetEntity> _photos = [];
   final Map<String, AssetEntity> _selectedAssetsById = {};
   final Map<String, Future<Uint8List?>> _thumbCache = {};
-  final PhotoTypeMode _photoTypeMode = PhotoTypeMode.auto;
 
   @override
   void initState() {
@@ -214,10 +212,7 @@ class _BestCutGalleryScreenState extends State<BestCutGalleryScreen> {
 
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => ACutResultScreen(
-          selectedAssets: selectedAssets,
-          initialPhotoTypeMode: _photoTypeMode,
-        ),
+        builder: (_) => ACutResultScreen(selectedAssets: selectedAssets),
       ),
     );
   }

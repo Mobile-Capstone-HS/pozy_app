@@ -15,6 +15,7 @@ class PhotoExplanationRequest {
     this.usesTechnicalScoreAsFinal,
     this.primaryHint,
     this.qualitySummary,
+    this.selectionLabel,
   });
 
   final Uint8List imageBytes;
@@ -30,6 +31,7 @@ class PhotoExplanationRequest {
   final bool? usesTechnicalScoreAsFinal;
   final String? primaryHint;
   final String? qualitySummary;
+  final String? selectionLabel;
 
   String get defaultCommentType => acutCommentTypeForScore(finalScore);
 
@@ -64,6 +66,7 @@ class PhotoExplanationRequest {
     'uses_technical_score_as_final': usesTechnicalScoreAsFinal,
     'primary_hint': primaryHint,
     'quality_summary': qualitySummary,
+    'selection_label': selectionLabel,
     'selection_state': selectionState,
     'comment_type': defaultCommentType,
   };

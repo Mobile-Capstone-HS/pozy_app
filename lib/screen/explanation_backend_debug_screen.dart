@@ -724,6 +724,51 @@ ${scoreLines.join('\n')}
     });
   }
 
+  Future<void> _runBenchmark() async {
+    if (_selectedModelKnownMissing) {
+      setState(() {
+        _statusMessage = 'model file missing';
+      });
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _statusMessage = '벤치마크 실행 중 (5회 반복)...';
+    });
+
+    final int iterations = 5;
+    final List<int> totalTimes = [];
+    
+    final sw = Stopwatch()..start();
+    
+    for (int i = 1; i <= iterations; i++) {
+      if (!mounted) return;
+      setState(() {
+        _statusMessage = '벤치마크 $i/$iterations';
+      });
+      
+      final iterSw = Stopwatch()..start();
+      await _gemmaVlmService.explain(_request);
+      iterSw.stop();
+      totalTimes.add(iterSw.elapsedMilliseconds);
+      debugPrint('[AcutPerf] Benchmark iter $i: total=${iterSw.elapsedMilliseconds}ms');
+    }
+    
+    sw.stop();
+    totalTimes.sort();
+    
+    final avgTotal = totalTimes.reduce((a, b) => a + b) / iterations;
+    final p50 = totalTimes[(iterations ~/ 2)];
+    final slowest = totalTimes.reversed.take(2).toList();
+    
+    setState(() {
+      _loading = false;
+      _statusMessage = '벤치마크 완료: 총 ${sw.elapsedMilliseconds}ms\nAvg: ${avgTotal.toStringAsFixed(1)}ms, P50: ${p50}ms\nSlowest: $slowest\nBottleneck: Explanation generation must be skipped during batch scoring.';
+    });
+    
+    debugPrint('[AcutPerf] Benchmark Summary: total=${sw.elapsedMilliseconds}ms avg=${avgTotal}ms p50=${p50}ms slowest=$slowest');
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -781,6 +826,7 @@ ${scoreLines.join('\n')}
                       onGenerateWarmBenchmark: _generateGemmaWarmBenchmark,
                       onRunComparison: _runComparison,
                       onDispose: _disposeGemma,
+                      onRunBenchmark: _runBenchmark,
                     ),
                     const SizedBox(height: 18),
                     _VisionProbeCard(
@@ -1055,6 +1101,7 @@ class _ActionRow extends StatelessWidget {
     required this.onGenerateWarmBenchmark,
     required this.onRunComparison,
     required this.onDispose,
+    required this.onRunBenchmark,
   });
 
   final bool loading;
@@ -1065,6 +1112,7 @@ class _ActionRow extends StatelessWidget {
   final VoidCallback onGenerateWarmBenchmark;
   final VoidCallback onRunComparison;
   final VoidCallback onDispose;
+  final VoidCallback onRunBenchmark;
 
   @override
   Widget build(BuildContext context) {
@@ -1118,6 +1166,13 @@ class _ActionRow extends StatelessWidget {
               child: _ActionButton(
                 label: 'Gemma dispose',
                 onTap: loading ? null : onDispose,
+              ),
+            ),
+            SizedBox(
+              width: buttonWidth,
+              child: _ActionButton(
+                label: loading ? '실행 중...' : 'Benchmark 5x',
+                onTap: gemmaActionDisabled ? null : onRunBenchmark,
               ),
             ),
           ],

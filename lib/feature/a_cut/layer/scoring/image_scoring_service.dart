@@ -8,6 +8,7 @@ import '../../../../config/experimental_features.dart';
 import '../../model/multi_photo_ranking_result.dart';
 import '../../model/photo_type_mode.dart';
 import '../../model/scored_photo_result.dart';
+import '../inference/acut_perf.dart';
 import '../evaluation/photo_evaluation_service.dart';
 import '../ranking/a_cut_ranking_service.dart';
 
@@ -48,8 +49,22 @@ class OnDeviceImageScoreService implements ImageScoreService {
     )
     onProgress,
   }) async {
+    final batchSw = Stopwatch()..start();
+    AcutPerfCollector.reset();
     final total = assets.length;
     final working = <ScoredPhotoResult>[];
+    final disableExplanations =
+        ExperimentalFeatures.disableAllExplanationsDuringBatchScoring;
+    final disableGemma = ExperimentalFeatures.disableGemmaDuringBatchScoring;
+
+    debugPrint('[AcutPerf] batch_start image_count=$total');
+    debugPrint(
+      '[AcutPerf] explanation_batch_disabled=$disableExplanations '
+      'gemma_batch_disabled=$disableGemma',
+    );
+    if (!disableExplanations) {
+      debugPrint('[AcutPerf] ERROR explanation_called_during_batch_scoring');
+    }
 
     for (var index = 0; index < assets.length; index++) {
       final asset = assets[index];
@@ -74,13 +89,20 @@ class OnDeviceImageScoreService implements ImageScoreService {
     var done = 0;
     for (var index = 0; index < working.length; index++) {
       final current = working[index];
+      final imageSw = Stopwatch()..start();
+      final oneBasedIndex = index + 1;
+      debugPrint(
+        '[AcutPerf] batch_image_start index=$oneBasedIndex/$total '
+        'file="${current.fileName}"',
+      );
 
       try {
         final originBytes = await current.asset.originBytes;
         if (originBytes == null || originBytes.isEmpty) {
           throw Exception('Cannot read image bytes.');
         }
-        final vlmImagePath = ExperimentalFeatures.useOnDeviceGemmaVlmExplanation
+        final vlmImagePath =
+            ExperimentalFeatures.useOnDeviceGemmaVlmExplanation && !disableGemma
             ? await _prepareVlmImagePath(
                 asset: current.asset,
                 imageBytes: originBytes,
@@ -91,6 +113,8 @@ class OnDeviceImageScoreService implements ImageScoreService {
           originBytes,
           fileName: current.fileName,
           localImagePath: vlmImagePath,
+          skipExplanation: disableExplanations,
+          batchImageIndex: oneBasedIndex,
         );
 
         working[index] = current.copyWith(
@@ -105,6 +129,13 @@ class OnDeviceImageScoreService implements ImageScoreService {
           clearEvaluation: true,
         );
       }
+      imageSw.stop();
+      AcutPerfCollector.recordImage();
+      debugPrint(
+        '[AcutPerf] batch_image_done index=$oneBasedIndex/$total '
+        'total_ms=${imageSw.elapsedMilliseconds} '
+        'skip_explanation=$disableExplanations',
+      );
 
       done += 1;
       onProgress(
@@ -113,6 +144,19 @@ class OnDeviceImageScoreService implements ImageScoreService {
         total,
       );
     }
+    batchSw.stop();
+    final avgMs = total == 0 ? 0 : batchSw.elapsedMilliseconds / total;
+    debugPrint(
+      '[AcutPerf] batch_done total_ms=${batchSw.elapsedMilliseconds} '
+      'avg_ms=${avgMs.toStringAsFixed(1)}',
+    );
+    debugPrint(
+      AcutPerfCollector.snapshot().batchSummary(
+        totalImages: total,
+        totalMs: batchSw.elapsedMilliseconds,
+        avgMs: avgMs.toDouble(),
+      ),
+    );
   }
 
   Future<String> _resolveFilename(AssetEntity asset, int index) async {

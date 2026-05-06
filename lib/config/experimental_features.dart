@@ -21,6 +21,43 @@ abstract final class ExperimentalFeatures {
     'POZY_USE_VLM_RESIZED_IMAGE_INPUT',
     defaultValue: true,
   );
+  static const bool disableGemmaDuringBatchScoring = bool.fromEnvironment(
+    'POZY_DISABLE_GEMMA_DURING_BATCH_SCORING',
+    defaultValue: true,
+  );
+  static const bool disableAllExplanationsDuringBatchScoring =
+      bool.fromEnvironment(
+        'POZY_DISABLE_ALL_EXPLANATIONS_DURING_BATCH_SCORING',
+        defaultValue: true,
+      );
+  static const bool disableKoniqDuringBatchScoring = bool.fromEnvironment(
+    'POZY_DISABLE_KONIQ_DURING_BATCH_SCORING',
+    defaultValue: false,
+  );
+  static const bool disableFliveDuringBatchScoring = bool.fromEnvironment(
+    'POZY_DISABLE_FLIVE_DURING_BATCH_SCORING',
+    defaultValue: false,
+  );
+  static const bool disableNimaDuringBatchScoring = bool.fromEnvironment(
+    'POZY_DISABLE_NIMA_DURING_BATCH_SCORING',
+    defaultValue: false,
+  );
+  static const bool disableRgnetDuringBatchScoring = bool.fromEnvironment(
+    'POZY_DISABLE_RGNET_DURING_BATCH_SCORING',
+    defaultValue: false,
+  );
+  static const bool disableAlampDuringBatchScoring = bool.fromEnvironment(
+    'POZY_DISABLE_ALAMP_DURING_BATCH_SCORING',
+    defaultValue: false,
+  );
+  static const bool acutVerboseModelLogs = bool.fromEnvironment(
+    'POZY_ACUT_VERBOSE_MODEL_LOGS',
+    defaultValue: false,
+  );
+  static const bool useFreshInterpreterPerImageForDebug = bool.fromEnvironment(
+    'POZY_USE_FRESH_INTERPRETER_PER_IMAGE_FOR_DEBUG',
+    defaultValue: false,
+  );
   static const bool gemmaDebugSequentialComparison = true;
   static const String gemmaLiteRtLmModelPath = String.fromEnvironment(
     'POZY_GEMMA_MODEL_PATH',

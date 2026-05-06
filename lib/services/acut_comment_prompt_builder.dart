@@ -40,6 +40,7 @@ class AcutCommentPromptBuilder {
       if (request.rank != null && request.totalCount != null)
         '- rank: ${request.rank}/${request.totalCount}',
       if (request.fileName != null) '- file_name: ${request.fileName}',
+      if (request.selectionLabel != null) '- label: ${request.selectionLabel}',
     ];
     final comparisonRule = request.rank != null && request.totalCount != null
         ? '"<같은 세트 안에서의 상대적 강점/약점 한 문장>"'
@@ -250,6 +251,8 @@ ${scoreLines.join('\n')}
       if (request.fileName != null) '- file_name: ${request.fileName}',
       if (_cleanFactText(request.verdict) != null)
         '- verdict: ${_cleanFactText(request.verdict)}',
+      if (_cleanFactText(request.selectionLabel) != null)
+        '- label: ${_cleanFactText(request.selectionLabel)}',
       if (_cleanFactText(request.primaryHint) != null)
         '- hint: ${_cleanFactText(request.primaryHint)}',
       if (_cleanFactText(request.qualitySummary) != null)

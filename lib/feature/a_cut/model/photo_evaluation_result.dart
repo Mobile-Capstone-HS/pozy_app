@@ -256,6 +256,17 @@ class PhotoEvaluationResult {
 
   int get technicalPct => (technicalScore * 100).round();
 
+  String get acutLabel {
+    final pct = finalScore * 100;
+    if (pct <= 50) {
+      return '탈락';
+    }
+    if (pct < 65) {
+      return '아쉬움';
+    }
+    return '추천';
+  }
+
   bool get hasAestheticScore => aestheticScore != null;
 
   int? get aestheticPct {

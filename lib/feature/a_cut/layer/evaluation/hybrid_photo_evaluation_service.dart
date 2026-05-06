@@ -36,11 +36,33 @@ class HybridPhotoEvaluationService implements PhotoEvaluationService {
     Uint8List imageBytes, {
     String? fileName,
     String? localImagePath,
+    bool skipExplanation = false,
+    int? batchImageIndex,
   }) async {
+    final totalSw = Stopwatch()..start();
+    final scoreSw = Stopwatch()..start();
+
     // Step 1: deterministic on-device scores.
-    final scored = await _scorer.evaluate(imageBytes, fileName: fileName);
+    final scored = await _scorer.evaluate(
+      imageBytes,
+      fileName: fileName,
+      batchImageIndex: batchImageIndex,
+    );
+    scoreSw.stop();
+
+    if (skipExplanation) {
+      totalSw.stop();
+      debugPrint(
+        '[AcutPerf] image="${fileName ?? 'unknown'}" '
+        'total_image_ms=${totalSw.elapsedMilliseconds} '
+        'scoring_ms=${scoreSw.elapsedMilliseconds} '
+        'explanation_ms=0 skipped_explanation=true',
+      );
+      return scored;
+    }
 
     // Step 2: explanation backend — non-fatal if it fails.
+    final explSw = Stopwatch()..start();
     try {
       final explanation = await _explainer.explain(
         PhotoExplanationRequest(
@@ -57,6 +79,11 @@ class HybridPhotoEvaluationService implements PhotoEvaluationService {
           qualitySummary: scored.qualitySummary,
         ),
       );
+      explSw.stop();
+      totalSw.stop();
+      debugPrint(
+        '[AcutPerf] image="${fileName ?? 'unknown'}" total_image_ms=${totalSw.elapsedMilliseconds} scoring_ms=${scoreSw.elapsedMilliseconds} explanation_ms=${explSw.elapsedMilliseconds} expl_backend=${explanation.backendId}',
+      );
 
       if (explanation.isSuccessful) {
         return scored.copyWith(
@@ -69,6 +96,11 @@ class HybridPhotoEvaluationService implements PhotoEvaluationService {
     } catch (e) {
       debugPrint(
         '[HybridPhotoEvaluationService] explanation backend failed: $e',
+      );
+      explSw.stop();
+      totalSw.stop();
+      debugPrint(
+        '[AcutPerf] image="${fileName ?? 'unknown'}" total_image_ms=${totalSw.elapsedMilliseconds} scoring_ms=${scoreSw.elapsedMilliseconds} explanation_ms=${explSw.elapsedMilliseconds} error="$e"',
       );
     }
 

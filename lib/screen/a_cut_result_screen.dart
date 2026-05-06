@@ -1,4 +1,3 @@
-import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -6,30 +5,30 @@ import 'package:photo_manager/photo_manager.dart';
 
 import '../firebase/history_service.dart';
 
-import '../config/experimental_features.dart';
-import '../feature/a_cut/layer/evaluation/hybrid_photo_evaluation_service.dart';
 import '../feature/a_cut/layer/evaluation/photo_evaluation_service.dart';
 import '../feature/a_cut/layer/scoring/image_scoring_service.dart';
 import '../feature/a_cut/model/multi_photo_ranking_result.dart';
-import '../feature/a_cut/model/photo_evaluation_result.dart';
 import '../feature/a_cut/model/photo_type_mode.dart';
 import '../feature/a_cut/model/scored_photo_result.dart';
-import '../services/on_device_gemma_explanation_service.dart';
+import '../services/gemini_photo_explanation_services.dart';
+import '../services/photo_explanation_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_shadows.dart';
 import '../theme/app_text_styles.dart';
 import '../widget/app_top_bar.dart';
-import 'single_photo_eval_screen.dart';
+
+class _AcutExplanationState {
+  const _AcutExplanationState({this.loading = false, this.result, this.error});
+
+  final bool loading;
+  final PhotoExplanationResult? result;
+  final String? error;
+}
 
 class ACutResultScreen extends StatefulWidget {
   final List<AssetEntity> selectedAssets;
-  final PhotoTypeMode initialPhotoTypeMode;
 
-  const ACutResultScreen({
-    super.key,
-    required this.selectedAssets,
-    required this.initialPhotoTypeMode,
-  });
+  const ACutResultScreen({super.key, required this.selectedAssets});
 
   @override
   State<ACutResultScreen> createState() => _ACutResultScreenState();
@@ -37,13 +36,16 @@ class ACutResultScreen extends StatefulWidget {
 
 class _ACutResultScreenState extends State<ACutResultScreen> {
   static const double _defaultTopPercent = 0.2;
+  static const PhotoTypeMode _defaultPhotoTypeMode = PhotoTypeMode.auto;
 
   final ImageScoreService _scoreService = OnDeviceImageScoreService(
-    evaluationService: HybridPhotoEvaluationService(),
+    evaluationService: OnDevicePhotoEvaluationService(),
   );
+  final PhotoExplanationService _explanationService =
+      GeminiImageScoresPhotoExplanationService();
 
   MultiPhotoRankingResult _ranking = const MultiPhotoRankingResult.empty();
-  PhotoTypeMode _photoTypeMode = PhotoTypeMode.auto;
+  final Map<String, _AcutExplanationState> _explanationCache = {};
 
   bool _isScoring = false;
   int _doneCount = 0;
@@ -53,24 +55,8 @@ class _ACutResultScreenState extends State<ACutResultScreen> {
   @override
   void initState() {
     super.initState();
-    _photoTypeMode = widget.initialPhotoTypeMode;
-    _preloadExperimentalVlmIfNeeded();
+    debugPrint('[AcutPerf] bestcut_mode=default');
     _startScoring();
-  }
-
-  Future<void> _preloadExperimentalVlmIfNeeded() async {
-    if (!ExperimentalFeatures.useOnDeviceGemmaVlmExplanation) {
-      return;
-    }
-    final status = await OnDeviceGemmaExplanationService.visual()
-        .preloadModel();
-    debugPrint(
-      '[ACutResultScreen] Gemma VLM preload '
-      'ok=${status['ok']} model_loaded=${status['model_loaded']} '
-      'backend_info=${status['backend_info'] ?? '-'} '
-      'gpu_fallback_used=${status['gpu_fallback_used'] ?? false} '
-      'elapsed_ms=${status['elapsed_ms'] ?? '-'}',
-    );
   }
 
   Future<void> _startScoring() async {
@@ -91,11 +77,12 @@ class _ACutResultScreenState extends State<ACutResultScreen> {
       _doneCount = 0;
       _totalCount = widget.selectedAssets.length;
       _ranking = const MultiPhotoRankingResult.empty();
+      _explanationCache.clear();
     });
 
     await _scoreService.scoreAssets(
       assets: widget.selectedAssets,
-      photoTypeMode: _photoTypeMode,
+      photoTypeMode: _defaultPhotoTypeMode,
       topPercent: _defaultTopPercent,
       onProgress: (snapshot, done, total) {
         if (!mounted || currentToken != _jobToken) {
@@ -120,40 +107,107 @@ class _ACutResultScreenState extends State<ACutResultScreen> {
 
     HistoryService.instance.saveACut(
       ranking: _ranking,
-      mode: _photoTypeMode.label,
+      mode: _defaultPhotoTypeMode.label,
     );
   }
 
-  Future<void> _openDetail(
-    BuildContext context,
-    ScoredPhotoResult scored,
-  ) async {
-    if (scored.evaluation == null) return;
+  Future<void> _loadExplanation(ScoredPhotoResult scored) async {
+    final evaluation = scored.evaluation;
+    if (evaluation == null) return;
 
-    final bytes = await scored.asset.originBytes;
-    if (bytes == null || !context.mounted) return;
-
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => SinglePhotoEvalScreen(
-          imageBytes: bytes,
-          fileName: scored.fileName,
-          assetId: scored.asset.id,
-          evaluationService: _PrecomputedEvalService(scored.evaluation!),
-          saveHistory: false,
-        ),
-      ),
-    );
-  }
-
-  void _changeType(PhotoTypeMode mode) {
-    if (_photoTypeMode == mode || _isScoring) {
+    final cached = _explanationCache[scored.asset.id];
+    if (cached?.loading == true || cached?.result?.isSuccessful == true) {
       return;
     }
+
     setState(() {
-      _photoTypeMode = mode;
+      _explanationCache[scored.asset.id] = const _AcutExplanationState(
+        loading: true,
+      );
     });
-    _startScoring();
+
+    try {
+      final bytes = await scored.asset.originBytes;
+      if (bytes == null || bytes.isEmpty) {
+        throw Exception('이미지 파일을 불러오지 못했습니다.');
+      }
+
+      final result = await _explanationService.explain(
+        PhotoExplanationRequest(
+          imageBytes: bytes,
+          fileName: scored.fileName,
+          technicalScore: evaluation.technicalScore,
+          aestheticScore: evaluation.aestheticScore,
+          finalAestheticScore: evaluation.finalAestheticScore,
+          finalScore: evaluation.finalScore,
+          rank: scored.rank,
+          totalCount: _ranking.successCount,
+          verdict: evaluation.verdict,
+          usesTechnicalScoreAsFinal: evaluation.usesTechnicalScoreAsFinal,
+          primaryHint: evaluation.primaryHint,
+          qualitySummary: evaluation.qualitySummary,
+          selectionLabel: evaluation.acutLabel,
+        ),
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _explanationCache[scored.asset.id] = result.isSuccessful
+            ? _AcutExplanationState(result: result)
+            : _AcutExplanationState(error: result.error ?? '설명을 생성하지 못했습니다.');
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _explanationCache[scored.asset.id] = _AcutExplanationState(
+          error: error.toString(),
+        );
+      });
+    }
+  }
+
+  Future<void> _requestDetailExplanation(ScoredPhotoResult scored) async {
+    debugPrint(
+      '[AcutPerf] bestcut_detail_explanation_requested file="${scored.fileName}"',
+    );
+    await _loadExplanation(scored);
+  }
+
+  List<ScoredPhotoResult> _resultsForCategory(String category) {
+    return _ranking.rankedItems
+        .where((result) => result.acutLabel == category)
+        .toList(growable: false);
+  }
+
+  void _openImageViewer(ScoredPhotoResult result) {
+    final category = result.acutLabel;
+    debugPrint(
+      '[AcutPerf] bestcut_image_view_open category=$category file="${result.fileName}"',
+    );
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) {
+          return StatefulBuilder(
+            builder: (context, setViewerState) {
+              return _BestCutImageViewer(
+                result: result,
+                explanationState: _explanationCache[result.asset.id],
+                onRequestDetail: result.status == ScoreStatus.success
+                    ? () async {
+                        final future = _requestDetailExplanation(result);
+                        setViewerState(() {});
+                        await future;
+                        if (context.mounted) {
+                          setViewerState(() {});
+                        }
+                      }
+                    : null,
+              );
+            },
+          );
+        },
+      ),
+    );
   }
 
   void _returnToBestCutMain() {
@@ -198,8 +252,6 @@ class _ACutResultScreenState extends State<ACutResultScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 12),
-            _PhotoTypeRow(selected: _photoTypeMode, onSelected: _changeType),
             const SizedBox(height: 10),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 18),
@@ -265,48 +317,29 @@ class _ACutResultScreenState extends State<ACutResultScreen> {
                         _SummaryHeader(
                           ranking: _ranking,
                           totalSelected: widget.selectedAssets.length,
-                          photoTypeMode: _photoTypeMode,
                         ),
-                        if (_ranking.bestShot != null) ...[
-                          const SizedBox(height: 14),
-                          _BestShotHighlight(
-                            result: _ranking.bestShot!,
-                            onTap: () =>
-                                _openDetail(context, _ranking.bestShot!),
-                          ),
-                        ],
-                        if (_ranking.topPicks.isNotEmpty) ...[
-                          const SizedBox(height: 18),
-                          _TopPickSection(
-                            picks: _ranking.topPicks,
-                            onTap: (result) => _openDetail(context, result),
-                          ),
-                        ],
                         if (_ranking.failureCount > 0 ||
                             _ranking.pendingCount > 0) ...[
                           const SizedBox(height: 18),
                           _RankingNoticeCard(ranking: _ranking),
                         ],
-                        const SizedBox(height: 18),
-                        const Text(
-                          '전체 순위',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.primaryText,
-                          ),
+                        const SizedBox(height: 22),
+                        _BestCutSectionGrid(
+                          title: '추천',
+                          results: _resultsForCategory('추천'),
+                          onTap: _openImageViewer,
                         ),
-                        const SizedBox(height: 10),
-                        ..._ranking.items.map(
-                          (result) => Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
-                            child: GestureDetector(
-                              onTap: result.status == ScoreStatus.success
-                                  ? () => _openDetail(context, result)
-                                  : null,
-                              child: _ResultCard(result: result),
-                            ),
-                          ),
+                        const SizedBox(height: 30),
+                        _BestCutSectionGrid(
+                          title: '아쉬움',
+                          results: _resultsForCategory('아쉬움'),
+                          onTap: _openImageViewer,
+                        ),
+                        const SizedBox(height: 30),
+                        _BestCutSectionGrid(
+                          title: '탈락',
+                          results: _resultsForCategory('탈락'),
+                          onTap: _openImageViewer,
                         ),
                       ],
                     ),
@@ -321,13 +354,8 @@ class _ACutResultScreenState extends State<ACutResultScreen> {
 class _SummaryHeader extends StatelessWidget {
   final MultiPhotoRankingResult ranking;
   final int totalSelected;
-  final PhotoTypeMode photoTypeMode;
 
-  const _SummaryHeader({
-    required this.ranking,
-    required this.totalSelected,
-    required this.photoTypeMode,
-  });
+  const _SummaryHeader({required this.ranking, required this.totalSelected});
 
   @override
   Widget build(BuildContext context) {
@@ -341,20 +369,13 @@ class _SummaryHeader extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  ranking.displayTitle,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                    color: AppColors.primaryText,
-                  ),
-                ),
-              ),
-              _ModeBadge(label: photoTypeMode.label),
-            ],
+          Text(
+            ranking.displayTitle,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+              color: AppColors.primaryText,
+            ),
           ),
           const SizedBox(height: 6),
           Text(
@@ -445,189 +466,183 @@ class _SummaryStatChip extends StatelessWidget {
   }
 }
 
-class _BestShotHighlight extends StatelessWidget {
-  final ScoredPhotoResult result;
-  final VoidCallback onTap;
+Color _categoryColor(String category) {
+  return switch (category) {
+    '추천' => const Color(0xFF0F766E),
+    '아쉬움' => const Color(0xFFB45309),
+    '탈락' => const Color(0xFF64748B),
+    _ => AppColors.primaryText,
+  };
+}
 
-  const _BestShotHighlight({required this.result, required this.onTap});
+class _BestCutSectionGrid extends StatelessWidget {
+  final String title;
+  final List<ScoredPhotoResult> results;
+  final ValueChanged<ScoredPhotoResult> onTap;
+
+  const _BestCutSectionGrid({
+    required this.title,
+    required this.results,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final evaluation = result.evaluation!;
+    final count = results.length;
 
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: const Color(0xFFFACC15), width: 1.5),
-          boxShadow: AppShadows.card,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
           children: [
-            ClipRRect(
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(22),
-              ),
-              child: Stack(
-                children: [
-                  AspectRatio(
-                    aspectRatio: 16 / 10,
-                    child: FutureBuilder<Uint8List?>(
-                      future: result.asset.thumbnailDataWithSize(
-                        const ThumbnailSize(720, 720),
-                      ),
-                      builder: (context, snapshot) {
-                        if (!snapshot.hasData || snapshot.data == null) {
-                          return Container(
-                            color: const Color(0xFFEDEFF3),
-                            child: const Icon(
-                              Icons.broken_image_outlined,
-                              color: AppColors.lightText,
-                              size: 36,
-                            ),
-                          );
-                        }
-                        return Image.memory(snapshot.data!, fit: BoxFit.cover);
-                      },
-                    ),
-                  ),
-                  const Positioned(
-                    left: 16,
-                    top: 16,
-                    child: _HighlightPill(
-                      label: 'BEST PICK',
-                      background: Color(0xFF111827),
-                      foreground: Colors.white,
-                    ),
-                  ),
-                  Positioned(
-                    right: 16,
-                    top: 16,
-                    child: _HighlightPill(
-                      label: result.rankLabel,
-                      background: Colors.white,
-                      foreground: AppColors.primaryText,
-                    ),
-                  ),
-                ],
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w900,
+                color: AppColors.primaryText,
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    '가장 먼저 확인할 추천 컷',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFFCA8A04),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    result.fileName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w900,
-                      color: AppColors.primaryText,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    evaluation.primaryHint,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      height: 1.5,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.primaryText,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      _AnimatedScoreRing(
-                        score: evaluation.finalPct,
-                        size: 68,
-                        color: const Color(0xFF111827),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Wrap(
-                          spacing: 6,
-                          runSpacing: 6,
-                          children: [
-                            _HighlightPill(
-                              label: evaluation.verdict,
-                              background: const Color(0xFFF8FAFC),
-                              foreground: AppColors.primaryText,
-                            ),
-                            _HighlightPill(
-                              label: result.recommendationLabel,
-                              background: const Color(0xFFFFF7CC),
-                              foreground: const Color(0xFF92400E),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+            const SizedBox(width: 8),
+            Text(
+              '$count장',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                color: AppColors.secondaryText,
               ),
             ),
           ],
         ),
-      ),
+        const SizedBox(height: 12),
+        if (results.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 18),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: AppShadows.card,
+            ),
+            child: Text(
+              '$title 결과가 없어요.',
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: AppColors.secondaryText,
+              ),
+            ),
+          )
+        else
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: results.length,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              crossAxisSpacing: 9,
+              mainAxisSpacing: 9,
+              childAspectRatio: 0.82,
+            ),
+            itemBuilder: (context, index) {
+              final result = results[index];
+              return _BestCutThumbnailTile(
+                result: result,
+                category: title,
+                onTap: () => onTap(result),
+              );
+            },
+          ),
+      ],
     );
   }
 }
 
-class _TopPickSection extends StatelessWidget {
-  final List<ScoredPhotoResult> picks;
-  final ValueChanged<ScoredPhotoResult> onTap;
+class _BestCutThumbnailTile extends StatelessWidget {
+  final ScoredPhotoResult result;
+  final String category;
+  final VoidCallback onTap;
 
-  const _TopPickSection({required this.picks, required this.onTap});
+  const _BestCutThumbnailTile({
+    required this.result,
+    required this.category,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Top 3 추천 컷',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w800,
-            color: AppColors.primaryText,
-          ),
-        ),
-        const SizedBox(height: 4),
-        const Text(
-          '상위 추천 컷을 먼저 훑어본 뒤 전체 순위를 확인해 보세요.',
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: AppColors.secondaryText,
-          ),
-        ),
-        const SizedBox(height: 12),
-        ...picks.map(
-          (result) => Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: GestureDetector(
-              onTap: () => onTap(result),
-              child: _ResultCard(result: result, compact: true),
+    final score = result.finalScore == null
+        ? '-'
+        : '${(result.finalScore! * 100).round()}';
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  FutureBuilder<Uint8List?>(
+                    future: result.asset.thumbnailDataWithSize(
+                      const ThumbnailSize(420, 420),
+                    ),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData || snapshot.data == null) {
+                        return Container(
+                          color: const Color(0xFFEDEFF3),
+                          child: const Icon(
+                            Icons.broken_image_outlined,
+                            color: AppColors.lightText,
+                          ),
+                        );
+                      }
+                      return Image.memory(snapshot.data!, fit: BoxFit.cover);
+                    },
+                  ),
+                  Positioned(
+                    left: 7,
+                    top: 7,
+                    child: _RankBadge(result: result),
+                  ),
+                  Positioned(
+                    right: 7,
+                    bottom: 7,
+                    child: _HighlightPill(
+                      label: '$score점',
+                      background: Colors.black.withValues(alpha: 0.68),
+                      foreground: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-      ],
+          const SizedBox(height: 6),
+          Text(
+            result.fileName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              color: AppColors.primaryText,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            category,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              color: _categoryColor(category),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -677,164 +692,196 @@ class _RankingNoticeCard extends StatelessWidget {
   }
 }
 
-class _ResultCard extends StatelessWidget {
+class _BestCutImageViewer extends StatelessWidget {
   final ScoredPhotoResult result;
-  final bool compact;
+  final _AcutExplanationState? explanationState;
+  final Future<void> Function()? onRequestDetail;
 
-  const _ResultCard({required this.result, this.compact = false});
+  const _BestCutImageViewer({
+    required this.result,
+    this.explanationState,
+    this.onRequestDetail,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final isSuccess = result.status == ScoreStatus.success;
-    final isFailed = result.status == ScoreStatus.failed;
-    final evaluation = result.evaluation;
-    final thumbSize = compact ? 82.0 : 92.0;
+    final evaluation = result.evaluation!;
+    final current = explanationState;
+    final explanation = current?.result;
+    final loading = current?.loading == true;
+    final error = current?.error;
+    final basicExplanation = explanation?.shortReason.trim().isNotEmpty == true
+        ? explanation!.shortReason
+        : evaluation.primaryHint;
+    final detailedReason = explanation?.detailedReason.trim() ?? '';
 
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: result.isRecommendedPick
-              ? const Color(0xFFE2E8F0)
-              : Colors.transparent,
-        ),
-        boxShadow: AppShadows.card,
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Stack(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: SizedBox(
-                  width: thumbSize,
-                  height: thumbSize,
-                  child: FutureBuilder<Uint8List?>(
-                    future: result.asset.thumbnailDataWithSize(
-                      const ThumbnailSize(320, 320),
-                    ),
-                    builder: (context, snapshot) {
-                      if (!snapshot.hasData || snapshot.data == null) {
-                        return Container(
-                          color: const Color(0xFFEDEFF3),
-                          child: const Icon(
-                            Icons.broken_image_outlined,
-                            color: AppColors.lightText,
-                          ),
-                        );
-                      }
-                      return Image.memory(snapshot.data!, fit: BoxFit.cover);
-                    },
+    return Scaffold(
+      backgroundColor: const Color(0xFF0F1115),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 8, 14, 10),
+              child: Row(
+                children: [
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close_rounded, color: Colors.white),
                   ),
-                ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      result.fileName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                  _HighlightPill(
+                    label: result.rankLabel,
+                    background: Colors.white.withValues(alpha: 0.16),
+                    foreground: Colors.white,
+                  ),
+                ],
               ),
-              Positioned(left: 8, top: 8, child: _RankBadge(result: result)),
-            ],
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(18, 0, 18, 24),
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Text(
-                        result.fileName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.primaryText,
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(18),
+                      child: AspectRatio(
+                        aspectRatio: 1,
+                        child: FutureBuilder<Uint8List?>(
+                          future: result.asset.thumbnailDataWithSize(
+                            const ThumbnailSize(1600, 1600),
+                          ),
+                          builder: (context, snapshot) {
+                            if (!snapshot.hasData || snapshot.data == null) {
+                              return Container(
+                                color: const Color(0xFF1F2937),
+                                child: const Icon(
+                                  Icons.broken_image_outlined,
+                                  color: Colors.white70,
+                                  size: 42,
+                                ),
+                              );
+                            }
+                            return Image.memory(
+                              snapshot.data!,
+                              fit: BoxFit.contain,
+                            );
+                          },
                         ),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    _HighlightPill(
-                      label: result.highlightLabel,
-                      background: result.isBestShot
-                          ? const Color(0xFF111827)
-                          : const Color(0xFFF1F5F9),
-                      foreground: result.isBestShot
-                          ? Colors.white
-                          : AppColors.primaryText,
+                    const SizedBox(height: 16),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _HighlightPill(
+                          label: evaluation.acutLabel,
+                          background: _categoryColor(evaluation.acutLabel),
+                          foreground: Colors.white,
+                        ),
+                        _HighlightPill(
+                          label: '점수 ${evaluation.finalPct}',
+                          background: Colors.white.withValues(alpha: 0.14),
+                          foreground: Colors.white,
+                        ),
+                        _HighlightPill(
+                          label: evaluation.verdict,
+                          background: Colors.white.withValues(alpha: 0.14),
+                          foreground: Colors.white,
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  result.recommendationLabel,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.primaryText,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                if (isSuccess && evaluation != null) ...[
-                  Text(
-                    evaluation.primaryHint,
-                    maxLines: compact ? 1 : 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      height: 1.45,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.secondaryText,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      _AnimatedScoreRing(
-                        score: evaluation.finalPct,
-                        size: 44,
-                        color: AppColors.primaryText,
+                    const SizedBox(height: 14),
+                    Text(
+                      basicExplanation,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        height: 1.55,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Wrap(
-                          spacing: 6,
-                          runSpacing: 6,
-                          children: [
-                            _MetaPill(label: result.rankLabel),
-                            _MetaPill(label: evaluation.verdict),
-                            if (result.isACut && !result.isTopThree)
-                              const _MetaPill(label: 'A컷 후보'),
-                          ],
+                    ),
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      height: 44,
+                      child: FilledButton(
+                        onPressed:
+                            loading || (explanation != null && error == null)
+                            ? null
+                            : onRequestDetail,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: AppColors.primaryText,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          textStyle: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        child: Text(
+                          loading
+                              ? '설명 생성 중...'
+                              : error != null
+                              ? '상세 설명 다시 시도'
+                              : explanation == null
+                              ? '상세 설명 보기'
+                              : '상세 설명 완료',
+                        ),
+                      ),
+                    ),
+                    if (detailedReason.isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Text(
+                          detailedReason,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            height: 1.55,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
                     ],
-                  ),
-                ],
-                if (isFailed)
-                  Text(
-                    '실패: ${result.errorMessage ?? '알 수 없는 오류'}',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.redAccent,
-                    ),
-                  ),
-                if (!isSuccess && !isFailed)
-                  const Text(
-                    '추천 순위를 계산 중이에요...',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.secondaryText,
-                    ),
-                  ),
-              ],
+                    if (error != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        error,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          height: 1.45,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFFFCA5A5),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -934,31 +981,6 @@ class _HighlightPill extends StatelessWidget {
   }
 }
 
-class _MetaPill extends StatelessWidget {
-  final String label;
-
-  const _MetaPill({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          color: AppColors.secondaryText,
-        ),
-      ),
-    );
-  }
-}
-
 class _RankBadge extends StatelessWidget {
   final ScoredPhotoResult result;
 
@@ -998,206 +1020,4 @@ class _RankBadge extends StatelessWidget {
       ),
     );
   }
-}
-
-class _ModeBadge extends StatelessWidget {
-  final String label;
-
-  const _ModeBadge({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF1F5F9),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        '$label 모드',
-        style: const TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w800,
-          color: AppColors.primaryText,
-        ),
-      ),
-    );
-  }
-}
-
-class _PhotoTypeRow extends StatelessWidget {
-  final PhotoTypeMode selected;
-  final ValueChanged<PhotoTypeMode> onSelected;
-
-  const _PhotoTypeRow({required this.selected, required this.onSelected});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 18),
-      child: Row(
-        children: PhotoTypeMode.values.map((mode) {
-          final active = selected == mode;
-          return Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: GestureDetector(
-                onTap: () => onSelected(mode),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: active
-                        ? const Color(0xFF3A3A3A)
-                        : const Color(0xFFEFEFEF),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Center(
-                    child: Text(
-                      mode.label,
-                      style: TextStyle(
-                        color: active ? Colors.white : const Color(0xFF5A5A5A),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-}
-
-class _AnimatedScoreRing extends StatefulWidget {
-  final int score;
-  final double size;
-  final Color color;
-
-  const _AnimatedScoreRing({
-    required this.score,
-    required this.size,
-    required this.color,
-  });
-
-  @override
-  State<_AnimatedScoreRing> createState() => _AnimatedScoreRingState();
-}
-
-class _AnimatedScoreRingState extends State<_AnimatedScoreRing>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl;
-  late final Animation<double> _anim;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 900),
-    );
-    _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic);
-    _ctrl.forward();
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final strokeWidth = widget.size <= 44 ? 5.0 : 7.0;
-    final fontSize = widget.size <= 44 ? 11.0 : 15.0;
-
-    return AnimatedBuilder(
-      animation: _anim,
-      builder: (_, _) {
-        final progress = _anim.value;
-        final displayed = (widget.score * progress).round();
-        return SizedBox(
-          width: widget.size,
-          height: widget.size,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              CustomPaint(
-                size: Size(widget.size, widget.size),
-                painter: _ScoreArcPainter(
-                  progress: widget.score / 100.0 * progress,
-                  color: widget.color,
-                  bgColor: widget.color.withValues(alpha: 0.1),
-                  strokeWidth: strokeWidth,
-                ),
-              ),
-              Text(
-                '$displayed',
-                style: TextStyle(
-                  fontSize: fontSize,
-                  fontWeight: FontWeight.w900,
-                  color: widget.color,
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _ScoreArcPainter extends CustomPainter {
-  final double progress;
-  final Color color;
-  final Color bgColor;
-  final double strokeWidth;
-
-  const _ScoreArcPainter({
-    required this.progress,
-    required this.color,
-    required this.bgColor,
-    required this.strokeWidth,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = (size.width - strokeWidth) / 2;
-    final rect = Rect.fromCircle(center: center, radius: radius);
-
-    final bgPaint = Paint()
-      ..color = bgColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.round;
-    canvas.drawCircle(center, radius, bgPaint);
-
-    final fgPaint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.round;
-    canvas.drawArc(rect, -pi / 2, 2 * pi * progress, false, fgPaint);
-  }
-
-  @override
-  bool shouldRepaint(_ScoreArcPainter old) =>
-      old.progress != progress || old.color != color;
-}
-
-class _PrecomputedEvalService implements PhotoEvaluationService {
-  final PhotoEvaluationResult _result;
-
-  const _PrecomputedEvalService(this._result);
-
-  @override
-  Future<PhotoEvaluationResult> evaluate(
-    Uint8List imageBytes, {
-    String? fileName,
-    String? localImagePath,
-  }) async => _result;
 }
