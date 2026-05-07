@@ -917,21 +917,21 @@ class TfliteAestheticService {
     );
 
     final globalCacheKey =
-        'signature:$globalInputName:$globalSide:$globalSide:${contract.normalization.name}';
+        'signature:alamp_global:$globalInputName:$globalSide:$globalSide:${contract.normalization.name}';
     final patchesCacheKey =
-        'signature:$patchInputName:${patchSpec.patchWidth}:${patchSpec.patchHeight}:'
+        'signature:alamp_adaptive:$patchInputName:${patchSpec.patchWidth}:${patchSpec.patchHeight}:'
         '${patchSpec.patchCount}:${contract.normalization.name}';
 
     final preSw = Stopwatch()..start();
     final globalBuffer = await inputCache.putIfAbsent(
       globalCacheKey,
       () =>
-          bundle?.rgbFloat32(
+          bundle?.alampGlobalViewFloat32(
             width: globalSide,
             height: globalSide,
             normalization: contract.normalization,
           ) ??
-          _preprocessor.preprocessToRgbFloat32(
+          _preprocessor.preprocessAlampGlobalViewFloat32(
             imageBytes,
             width: globalSide,
             height: globalSide,
@@ -941,13 +941,13 @@ class TfliteAestheticService {
     final patchBuffer = await inputCache.putIfAbsent(
       patchesCacheKey,
       () =>
-          bundle?.alampPatchesFloat32(
+          bundle?.alampAdaptivePatchesFloat32(
             patchWidth: patchSpec.patchWidth,
             patchHeight: patchSpec.patchHeight,
             patchCount: patchSpec.patchCount,
             normalization: contract.normalization,
           ) ??
-          _preprocessor.preprocessPatchBatchToRgbFloat32(
+          _preprocessor.preprocessAlampAdaptivePatchesFloat32(
             imageBytes,
             patchWidth: patchSpec.patchWidth,
             patchHeight: patchSpec.patchHeight,
@@ -959,7 +959,13 @@ class TfliteAestheticService {
     final pMs = preSw.elapsedMilliseconds;
     AcutPerfMetrics.totalPreprocessMs += pMs;
     debugPrint(
-      '[AcutPerf] preprocess_alamp_patches_ms=$pMs model=${contract.id}',
+      '[AcutPerf] preprocess_alamp_signature_ms=$pMs model=${contract.id} '
+      'global=${globalSide}x$globalSide patches=${patchSpec.patchCount}x'
+      '${patchSpec.patchWidth}x${patchSpec.patchHeight}',
+    );
+    debugPrint(
+      '[AcutPerf] alamp_input_bytes global=${globalBuffer.lengthInBytes} '
+      'patches=${patchBuffer.lengthInBytes}',
     );
 
     return _SignatureInputBundle(
