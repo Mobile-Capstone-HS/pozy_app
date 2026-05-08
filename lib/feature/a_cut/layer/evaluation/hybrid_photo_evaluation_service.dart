@@ -1,6 +1,9 @@
 import 'package:flutter/foundation.dart';
 
-import '../../../../services/gemini_analysis_service.dart';
+import '../../../../config/experimental_features.dart';
+import '../../../../services/gemini_photo_explanation_services.dart';
+import '../../../../services/on_device_gemma_explanation_service.dart';
+import '../../../../services/photo_explanation_service.dart';
 import '../../model/photo_evaluation_result.dart';
 import 'photo_evaluation_service.dart';
 
@@ -16,48 +19,117 @@ import 'photo_evaluation_service.dart';
 /// If Gemini is unavailable the method still returns a valid result with
 /// scores but without explanation fields.
 ///
-/// To swap Gemini for VILA-full later:
-///   - Implement a class with the same return type as [GeminiExplanationService.explain]
-///   - Inject it via the [explainer] constructor parameter.
+/// To swap Gemma/Gemini/VILA later, implement [PhotoExplanationService] and
+/// inject it via the [explainer] constructor parameter.
 class HybridPhotoEvaluationService implements PhotoEvaluationService {
   HybridPhotoEvaluationService({
     OnDevicePhotoEvaluationService? scorer,
-    GeminiExplanationService? explainer,
+    PhotoExplanationService? explainer,
   }) : _scorer = scorer ?? OnDevicePhotoEvaluationService(),
-       _explainer = explainer ?? GeminiExplanationService();
+       _explainer = explainer ?? _defaultExplainer();
 
   final OnDevicePhotoEvaluationService _scorer;
-  final GeminiExplanationService _explainer;
+  final PhotoExplanationService _explainer;
 
   @override
   Future<PhotoEvaluationResult> evaluate(
     Uint8List imageBytes, {
     String? fileName,
+    String? localImagePath,
+    bool skipExplanation = false,
+    int? batchImageIndex,
   }) async {
-    // Step 1: deterministic on-device scores.
-    final scored = await _scorer.evaluate(imageBytes, fileName: fileName);
+    final totalSw = Stopwatch()..start();
+    final scoreSw = Stopwatch()..start();
 
-    // Step 2: Gemini explanation — non-fatal if it fails.
+    // Step 1: deterministic on-device scores.
+    final scored = await _scorer.evaluate(
+      imageBytes,
+      fileName: fileName,
+      batchImageIndex: batchImageIndex,
+    );
+    scoreSw.stop();
+
+    if (skipExplanation) {
+      totalSw.stop();
+      debugPrint(
+        '[AcutPerf] image="${fileName ?? 'unknown'}" '
+        'total_image_ms=${totalSw.elapsedMilliseconds} '
+        'scoring_ms=${scoreSw.elapsedMilliseconds} '
+        'explanation_ms=0 skipped_explanation=true',
+      );
+      return scored;
+    }
+
+    // Step 2: explanation backend — non-fatal if it fails.
+    final explSw = Stopwatch()..start();
     try {
       final explanation = await _explainer.explain(
-        imageBytes: imageBytes,
-        technicalScore: scored.technicalScore,
-        aestheticScore: scored.aestheticScore,
-        finalScore: scored.finalScore,
+        PhotoExplanationRequest(
+          imageBytes: imageBytes,
+          fileName: fileName,
+          localImagePath: localImagePath,
+          technicalScore: scored.technicalScore,
+          aestheticScore: scored.aestheticScore,
+          finalAestheticScore: scored.finalAestheticScore,
+          finalScore: scored.finalScore,
+          verdict: scored.verdict,
+          usesTechnicalScoreAsFinal: scored.usesTechnicalScoreAsFinal,
+          primaryHint: scored.primaryHint,
+          qualitySummary: scored.qualitySummary,
+        ),
+      );
+      explSw.stop();
+      totalSw.stop();
+      debugPrint(
+        '[AcutPerf] image="${fileName ?? 'unknown'}" total_image_ms=${totalSw.elapsedMilliseconds} scoring_ms=${scoreSw.elapsedMilliseconds} explanation_ms=${explSw.elapsedMilliseconds} expl_backend=${explanation.backendId}',
       );
 
-      if (explanation != null) {
+      if (explanation.isSuccessful) {
         return scored.copyWith(
           shortExplanation: explanation.shortReason,
           detailedExplanation: explanation.detailedReason,
-          eyeState: explanation.eyeState,
-          eyeStateReason: explanation.eyeStateReason,
+          comparisonExplanation: explanation.comparisonReason,
+          explanationBackend: explanation.backendLabel,
         );
       }
     } catch (e) {
-      debugPrint('[HybridPhotoEvaluationService] Gemini explanation failed: $e');
+      debugPrint(
+        '[HybridPhotoEvaluationService] explanation backend failed: $e',
+      );
+      explSw.stop();
+      totalSw.stop();
+      debugPrint(
+        '[AcutPerf] image="${fileName ?? 'unknown'}" total_image_ms=${totalSw.elapsedMilliseconds} scoring_ms=${scoreSw.elapsedMilliseconds} explanation_ms=${explSw.elapsedMilliseconds} error="$e"',
+      );
     }
 
     return scored;
+  }
+
+  static PhotoExplanationService _defaultExplainer() {
+    if (ExperimentalFeatures.preferOnDeviceGemmaExplanation) {
+      final gemmaPrimary = ExperimentalFeatures.useOnDeviceGemmaVlmExplanation
+          ? OnDeviceGemmaExplanationService.visual()
+          : OnDeviceGemmaExplanationService();
+      return FallbackPhotoExplanationService(
+        primary: gemmaPrimary,
+        fallbacks: [
+          GeminiImageScoresPhotoExplanationService(useLegacyGeminiPrompt: true),
+          const TemplatePhotoExplanationService(),
+        ],
+        backendId: 'experimental_gemma_chain',
+        backendLabel: 'Gemma -> Gemini -> Template',
+      );
+    }
+
+    return FallbackPhotoExplanationService(
+      primary: GeminiImageScoresPhotoExplanationService(
+        useLegacyGeminiPrompt: true,
+      ),
+      fallbacks: const [TemplatePhotoExplanationService()],
+      backendId: 'gemini_template_chain',
+      backendLabel: 'Gemini -> Template',
+    );
   }
 }

@@ -6,6 +6,7 @@ import '../../model/model_score_detail.dart';
 import '../../model/photo_evaluation_result.dart';
 import '../../model/aesthetic_ensemble_weights.dart';
 import '../inference/aesthetic_model_contract.dart';
+import '../inference/image_preprocessor.dart';
 import '../inference/tflite_aesthetic_service.dart';
 import 'aesthetic_ensemble_scoring_service.dart';
 
@@ -13,6 +14,9 @@ abstract class PhotoEvaluationService {
   Future<PhotoEvaluationResult> evaluate(
     Uint8List imageBytes, {
     String? fileName,
+    String? localImagePath,
+    bool skipExplanation = false,
+    int? batchImageIndex,
   });
 }
 
@@ -23,17 +27,23 @@ class MockPhotoEvaluationService implements PhotoEvaluationService {
   Future<PhotoEvaluationResult> evaluate(
     Uint8List imageBytes, {
     String? fileName,
+    String? localImagePath,
+    bool skipExplanation = false,
+    int? batchImageIndex,
   }) async {
     await Future<void>.delayed(const Duration(milliseconds: 700));
 
     final seed = imageBytes.fold<int>(0, (acc, byte) => acc ^ byte);
     final rng = math.Random(seed);
     final technical = 0.45 + (rng.nextDouble() * 0.45);
-    final finalScore = technical;
+    final aesthetic = 0.45 + (rng.nextDouble() * 0.45);
+    final finalScore = ((technical + aesthetic) / 2).clamp(0.0, 1.0).toDouble();
 
     return PhotoEvaluationResult.fromScores(
       finalScore: finalScore,
       technicalScore: technical,
+      aestheticScore: aesthetic,
+      finalAestheticScore: aesthetic,
       notes: const ['Mock 평가 결과입니다.'],
       scoreDetails: [
         ModelScoreDetail(
@@ -48,7 +58,7 @@ class MockPhotoEvaluationService implements PhotoEvaluationService {
       ],
       modelVersion: 'mock_v2',
       fileName: fileName,
-      usesTechnicalScoreAsFinal: true,
+      usesTechnicalScoreAsFinal: false,
     );
   }
 }
@@ -58,6 +68,7 @@ class OnDevicePhotoEvaluationService implements PhotoEvaluationService {
     TfliteAestheticService? technicalTfliteService,
     AestheticEnsembleScoringService? aestheticEnsembleService,
     AestheticEnsembleWeights? defaultAestheticWeights,
+    ImagePreprocessor? preprocessor,
   }) : _technicalTfliteService =
            technicalTfliteService ??
            TfliteAestheticService(
@@ -67,18 +78,30 @@ class OnDevicePhotoEvaluationService implements PhotoEvaluationService {
        _aestheticEnsembleService =
            aestheticEnsembleService ?? AestheticEnsembleScoringService(),
        _defaultAestheticWeights =
-           defaultAestheticWeights ?? AestheticEnsembleWeights.defaults;
+           defaultAestheticWeights ?? AestheticEnsembleWeights.defaults,
+       _preprocessor = preprocessor ?? const ImagePreprocessor();
 
   final TfliteAestheticService _technicalTfliteService;
   final AestheticEnsembleScoringService _aestheticEnsembleService;
   final AestheticEnsembleWeights _defaultAestheticWeights;
+  final ImagePreprocessor _preprocessor;
 
   @override
   Future<PhotoEvaluationResult> evaluate(
     Uint8List imageBytes, {
     String? fileName,
+    String? localImagePath,
+    bool skipExplanation = false,
+    int? batchImageIndex,
   }) async {
-    final technicalSummary = await _technicalTfliteService.evaluate(imageBytes);
+    final preprocessBundle = await _preprocessor.createBundle(imageBytes);
+    final inputCache = <String, Future<Uint8List>>{};
+    final technicalSummary = await _technicalTfliteService.evaluate(
+      imageBytes,
+      imageIndex: batchImageIndex,
+      preprocessBundle: preprocessBundle,
+      sharedInputCache: inputCache,
+    );
     AestheticEnsembleScoreResult? aestheticSummary;
     final warnings = <String>[];
 
@@ -86,6 +109,9 @@ class OnDevicePhotoEvaluationService implements PhotoEvaluationService {
       aestheticSummary = await _aestheticEnsembleService.evaluate(
         imageBytes,
         weights: _defaultAestheticWeights,
+        imageIndex: batchImageIndex,
+        preprocessBundle: preprocessBundle,
+        sharedInputCache: inputCache,
       );
     } catch (error) {
       warnings.add('미적 앙상블 모델을 실행하지 못했습니다: $error');
@@ -96,12 +122,13 @@ class OnDevicePhotoEvaluationService implements PhotoEvaluationService {
     }
 
     final aestheticScore = aestheticSummary?.finalAestheticScore;
-    final usesTechnicalScoreAsFinal = aestheticScore == null;
-    final finalScore = usesTechnicalScoreAsFinal
-        ? technicalSummary.technicalScore
-        : ((technicalSummary.technicalScore * 0.5) + (aestheticScore * 0.5))
-            .clamp(0.0, 1.0)
-            .toDouble();
+    if (aestheticScore == null) {
+      throw StateError('aesthetic_score_unavailable');
+    }
+    const usesTechnicalScoreAsFinal = false;
+    final finalScore = ((technicalSummary.technicalScore + aestheticScore) / 2)
+        .clamp(0.0, 1.0)
+        .toDouble();
     final notes = _buildNotes(
       technicalSummary: technicalSummary,
       aestheticScore: aestheticScore,
@@ -113,7 +140,7 @@ class OnDevicePhotoEvaluationService implements PhotoEvaluationService {
       ),
     );
 
-    return PhotoEvaluationResult.fromScores(
+    final result = PhotoEvaluationResult.fromScores(
       finalScore: finalScore,
       technicalScore: technicalSummary.technicalScore,
       aestheticScore: aestheticScore,
@@ -137,6 +164,8 @@ class OnDevicePhotoEvaluationService implements PhotoEvaluationService {
       fileName: fileName,
       usesTechnicalScoreAsFinal: usesTechnicalScoreAsFinal,
     );
+    preprocessBundle.logTotal();
+    return result;
   }
 
   List<String> _buildNotes({
