@@ -410,6 +410,10 @@ class YOLOView @JvmOverloads constructor(
         deviceOrientationDeg = degrees
         Log.d(TAG, "Device orientation set to $degrees°")
     }
+
+    fun setPortraitFaceAnalysisThrottle(intervalMs: Int?, intervalFrames: Int?) {
+        portraitNativeAnalyzer.setFaceAnalysisThrottle(intervalMs, intervalFrames)
+    }
     
     fun setShowUIControls(show: Boolean) {
         showUIControls = show

@@ -56,6 +56,7 @@ private data class PortraitFaceResult(
     val isFrontCamera: Boolean,
     val timestampMs: Long,
     val frameNumber: Long,
+    val confidenceStatus: String,
 )
 
 class PortraitNativeAnalyzer(
@@ -87,11 +88,15 @@ class PortraitNativeAnalyzer(
     private var lightingLabels: List<String> = emptyList()
     private var lightingLoaded = false
     private var analyzerFrameCounter = 0L
+    private var faceIntervalMs = DEFAULT_FACE_INTERVAL_MS
+    private var faceIntervalFrames = DEFAULT_FACE_INTERVAL_FRAMES
+    private var lastFaceAnalysisAtMs = 0L
 
     companion object {
         private const val LIGHTING_SIZE = 224
         private const val LIGHTING_MIN_CONFIDENCE = 0.55
-        private const val FACE_INTERVAL = 4
+        private const val DEFAULT_FACE_INTERVAL_MS = 180
+        private const val DEFAULT_FACE_INTERVAL_FRAMES = 6
         private const val LIGHTING_INTERVAL = 1
     }
 
@@ -99,6 +104,12 @@ class PortraitNativeAnalyzer(
         if (!lightingLoaded) {
             loadLightingModel()
         }
+    }
+
+    fun setFaceAnalysisThrottle(intervalMs: Int?, intervalFrames: Int?) {
+        faceIntervalMs = (intervalMs ?: DEFAULT_FACE_INTERVAL_MS).coerceIn(0, 1000)
+        faceIntervalFrames =
+            (intervalFrames ?: DEFAULT_FACE_INTERVAL_FRAMES).coerceIn(1, 120)
     }
 
     fun schedule(
@@ -110,8 +121,12 @@ class PortraitNativeAnalyzer(
         analyzerFrameCounter += 1L
         faceFrameCounter++
         lightingFrameCounter++
-        if (faceFrameCounter >= FACE_INTERVAL) {
+        val nowMs = System.currentTimeMillis()
+        val faceDueByFrame = faceFrameCounter >= faceIntervalFrames
+        val faceDueByTime = nowMs - lastFaceAnalysisAtMs >= faceIntervalMs
+        if (faceDueByFrame && faceDueByTime) {
             faceFrameCounter = 0
+            lastFaceAnalysisAtMs = nowMs
             scheduleFaceAnalysis(
                 imageProxy = imageProxy,
                 isFrontCamera = isFrontCamera,
@@ -372,6 +387,13 @@ class PortraitNativeAnalyzer(
     ): Map<String, Any> {
         val results = faces.map { face ->
             val bounds = face.boundingBox
+            val confidenceStatus = faceConfidenceStatus(
+                bounds = bounds,
+                imageWidth = imageWidth,
+                imageHeight = imageHeight,
+                hasEyeProb = face.leftEyeOpenProbability != null &&
+                    face.rightEyeOpenProbability != null,
+            )
             val result = PortraitFaceResult(
                 left = bounds.left.toDouble(),
                 top = bounds.top.toDouble(),
@@ -389,6 +411,7 @@ class PortraitNativeAnalyzer(
                 isFrontCamera = isFrontCamera,
                 timestampMs = timestampMs,
                 frameNumber = frameNumber,
+                confidenceStatus = confidenceStatus,
             )
             faceResultToMap(result)
         }
@@ -417,6 +440,7 @@ class PortraitNativeAnalyzer(
             "isFrontCamera" to result.isFrontCamera,
             "timestampMs" to result.timestampMs,
             "frameNumber" to result.frameNumber,
+            "confidenceStatus" to result.confidenceStatus,
         )
         result.leftEyeOpenProbability?.let { map["leftEyeOpenProbability"] = it }
         result.rightEyeOpenProbability?.let { map["rightEyeOpenProbability"] = it }
@@ -425,6 +449,31 @@ class PortraitNativeAnalyzer(
         result.headEulerAngleZ?.let { map["headEulerAngleZ"] = it }
         result.headEulerAngleX?.let { map["headEulerAngleX"] = it }
         return map
+    }
+
+    private fun faceConfidenceStatus(
+        bounds: Rect,
+        imageWidth: Int,
+        imageHeight: Int,
+        hasEyeProb: Boolean,
+    ): String {
+        if (imageWidth <= 0 || imageHeight <= 0 || bounds.width() <= 0 || bounds.height() <= 0) {
+            return "uncertain"
+        }
+        if (
+            bounds.left < 0 ||
+            bounds.top < 0 ||
+            bounds.right > imageWidth ||
+            bounds.bottom > imageHeight
+        ) {
+            return "out_of_bounds"
+        }
+        val imageArea = imageWidth.toDouble() * imageHeight.toDouble()
+        val faceArea = bounds.width().toDouble() * bounds.height().toDouble()
+        if (imageArea <= 0.0 || faceArea <= 0.0) return "uncertain"
+        if (faceArea / imageArea < 0.006) return "small"
+        if (!hasEyeProb) return "uncertain"
+        return "usable"
     }
 }
 

@@ -517,6 +517,13 @@ class YOLOPlatformView(
                         result.error("invalid_args", "degrees is required", null)
                     }
                 }
+                "setPortraitFaceAnalysisThrottle" -> {
+                    yoloView.setPortraitFaceAnalysisThrottle(
+                        call.argument<Int>("intervalMs"),
+                        call.argument<Int>("intervalFrames"),
+                    )
+                    result.success(null)
+                }
                 else -> {
                     result.notImplemented()
                 }

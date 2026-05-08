@@ -197,6 +197,22 @@ class YOLOViewController {
     }
   }
 
+  Future<void> setPortraitFaceAnalysisThrottle({
+    int? intervalMs,
+    int? intervalFrames,
+  }) async {
+    if (_methodChannel != null) {
+      try {
+        await _methodChannel!.invokeMethod('setPortraitFaceAnalysisThrottle', {
+          'intervalMs': intervalMs,
+          'intervalFrames': intervalFrames,
+        });
+      } catch (e) {
+        logInfo('Error setting portrait face analysis throttle: $e');
+      }
+    }
+  }
+
   Future<void> setZoomLevel(double zoomLevel) async {
     if (_methodChannel != null) {
       try {

@@ -39,6 +39,7 @@ import 'package:pose_camera_app/segmentation/composition_temporal_filter.dart';
 import 'package:pose_camera_app/segmentation/fastscnn_segmentor.dart';
 import 'package:pose_camera_app/segmentation/fastscnn_view.dart';
 import 'package:pose_camera_app/segmentation/landscape_analyzer.dart';
+import 'package:pose_camera_app/utils/debug_log_flags.dart';
 
 const String poseModelPath = 'yolov8n-pose_float16.tflite';
 const double poseConfidenceThreshold = 0.15;
@@ -69,6 +70,8 @@ class CameraScreen extends StatefulWidget {
 class _CameraScreenState extends State<CameraScreen> {
   static const _cameraAspect = 3.0 / 4.0;
   static const bool _debugUseImageAnalysisFace = true;
+  static const int _portraitNativeFaceIntervalMs = 180;
+  static const int _portraitNativeFaceIntervalFrames = 6;
 
   final _cameraController = YOLOViewController();
   final _landscapeController = FastScnnViewController();
@@ -171,30 +174,48 @@ class _CameraScreenState extends State<CameraScreen> {
   void initState() {
     super.initState();
     _shootingMode = widget.initialMode;
-    debugPrint('[CameraScreen] initState mode=${_shootingMode.name}');
+    if (DebugLogFlags.yoloDebug) {
+      debugPrint('[YOLO_DEBUG][screen] initState mode=${_shootingMode.name}');
+    }
 
     unawaited(_portraitHandler.init());
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      debugPrint('[CameraScreen] postFrame restartCamera scheduled');
+      if (DebugLogFlags.yoloDebug) {
+        debugPrint('[YOLO_DEBUG][startup] restartCamera scheduled');
+      }
       await Future<void>.delayed(const Duration(milliseconds: 300));
       if (!mounted) return;
 
       try {
-        debugPrint('[YOLO_DEBUG][startup] restartCamera start');
+        if (DebugLogFlags.yoloDebug) {
+          debugPrint('[YOLO_DEBUG][startup] restartCamera start');
+        }
         await _cameraController.restartCamera();
-        debugPrint('[YOLO_DEBUG][startup] restartCamera done');
+        if (DebugLogFlags.yoloDebug) {
+          debugPrint('[YOLO_DEBUG][startup] restartCamera done');
+        }
         await _cameraController.setZoomLevel(_selectedZoom);
-        debugPrint(
-          '[YOLO_DEBUG][startup] setZoomLevel done zoom=$_selectedZoom',
+        if (DebugLogFlags.yoloDebug) {
+          debugPrint(
+            '[YOLO_DEBUG][startup] setZoomLevel done zoom=$_selectedZoom',
+          );
+        }
+        await _cameraController.setPortraitFaceAnalysisThrottle(
+          intervalMs: _portraitNativeFaceIntervalMs,
+          intervalFrames: _portraitNativeFaceIntervalFrames,
         );
         await _configureZoomPresets();
-        debugPrint(
-          '[YOLO_DEBUG][startup] configureZoomPresets done presets=$_zoomPresets',
-        );
+        if (DebugLogFlags.yoloDebug) {
+          debugPrint(
+            '[YOLO_DEBUG][startup] configureZoomPresets done presets=$_zoomPresets',
+          );
+        }
       } catch (error, stackTrace) {
-        debugPrint('[YOLO_DEBUG][startup] startup error: $error');
-        debugPrintStack(stackTrace: stackTrace);
+        if (DebugLogFlags.yoloDebug) {
+          debugPrint('[YOLO_DEBUG][startup] startup error: $error');
+          debugPrintStack(stackTrace: stackTrace);
+        }
       }
     });
 
@@ -718,7 +739,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
   int _yoloDebugObjFrame = 0;
   void _handleDetections(List<YOLOResult> results) {
-    if (++_yoloDebugObjFrame % 30 == 1) {
+    if (++_yoloDebugObjFrame % 30 == 1 && DebugLogFlags.yoloDebug) {
       debugPrint(
         '[YOLO_DEBUG][obj] cb#$_yoloDebugObjFrame results=${results.length} '
         'mode=${_shootingMode.name} mounted=$mounted front=$_isFrontCamera',
@@ -832,7 +853,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
   int _yoloDebugPoseFrame = 0;
   void _handlePoseDetections(List<YOLOResult> results) {
-    if (++_yoloDebugPoseFrame % 30 == 1) {
+    if (++_yoloDebugPoseFrame % 30 == 1 && DebugLogFlags.yoloDebug) {
       final personCount = results
           .where((r) => r.className.toLowerCase() == 'person')
           .length;
@@ -1255,11 +1276,14 @@ class _CameraScreenState extends State<CameraScreen> {
       _subGuidance = landscapeSubGuidance;
       _coachingLevel = landscapeLevel;
     });
-    debugPrint(
-      '[Landscape] frame applied seg=${frame.result.width}x${frame.result.height} '
-      'front=${frame.isFrontCamera} zoom=${frame.zoomLevel.toStringAsFixed(2)} '
-      'mode=${decision.compositionMode.name} overlay=${decision.overlayType}',
-    );
+    if (DebugLogFlags.yoloDebug) {
+      debugPrint(
+        '[YOLO_DEBUG][landscape] frame applied '
+        'seg=${frame.result.width}x${frame.result.height} '
+        'front=${frame.isFrontCamera} zoom=${frame.zoomLevel.toStringAsFixed(2)} '
+        'mode=${decision.compositionMode.name} overlay=${decision.overlayType}',
+      );
+    }
   }
 
   CoachingLevel _landscapeCoachingLevel(CompositionGuideState state) {
@@ -1537,7 +1561,9 @@ class _CameraScreenState extends State<CameraScreen> {
   Widget build(BuildContext context) {
     if (!_loggedFirstBuild) {
       _loggedFirstBuild = true;
-      debugPrint('[CameraScreen] first build mode=${_shootingMode.name}');
+      if (DebugLogFlags.yoloDebug) {
+        debugPrint('[YOLO_DEBUG][screen] first build mode=${_shootingMode.name}');
+      }
     }
     return Scaffold(
       backgroundColor: Colors.black,
