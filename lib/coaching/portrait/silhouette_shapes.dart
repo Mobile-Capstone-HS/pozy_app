@@ -1,11 +1,6 @@
 import 'package:flutter/material.dart';
 
-enum SilhouetteType {
-  none,
-  standing,
-  halfBody,
-  sitting,
-}
+enum SilhouetteType { none, standing, halfBody, sitting }
 
 class SilhouetteShapes {
   static Path getPath(SilhouetteType type, Size size) {
@@ -23,165 +18,244 @@ class SilhouetteShapes {
 
   static Path _getStandingPath(Size size) {
     final path = Path();
-    final width = size.width;
-    final height = size.height;
-
-    // 머리
-    final headRadius = width * 0.08;
-    final headCenter = Offset(width * 0.5, height * 0.25);
-    path.addOval(Rect.fromCircle(center: headCenter, radius: headRadius));
-
-    // 몸통 (어깨~골반)
-    final torsoWidth = width * 0.25;
-    final torsoHeight = height * 0.25;
-    final torsoRect = Rect.fromCenter(
-      center: Offset(width * 0.5, height * 0.45),
-      width: torsoWidth,
-      height: torsoHeight,
-    );
-    path.addRRect(RRect.fromRectAndRadius(torsoRect, const Radius.circular(20)));
-
-    // 왼쪽 팔
-    final armWidth = width * 0.06;
-    final armHeight = height * 0.25;
-    final leftArmRect = Rect.fromLTWH(
-      width * 0.5 - torsoWidth / 2 - armWidth * 1.2,
-      height * 0.35,
-      armWidth,
-      armHeight,
-    );
-    path.addRRect(RRect.fromRectAndRadius(leftArmRect, const Radius.circular(15)));
-
-    // 오른쪽 팔
-    final rightArmRect = Rect.fromLTWH(
-      width * 0.5 + torsoWidth / 2 + armWidth * 0.2,
-      height * 0.35,
-      armWidth,
-      armHeight,
-    );
-    path.addRRect(RRect.fromRectAndRadius(rightArmRect, const Radius.circular(15)));
-
-    // 왼쪽 다리
-    final legWidth = width * 0.08;
-    final legHeight = height * 0.3;
-    final leftLegRect = Rect.fromLTWH(
-      width * 0.5 - torsoWidth / 2 + width * 0.02,
-      height * 0.56,
-      legWidth,
-      legHeight,
-    );
-    path.addRRect(RRect.fromRectAndRadius(leftLegRect, const Radius.circular(15)));
-
-    // 오른쪽 다리
-    final rightLegRect = Rect.fromLTWH(
-      width * 0.5 + torsoWidth / 2 - legWidth - width * 0.02,
-      height * 0.56,
-      legWidth,
-      legHeight,
-    );
-    path.addRRect(RRect.fromRectAndRadius(rightLegRect, const Radius.circular(15)));
-
+    final w = size.width;
+    final h = size.height;
+    path.moveTo(0.5 * w, 0.0 * h);
+    path.quadraticBezierTo(0.5 * w, 0.0 * h, 0.48 * w, 0.005 * h);
+    path.quadraticBezierTo(0.46 * w, 0.01 * h, 0.445 * w, 0.025 * h);
+    path.quadraticBezierTo(0.43 * w, 0.04 * h, 0.43 * w, 0.06 * h);
+    path.quadraticBezierTo(0.43 * w, 0.08 * h, 0.44 * w, 0.1 * h);
+    path.quadraticBezierTo(0.45 * w, 0.12 * h, 0.46 * w, 0.13 * h);
+    path.quadraticBezierTo(0.47 * w, 0.14 * h, 0.47 * w, 0.15 * h);
+    path.quadraticBezierTo(0.47 * w, 0.16 * h, 0.445 * w, 0.165 * h);
+    path.quadraticBezierTo(0.42 * w, 0.17 * h, 0.385 * w, 0.175 * h);
+    path.quadraticBezierTo(0.35 * w, 0.18 * h, 0.33 * w, 0.19 * h);
+    path.quadraticBezierTo(0.31 * w, 0.2 * h, 0.295 * w, 0.22 * h);
+    path.quadraticBezierTo(0.28 * w, 0.24 * h, 0.27 * w, 0.27 * h);
+    path.quadraticBezierTo(0.26 * w, 0.3 * h, 0.25 * w, 0.34 * h);
+    path.quadraticBezierTo(0.24 * w, 0.38 * h, 0.23 * w, 0.415 * h);
+    path.quadraticBezierTo(0.22 * w, 0.45 * h, 0.21 * w, 0.475 * h);
+    path.quadraticBezierTo(0.2 * w, 0.5 * h, 0.2 * w, 0.51 * h);
+    path.quadraticBezierTo(0.2 * w, 0.52 * h, 0.21 * w, 0.525 * h);
+    path.quadraticBezierTo(0.22 * w, 0.53 * h, 0.23 * w, 0.525 * h);
+    path.quadraticBezierTo(0.24 * w, 0.52 * h, 0.245 * w, 0.5 * h);
+    path.quadraticBezierTo(0.25 * w, 0.48 * h, 0.255 * w, 0.45 * h);
+    path.quadraticBezierTo(0.26 * w, 0.42 * h, 0.27 * w, 0.385 * h);
+    path.quadraticBezierTo(0.28 * w, 0.35 * h, 0.3 * w, 0.315 * h);
+    path.quadraticBezierTo(0.32 * w, 0.28 * h, 0.335 * w, 0.275 * h);
+    path.quadraticBezierTo(0.35 * w, 0.27 * h, 0.36 * w, 0.31 * h);
+    path.quadraticBezierTo(0.37 * w, 0.35 * h, 0.375 * w, 0.385 * h);
+    path.quadraticBezierTo(0.38 * w, 0.42 * h, 0.38 * w, 0.45 * h);
+    path.quadraticBezierTo(0.38 * w, 0.48 * h, 0.375 * w, 0.5 * h);
+    path.quadraticBezierTo(0.37 * w, 0.52 * h, 0.36 * w, 0.56 * h);
+    path.quadraticBezierTo(0.35 * w, 0.6 * h, 0.35 * w, 0.65 * h);
+    path.quadraticBezierTo(0.35 * w, 0.7 * h, 0.355 * w, 0.75 * h);
+    path.quadraticBezierTo(0.36 * w, 0.8 * h, 0.365 * w, 0.85 * h);
+    path.quadraticBezierTo(0.37 * w, 0.9 * h, 0.37 * w, 0.925 * h);
+    path.quadraticBezierTo(0.37 * w, 0.95 * h, 0.355 * w, 0.955 * h);
+    path.quadraticBezierTo(0.34 * w, 0.96 * h, 0.335 * w, 0.97 * h);
+    path.quadraticBezierTo(0.33 * w, 0.98 * h, 0.355 * w, 0.99 * h);
+    path.quadraticBezierTo(0.38 * w, 1.0 * h, 0.395 * w, 1.0 * h);
+    path.quadraticBezierTo(0.41 * w, 1.0 * h, 0.42 * w, 0.99 * h);
+    path.quadraticBezierTo(0.43 * w, 0.98 * h, 0.43 * w, 0.965 * h);
+    path.quadraticBezierTo(0.43 * w, 0.95 * h, 0.425 * w, 0.925 * h);
+    path.quadraticBezierTo(0.42 * w, 0.9 * h, 0.415 * w, 0.85 * h);
+    path.quadraticBezierTo(0.41 * w, 0.8 * h, 0.415 * w, 0.75 * h);
+    path.quadraticBezierTo(0.42 * w, 0.7 * h, 0.43 * w, 0.65 * h);
+    path.quadraticBezierTo(0.44 * w, 0.6 * h, 0.45 * w, 0.56 * h);
+    path.quadraticBezierTo(0.46 * w, 0.52 * h, 0.48 * w, 0.5 * h);
+    path.quadraticBezierTo(0.5 * w, 0.48 * h, 0.52 * w, 0.5 * h);
+    path.quadraticBezierTo(0.54 * w, 0.52 * h, 0.55 * w, 0.56 * h);
+    path.quadraticBezierTo(0.56 * w, 0.6 * h, 0.57 * w, 0.65 * h);
+    path.quadraticBezierTo(0.58 * w, 0.7 * h, 0.585 * w, 0.75 * h);
+    path.quadraticBezierTo(0.59 * w, 0.8 * h, 0.585 * w, 0.85 * h);
+    path.quadraticBezierTo(0.58 * w, 0.9 * h, 0.575 * w, 0.925 * h);
+    path.quadraticBezierTo(0.57 * w, 0.95 * h, 0.57 * w, 0.965 * h);
+    path.quadraticBezierTo(0.57 * w, 0.98 * h, 0.58 * w, 0.99 * h);
+    path.quadraticBezierTo(0.59 * w, 1.0 * h, 0.605 * w, 1.0 * h);
+    path.quadraticBezierTo(0.62 * w, 1.0 * h, 0.645 * w, 0.99 * h);
+    path.quadraticBezierTo(0.67 * w, 0.98 * h, 0.665 * w, 0.97 * h);
+    path.quadraticBezierTo(0.66 * w, 0.96 * h, 0.645 * w, 0.955 * h);
+    path.quadraticBezierTo(0.63 * w, 0.95 * h, 0.63 * w, 0.925 * h);
+    path.quadraticBezierTo(0.63 * w, 0.9 * h, 0.635 * w, 0.85 * h);
+    path.quadraticBezierTo(0.64 * w, 0.8 * h, 0.645 * w, 0.75 * h);
+    path.quadraticBezierTo(0.65 * w, 0.7 * h, 0.65 * w, 0.65 * h);
+    path.quadraticBezierTo(0.65 * w, 0.6 * h, 0.64 * w, 0.56 * h);
+    path.quadraticBezierTo(0.63 * w, 0.52 * h, 0.625 * w, 0.5 * h);
+    path.quadraticBezierTo(0.62 * w, 0.48 * h, 0.62 * w, 0.45 * h);
+    path.quadraticBezierTo(0.62 * w, 0.42 * h, 0.625 * w, 0.385 * h);
+    path.quadraticBezierTo(0.63 * w, 0.35 * h, 0.64 * w, 0.31 * h);
+    path.quadraticBezierTo(0.65 * w, 0.27 * h, 0.665 * w, 0.275 * h);
+    path.quadraticBezierTo(0.68 * w, 0.28 * h, 0.7 * w, 0.315 * h);
+    path.quadraticBezierTo(0.72 * w, 0.35 * h, 0.73 * w, 0.385 * h);
+    path.quadraticBezierTo(0.74 * w, 0.42 * h, 0.745 * w, 0.45 * h);
+    path.quadraticBezierTo(0.75 * w, 0.48 * h, 0.755 * w, 0.5 * h);
+    path.quadraticBezierTo(0.76 * w, 0.52 * h, 0.77 * w, 0.525 * h);
+    path.quadraticBezierTo(0.78 * w, 0.53 * h, 0.79 * w, 0.525 * h);
+    path.quadraticBezierTo(0.8 * w, 0.52 * h, 0.8 * w, 0.51 * h);
+    path.quadraticBezierTo(0.8 * w, 0.5 * h, 0.79 * w, 0.475 * h);
+    path.quadraticBezierTo(0.78 * w, 0.45 * h, 0.77 * w, 0.415 * h);
+    path.quadraticBezierTo(0.76 * w, 0.38 * h, 0.75 * w, 0.34 * h);
+    path.quadraticBezierTo(0.74 * w, 0.3 * h, 0.73 * w, 0.27 * h);
+    path.quadraticBezierTo(0.72 * w, 0.24 * h, 0.705 * w, 0.22 * h);
+    path.quadraticBezierTo(0.69 * w, 0.2 * h, 0.67 * w, 0.19 * h);
+    path.quadraticBezierTo(0.65 * w, 0.18 * h, 0.615 * w, 0.175 * h);
+    path.quadraticBezierTo(0.58 * w, 0.17 * h, 0.555 * w, 0.165 * h);
+    path.quadraticBezierTo(0.53 * w, 0.16 * h, 0.53 * w, 0.15 * h);
+    path.quadraticBezierTo(0.53 * w, 0.14 * h, 0.54 * w, 0.13 * h);
+    path.quadraticBezierTo(0.55 * w, 0.12 * h, 0.56 * w, 0.1 * h);
+    path.quadraticBezierTo(0.57 * w, 0.08 * h, 0.57 * w, 0.06 * h);
+    path.quadraticBezierTo(0.57 * w, 0.04 * h, 0.555 * w, 0.025 * h);
+    path.quadraticBezierTo(0.54 * w, 0.01 * h, 0.5 * w, 0.0 * h);
+    path.close();
     return path;
   }
 
   static Path _getHalfBodyPath(Size size) {
     final path = Path();
-    final width = size.width;
-    final height = size.height;
-
-    // 머리
-    final headRadius = width * 0.12;
-    final headCenter = Offset(width * 0.5, height * 0.35);
-    path.addOval(Rect.fromCircle(center: headCenter, radius: headRadius));
-
-    // 몸통 (더 크고 화면 아래로 짤리도록)
-    final torsoWidth = width * 0.45;
-    final torsoHeight = height * 0.4;
-    final torsoRect = Rect.fromCenter(
-      center: Offset(width * 0.5, height * 0.7),
-      width: torsoWidth,
-      height: torsoHeight,
-    );
-    path.addRRect(RRect.fromRectAndRadius(torsoRect, const Radius.circular(40)));
-
-    // 팔 (몸통에 붙어서 살짝만 보이게)
-    final armWidth = width * 0.1;
-    final leftArmRect = Rect.fromLTWH(
-      width * 0.5 - torsoWidth / 2 - armWidth * 0.6,
-      height * 0.55,
-      armWidth,
-      height * 0.3,
-    );
-    path.addRRect(RRect.fromRectAndRadius(leftArmRect, const Radius.circular(20)));
-
-    final rightArmRect = Rect.fromLTWH(
-      width * 0.5 + torsoWidth / 2 - armWidth * 0.4,
-      height * 0.55,
-      armWidth,
-      height * 0.3,
-    );
-    path.addRRect(RRect.fromRectAndRadius(rightArmRect, const Radius.circular(20)));
-
+    final w = size.width;
+    final h = size.height;
+    path.moveTo(0.5 * w, 0.0 * h);
+    path.quadraticBezierTo(0.5 * w, 0.0 * h, 0.475 * w, 0.01 * h);
+    path.quadraticBezierTo(0.45 * w, 0.02 * h, 0.43 * w, 0.04 * h);
+    path.quadraticBezierTo(0.41 * w, 0.06 * h, 0.41 * w, 0.09 * h);
+    path.quadraticBezierTo(0.41 * w, 0.12 * h, 0.42 * w, 0.15 * h);
+    path.quadraticBezierTo(0.43 * w, 0.18 * h, 0.445 * w, 0.195 * h);
+    path.quadraticBezierTo(0.46 * w, 0.21 * h, 0.46 * w, 0.225 * h);
+    path.quadraticBezierTo(0.46 * w, 0.24 * h, 0.43 * w, 0.245 * h);
+    path.quadraticBezierTo(0.4 * w, 0.25 * h, 0.36 * w, 0.26 * h);
+    path.quadraticBezierTo(0.32 * w, 0.27 * h, 0.295 * w, 0.285 * h);
+    path.quadraticBezierTo(0.27 * w, 0.3 * h, 0.25 * w, 0.33 * h);
+    path.quadraticBezierTo(0.23 * w, 0.36 * h, 0.215 * w, 0.405 * h);
+    path.quadraticBezierTo(0.2 * w, 0.45 * h, 0.185 * w, 0.51 * h);
+    path.quadraticBezierTo(0.17 * w, 0.57 * h, 0.155 * w, 0.62 * h);
+    path.quadraticBezierTo(0.14 * w, 0.67 * h, 0.13 * w, 0.71 * h);
+    path.quadraticBezierTo(0.12 * w, 0.75 * h, 0.12 * w, 0.765 * h);
+    path.quadraticBezierTo(0.12 * w, 0.78 * h, 0.135 * w, 0.79 * h);
+    path.quadraticBezierTo(0.15 * w, 0.8 * h, 0.165 * w, 0.79 * h);
+    path.quadraticBezierTo(0.18 * w, 0.78 * h, 0.185 * w, 0.75 * h);
+    path.quadraticBezierTo(0.19 * w, 0.72 * h, 0.2 * w, 0.675 * h);
+    path.quadraticBezierTo(0.21 * w, 0.63 * h, 0.22 * w, 0.575 * h);
+    path.quadraticBezierTo(0.23 * w, 0.52 * h, 0.255 * w, 0.47 * h);
+    path.quadraticBezierTo(0.28 * w, 0.42 * h, 0.3 * w, 0.41 * h);
+    path.quadraticBezierTo(0.32 * w, 0.4 * h, 0.335 * w, 0.46 * h);
+    path.quadraticBezierTo(0.35 * w, 0.52 * h, 0.355 * w, 0.575 * h);
+    path.quadraticBezierTo(0.36 * w, 0.63 * h, 0.36 * w, 0.675 * h);
+    path.quadraticBezierTo(0.36 * w, 0.72 * h, 0.355 * w, 0.75 * h);
+    path.quadraticBezierTo(0.35 * w, 0.78 * h, 0.345 * w, 0.84 * h);
+    path.quadraticBezierTo(0.34 * w, 0.9 * h, 0.34 * w, 0.95 * h);
+    path.quadraticBezierTo(0.34 * w, 1.0 * h, 0.42 * w, 1.0 * h);
+    path.quadraticBezierTo(0.5 * w, 1.0 * h, 0.58 * w, 1.0 * h);
+    path.quadraticBezierTo(0.66 * w, 1.0 * h, 0.66 * w, 0.95 * h);
+    path.quadraticBezierTo(0.66 * w, 0.9 * h, 0.655 * w, 0.84 * h);
+    path.quadraticBezierTo(0.65 * w, 0.78 * h, 0.645 * w, 0.75 * h);
+    path.quadraticBezierTo(0.64 * w, 0.72 * h, 0.64 * w, 0.675 * h);
+    path.quadraticBezierTo(0.64 * w, 0.63 * h, 0.645 * w, 0.575 * h);
+    path.quadraticBezierTo(0.65 * w, 0.52 * h, 0.665 * w, 0.46 * h);
+    path.quadraticBezierTo(0.68 * w, 0.4 * h, 0.7 * w, 0.41 * h);
+    path.quadraticBezierTo(0.72 * w, 0.42 * h, 0.745 * w, 0.47 * h);
+    path.quadraticBezierTo(0.77 * w, 0.52 * h, 0.78 * w, 0.575 * h);
+    path.quadraticBezierTo(0.79 * w, 0.63 * h, 0.8 * w, 0.675 * h);
+    path.quadraticBezierTo(0.81 * w, 0.72 * h, 0.815 * w, 0.75 * h);
+    path.quadraticBezierTo(0.82 * w, 0.78 * h, 0.835 * w, 0.79 * h);
+    path.quadraticBezierTo(0.85 * w, 0.8 * h, 0.865 * w, 0.79 * h);
+    path.quadraticBezierTo(0.88 * w, 0.78 * h, 0.88 * w, 0.765 * h);
+    path.quadraticBezierTo(0.88 * w, 0.75 * h, 0.87 * w, 0.71 * h);
+    path.quadraticBezierTo(0.86 * w, 0.67 * h, 0.845 * w, 0.62 * h);
+    path.quadraticBezierTo(0.83 * w, 0.57 * h, 0.815 * w, 0.51 * h);
+    path.quadraticBezierTo(0.8 * w, 0.45 * h, 0.785 * w, 0.405 * h);
+    path.quadraticBezierTo(0.77 * w, 0.36 * h, 0.75 * w, 0.33 * h);
+    path.quadraticBezierTo(0.73 * w, 0.3 * h, 0.705 * w, 0.285 * h);
+    path.quadraticBezierTo(0.68 * w, 0.27 * h, 0.64 * w, 0.26 * h);
+    path.quadraticBezierTo(0.6 * w, 0.25 * h, 0.57 * w, 0.245 * h);
+    path.quadraticBezierTo(0.54 * w, 0.24 * h, 0.54 * w, 0.225 * h);
+    path.quadraticBezierTo(0.54 * w, 0.21 * h, 0.555 * w, 0.195 * h);
+    path.quadraticBezierTo(0.57 * w, 0.18 * h, 0.58 * w, 0.15 * h);
+    path.quadraticBezierTo(0.59 * w, 0.12 * h, 0.59 * w, 0.09 * h);
+    path.quadraticBezierTo(0.59 * w, 0.06 * h, 0.57 * w, 0.04 * h);
+    path.quadraticBezierTo(0.55 * w, 0.02 * h, 0.5 * w, 0.0 * h);
+    path.close();
     return path;
   }
 
   static Path _getSittingPath(Size size) {
     final path = Path();
-    final width = size.width;
-    final height = size.height;
-
-    // 머리
-    final headRadius = width * 0.08;
-    final headCenter = Offset(width * 0.5, height * 0.35);
-    path.addOval(Rect.fromCircle(center: headCenter, radius: headRadius));
-
-    // 몸통
-    final torsoWidth = width * 0.22;
-    final torsoHeight = height * 0.25;
-    final torsoRect = Rect.fromCenter(
-      center: Offset(width * 0.5, height * 0.55),
-      width: torsoWidth,
-      height: torsoHeight,
-    );
-    path.addRRect(RRect.fromRectAndRadius(torsoRect, const Radius.circular(20)));
-
-    // 허벅지 (앉은 형태 - 가로로 뻗은 다리)
-    final thighWidth = width * 0.3;
-    final thighHeight = height * 0.1;
-    final thighRect = Rect.fromLTWH(
-      width * 0.5 - torsoWidth / 2,
-      height * 0.62,
-      thighWidth,
-      thighHeight,
-    );
-    path.addRRect(RRect.fromRectAndRadius(thighRect, const Radius.circular(15)));
-
-    // 종아리 (아래로 뻗은 다리)
-    final calfWidth = width * 0.08;
-    final calfHeight = height * 0.2;
-    final calfRect = Rect.fromLTWH(
-      width * 0.5 - torsoWidth / 2 + thighWidth - calfWidth,
-      height * 0.65,
-      calfWidth,
-      calfHeight,
-    );
-    path.addRRect(RRect.fromRectAndRadius(calfRect, const Radius.circular(15)));
-
-    // 팔 (무릎에 얹은 형태)
-    final armPath = Path();
-    armPath.moveTo(width * 0.5 - torsoWidth / 2, height * 0.45);
-    armPath.lineTo(width * 0.5 + torsoWidth / 2 + 10, height * 0.62);
-    
-    // 두꺼운 선을 위해 Stroke 모양을 추가
-    // 여기서는 간단히 팔을 RRect로 기울여서 그리기는 어려우니 비슷한 크기의 원들을 추가
-    final leftArmRect = Rect.fromLTWH(
-      width * 0.5 - torsoWidth / 2 - 10,
-      height * 0.45,
-      width * 0.06,
-      height * 0.18,
-    );
-    path.addRRect(RRect.fromRectAndRadius(leftArmRect, const Radius.circular(10)));
-    
+    final w = size.width;
+    final h = size.height;
+    path.moveTo(0.5 * w, 0.1 * h);
+    path.quadraticBezierTo(0.5 * w, 0.1 * h, 0.48 * w, 0.11 * h);
+    path.quadraticBezierTo(0.46 * w, 0.12 * h, 0.445 * w, 0.14 * h);
+    path.quadraticBezierTo(0.43 * w, 0.16 * h, 0.43 * w, 0.19 * h);
+    path.quadraticBezierTo(0.43 * w, 0.22 * h, 0.44 * w, 0.24 * h);
+    path.quadraticBezierTo(0.45 * w, 0.26 * h, 0.46 * w, 0.27 * h);
+    path.quadraticBezierTo(0.47 * w, 0.28 * h, 0.47 * w, 0.29 * h);
+    path.quadraticBezierTo(0.47 * w, 0.3 * h, 0.445 * w, 0.305 * h);
+    path.quadraticBezierTo(0.42 * w, 0.31 * h, 0.39 * w, 0.32 * h);
+    path.quadraticBezierTo(0.36 * w, 0.33 * h, 0.34 * w, 0.345 * h);
+    path.quadraticBezierTo(0.32 * w, 0.36 * h, 0.305 * w, 0.385 * h);
+    path.quadraticBezierTo(0.29 * w, 0.41 * h, 0.28 * w, 0.445 * h);
+    path.quadraticBezierTo(0.27 * w, 0.48 * h, 0.265 * w, 0.515 * h);
+    path.quadraticBezierTo(0.26 * w, 0.55 * h, 0.255 * w, 0.585 * h);
+    path.quadraticBezierTo(0.25 * w, 0.62 * h, 0.25 * w, 0.635 * h);
+    path.quadraticBezierTo(0.25 * w, 0.65 * h, 0.26 * w, 0.655 * h);
+    path.quadraticBezierTo(0.27 * w, 0.66 * h, 0.28 * w, 0.65 * h);
+    path.quadraticBezierTo(0.29 * w, 0.64 * h, 0.295 * w, 0.61 * h);
+    path.quadraticBezierTo(0.3 * w, 0.58 * h, 0.305 * w, 0.55 * h);
+    path.quadraticBezierTo(0.31 * w, 0.52 * h, 0.32 * w, 0.49 * h);
+    path.quadraticBezierTo(0.33 * w, 0.46 * h, 0.35 * w, 0.435 * h);
+    path.quadraticBezierTo(0.37 * w, 0.41 * h, 0.375 * w, 0.455 * h);
+    path.quadraticBezierTo(0.38 * w, 0.5 * h, 0.385 * w, 0.54 * h);
+    path.quadraticBezierTo(0.39 * w, 0.58 * h, 0.39 * w, 0.615 * h);
+    path.quadraticBezierTo(0.39 * w, 0.65 * h, 0.38 * w, 0.685 * h);
+    path.quadraticBezierTo(0.37 * w, 0.72 * h, 0.35 * w, 0.735 * h);
+    path.quadraticBezierTo(0.33 * w, 0.75 * h, 0.305 * w, 0.76 * h);
+    path.quadraticBezierTo(0.28 * w, 0.77 * h, 0.25 * w, 0.78 * h);
+    path.quadraticBezierTo(0.22 * w, 0.79 * h, 0.2 * w, 0.8 * h);
+    path.quadraticBezierTo(0.18 * w, 0.81 * h, 0.18 * w, 0.83 * h);
+    path.quadraticBezierTo(0.18 * w, 0.85 * h, 0.2 * w, 0.865 * h);
+    path.quadraticBezierTo(0.22 * w, 0.88 * h, 0.25 * w, 0.88 * h);
+    path.quadraticBezierTo(0.28 * w, 0.88 * h, 0.315 * w, 0.88 * h);
+    path.quadraticBezierTo(0.35 * w, 0.88 * h, 0.385 * w, 0.87 * h);
+    path.quadraticBezierTo(0.42 * w, 0.86 * h, 0.44 * w, 0.84 * h);
+    path.quadraticBezierTo(0.46 * w, 0.82 * h, 0.47 * w, 0.795 * h);
+    path.quadraticBezierTo(0.48 * w, 0.77 * h, 0.49 * w, 0.76 * h);
+    path.quadraticBezierTo(0.5 * w, 0.75 * h, 0.51 * w, 0.76 * h);
+    path.quadraticBezierTo(0.52 * w, 0.77 * h, 0.53 * w, 0.795 * h);
+    path.quadraticBezierTo(0.54 * w, 0.82 * h, 0.56 * w, 0.84 * h);
+    path.quadraticBezierTo(0.58 * w, 0.86 * h, 0.615 * w, 0.87 * h);
+    path.quadraticBezierTo(0.65 * w, 0.88 * h, 0.685 * w, 0.88 * h);
+    path.quadraticBezierTo(0.72 * w, 0.88 * h, 0.75 * w, 0.88 * h);
+    path.quadraticBezierTo(0.78 * w, 0.88 * h, 0.8 * w, 0.865 * h);
+    path.quadraticBezierTo(0.82 * w, 0.85 * h, 0.82 * w, 0.83 * h);
+    path.quadraticBezierTo(0.82 * w, 0.81 * h, 0.8 * w, 0.8 * h);
+    path.quadraticBezierTo(0.78 * w, 0.79 * h, 0.75 * w, 0.78 * h);
+    path.quadraticBezierTo(0.72 * w, 0.77 * h, 0.695 * w, 0.76 * h);
+    path.quadraticBezierTo(0.67 * w, 0.75 * h, 0.65 * w, 0.735 * h);
+    path.quadraticBezierTo(0.63 * w, 0.72 * h, 0.62 * w, 0.685 * h);
+    path.quadraticBezierTo(0.61 * w, 0.65 * h, 0.61 * w, 0.615 * h);
+    path.quadraticBezierTo(0.61 * w, 0.58 * h, 0.615 * w, 0.54 * h);
+    path.quadraticBezierTo(0.62 * w, 0.5 * h, 0.625 * w, 0.455 * h);
+    path.quadraticBezierTo(0.63 * w, 0.41 * h, 0.65 * w, 0.435 * h);
+    path.quadraticBezierTo(0.67 * w, 0.46 * h, 0.68 * w, 0.49 * h);
+    path.quadraticBezierTo(0.69 * w, 0.52 * h, 0.695 * w, 0.55 * h);
+    path.quadraticBezierTo(0.7 * w, 0.58 * h, 0.705 * w, 0.61 * h);
+    path.quadraticBezierTo(0.71 * w, 0.64 * h, 0.72 * w, 0.65 * h);
+    path.quadraticBezierTo(0.73 * w, 0.66 * h, 0.74 * w, 0.655 * h);
+    path.quadraticBezierTo(0.75 * w, 0.65 * h, 0.75 * w, 0.635 * h);
+    path.quadraticBezierTo(0.75 * w, 0.62 * h, 0.745 * w, 0.585 * h);
+    path.quadraticBezierTo(0.74 * w, 0.55 * h, 0.735 * w, 0.515 * h);
+    path.quadraticBezierTo(0.73 * w, 0.48 * h, 0.72 * w, 0.445 * h);
+    path.quadraticBezierTo(0.71 * w, 0.41 * h, 0.695 * w, 0.385 * h);
+    path.quadraticBezierTo(0.68 * w, 0.36 * h, 0.66 * w, 0.345 * h);
+    path.quadraticBezierTo(0.64 * w, 0.33 * h, 0.61 * w, 0.32 * h);
+    path.quadraticBezierTo(0.58 * w, 0.31 * h, 0.555 * w, 0.305 * h);
+    path.quadraticBezierTo(0.53 * w, 0.3 * h, 0.53 * w, 0.29 * h);
+    path.quadraticBezierTo(0.53 * w, 0.28 * h, 0.54 * w, 0.27 * h);
+    path.quadraticBezierTo(0.55 * w, 0.26 * h, 0.56 * w, 0.24 * h);
+    path.quadraticBezierTo(0.57 * w, 0.22 * h, 0.57 * w, 0.19 * h);
+    path.quadraticBezierTo(0.57 * w, 0.16 * h, 0.555 * w, 0.14 * h);
+    path.quadraticBezierTo(0.54 * w, 0.12 * h, 0.5 * w, 0.1 * h);
+    path.close();
     return path;
   }
 }
