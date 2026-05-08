@@ -28,6 +28,9 @@ import 'package:pose_camera_app/coaching/portrait/portrait_mode_handler.dart';
 import 'package:pose_camera_app/coaching/portrait/portrait_overlay_painter.dart';
 import 'package:pose_camera_app/coaching/portrait/portrait_scene_state.dart'
     as portrait;
+import 'package:pose_camera_app/coaching/portrait/silhouette_shapes.dart';
+import 'package:pose_camera_app/screen/camera/widgets/silhouette_painter.dart';
+import 'package:pose_camera_app/screen/camera/widgets/silhouette_selector.dart';
 import 'package:pose_camera_app/coaching/subject/subject_detection.dart'
     show detectModelPath, detectionConfidenceThreshold;
 import 'package:pose_camera_app/feature/landscape/landscape_overlay_painter.dart';
@@ -36,7 +39,6 @@ import 'package:pose_camera_app/segmentation/composition_engine.dart';
 import 'package:pose_camera_app/segmentation/composition_resolver.dart';
 import 'package:pose_camera_app/segmentation/composition_summary.dart';
 import 'package:pose_camera_app/segmentation/composition_temporal_filter.dart';
-import 'package:pose_camera_app/segmentation/fastscnn_segmentor.dart';
 import 'package:pose_camera_app/segmentation/fastscnn_view.dart';
 import 'package:pose_camera_app/segmentation/landscape_analyzer.dart';
 import 'package:pose_camera_app/utils/debug_log_flags.dart';
@@ -147,8 +149,6 @@ class _CameraScreenState extends State<CameraScreen> {
   CompositionDecision? _landscapeDecision;
   LandscapeOverlayAdvice _landscapeOverlayAdvice =
       const LandscapeOverlayAdvice.none();
-  SegmentationResult? _landscapeSegmentation;
-
   Timer? _countdownTimer;
   StreamSubscription<AccelerometerEvent>? _accelerometerSub;
   bool _loggedFirstBuild = false;
@@ -160,15 +160,11 @@ class _CameraScreenState extends State<CameraScreen> {
       _isPortraitMode && _portraitIntent == portrait.PortraitIntent.group;
 
   /// 현재 기기 방향 기준 상대 기울기 (isLevel 판단 전용)
-  double get _relativeTilt {
-    final base = (_tiltX / 90.0).round() * 90.0;
-    return _tiltX - base;
-  }
-
   /// 사용자가 상단 selector에서 선택한 구도 규칙. 인물/객체 모드에서만 사용.
   CompositionRuleType _selectedRule = CompositionRuleType.none;
   CompositionRule get _activeRule => CompositionRuleRegistry.of(_selectedRule);
   portrait.PortraitIntent _portraitIntent = portrait.PortraitIntent.single;
+  SilhouetteType _selectedSilhouette = SilhouetteType.none;
 
   @override
   void initState() {
@@ -936,7 +932,7 @@ class _CameraScreenState extends State<CameraScreen> {
       _lastSentOrientationDeg = -1;
       _landscapeDecision = null;
       _landscapeOverlayAdvice = const LandscapeOverlayAdvice.none();
-      _landscapeSegmentation = null;
+      _selectedSilhouette = SilhouetteType.none;
     });
 
     if (_isLandscapeMode) {
@@ -981,7 +977,7 @@ class _CameraScreenState extends State<CameraScreen> {
       _lastSentOrientationDeg = -1;
       _landscapeDecision = null;
       _landscapeOverlayAdvice = const LandscapeOverlayAdvice.none();
-      _landscapeSegmentation = null;
+      _selectedSilhouette = SilhouetteType.none;
     });
   }
 
@@ -1253,6 +1249,7 @@ class _CameraScreenState extends State<CameraScreen> {
     final smoothed = _landscapeTemporalFilter.smooth(analysis.features);
     final decision = _landscapeTemporalFilter.stabilize(
       _landscapeResolver.resolve(smoothed),
+      smoothed,
     );
     final summary = _landscapeCompositionEngine.evaluate(
       features: smoothed,
@@ -1267,7 +1264,6 @@ class _CameraScreenState extends State<CameraScreen> {
     final landscapeLevel = _landscapeCoachingLevel(summary.guideState);
 
     setState(() {
-      _landscapeSegmentation = frame.result;
       _landscapeDecision = decision;
       _landscapeOverlayAdvice = analysis.advice;
       _isFrontCamera = frame.isFrontCamera;
@@ -1315,21 +1311,6 @@ class _CameraScreenState extends State<CameraScreen> {
         onZoomChanged: (zoomLevel) {
           if (!mounted) return;
           setState(() => _currentZoom = zoomLevel);
-        },
-        overlayBuilder: (context, frame) {
-          return IgnorePointer(
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                CustomPaint(
-                  painter: LandscapeSegmentationDotPainter(
-                    result: frame?.result ?? _landscapeSegmentation,
-                  ),
-                  size: Size.infinite,
-                ),
-              ],
-            ),
-          );
         },
       );
     }
@@ -1614,6 +1595,13 @@ class _CameraScreenState extends State<CameraScreen> {
                 size: Size.infinite,
               ),
             ),
+            if (_isPortraitMode && _selectedSilhouette != SilhouetteType.none)
+              IgnorePointer(
+                child: CustomPaint(
+                  painter: SilhouettePainter(type: _selectedSilhouette),
+                  size: Size.infinite,
+                ),
+              ),
             if (!_isLandscapeMode &&
                 !(_isPortraitMode && _showPortraitDebugOverlay))
               GestureDetector(
@@ -1677,7 +1665,7 @@ class _CameraScreenState extends State<CameraScreen> {
               duration: const Duration(milliseconds: 250),
               curve: Curves.easeOutCubic,
               top: _isPortraitMode
-                  ? (_isRuleSelectorExpanded ? 212 : 150)
+                  ? (_isRuleSelectorExpanded ? 256 : 194)
                   : (_isRuleSelectorExpanded ? 164 : 108),
               right: 12,
               child: IgnorePointer(
@@ -1706,7 +1694,7 @@ class _CameraScreenState extends State<CameraScreen> {
               AnimatedPositioned(
                 duration: const Duration(milliseconds: 250),
                 curve: Curves.easeOutCubic,
-                top: _isRuleSelectorExpanded ? 212 : 150,
+                top: _isRuleSelectorExpanded ? 256 : 194,
                 left: 16,
                 child: IgnorePointer(child: _buildPortraitGroupCounter()),
               ),
@@ -1903,6 +1891,21 @@ class _CameraScreenState extends State<CameraScreen> {
                     // Phase 4에서 코칭 엔진에도 전달.
                     _sceneCoach.setRule(_activeRule);
                     _portraitHandler.setRule(_activeRule);
+                  },
+                ),
+              ),
+            if (_isPortraitMode)
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeOutCubic,
+                top: _isRuleSelectorExpanded ? 212 : 148,
+                left: 0,
+                right: 0,
+                child: SilhouetteSelector(
+                  selected: _selectedSilhouette,
+                  onChanged: (type) {
+                    if (type == _selectedSilhouette) return;
+                    setState(() => _selectedSilhouette = type);
                   },
                 ),
               ),

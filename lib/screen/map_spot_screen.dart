@@ -74,6 +74,8 @@ class _MapSpotScreenState extends State<MapSpotScreen>
   static const _seoulLat = 37.5665;
   static const _seoulLng = 126.9780;
   static const _routeOverlayId = '__active_route__';
+  static const _nearbySpotRadiusMeters = 5000;
+  static const _nearbySpotFallbackRadiusMeters = 12000;
   bool get _isKeywordMode => _activeSearchKeyword != null;
 
   int get _visibleSpotCount =>
@@ -89,7 +91,7 @@ class _MapSpotScreenState extends State<MapSpotScreen>
     if (_selectedCategory != SpotCategory.all) {
       return '${_selectedCategory.emoji} ${_selectedCategory.label} 스팟';
     }
-    return '장소나 분위기를 검색해 보세요';
+    return '장소/분위기 검색';
   }
 
   String get _resultPanelTitle {
@@ -213,13 +215,25 @@ class _MapSpotScreenState extends State<MapSpotScreen>
     }
 
     try {
-      final places = await _tourApiService.fetchNearbySpots(
+      var places = await _tourApiService.fetchNearbySpots(
         latitude: _currentPosition!.latitude,
         longitude: _currentPosition!.longitude,
+        radius: _nearbySpotRadiusMeters,
         count: 10,
       );
+      if (places.length < 3) {
+        final fallbackPlaces = await _tourApiService.fetchNearbySpots(
+          latitude: _currentPosition!.latitude,
+          longitude: _currentPosition!.longitude,
+          radius: _nearbySpotFallbackRadiusMeters,
+          count: 10,
+        );
+        places = _mergePlacesByDistance([...places, ...fallbackPlaces]);
+      }
       if (!mounted) return;
-      setState(() => _nearbyPlaces = places);
+      setState(() {
+        _nearbyPlaces = _sortedByDistance(places).take(10).toList();
+      });
       if (_selectedCategory == SpotCategory.all && !_isKeywordMode) {
         await _buildMarkers();
       }
@@ -789,6 +803,16 @@ class _MapSpotScreenState extends State<MapSpotScreen>
       return da.compareTo(db);
     });
     return sorted;
+  }
+
+  List<TourPlace> _mergePlacesByDistance(List<TourPlace> places) {
+    final seenIds = <String>{};
+    final merged = <TourPlace>[];
+    for (final place in places) {
+      if (place.contentId.isEmpty || !seenIds.add(place.contentId)) continue;
+      merged.add(place);
+    }
+    return _sortedByDistance(merged);
   }
 
   double? _distToPlace(TourPlace p) {
