@@ -170,6 +170,7 @@ class YOLOView @JvmOverloads constructor(
 
     // Image metrics analysis — callback set by YOLOPlatformView
     var onImageMetrics: ((Map<String, Any>) -> Unit)? = null
+    var onPortraitFaceResults: ((Map<String, Any>) -> Unit)? = null
     private var metricsFrameCount: Int = 0
     private val metricsFrameInterval: Int = 2  // analyze every 2nd YOLO frame for faster coaching feedback
 
@@ -408,6 +409,10 @@ class YOLOView @JvmOverloads constructor(
     fun setDeviceOrientation(degrees: Int) {
         deviceOrientationDeg = degrees
         Log.d(TAG, "Device orientation set to $degrees°")
+    }
+
+    fun setPortraitFaceAnalysisThrottle(intervalMs: Int?, intervalFrames: Int?) {
+        portraitNativeAnalyzer.setFaceAnalysisThrottle(intervalMs, intervalFrames)
     }
     
     fun setShowUIControls(show: Boolean) {
@@ -933,6 +938,16 @@ class YOLOView @JvmOverloads constructor(
                 }
 
                 // 180° 추가 회전한 경우 좌표를 미러링하여 프리뷰와 일치시킴
+                if (!shouldNormalizePoseRotation && isLandscape && result.boxes.isEmpty()) {
+                    result = predictLandscapeFallback(
+                        predictor = p,
+                        sourceBitmap = bitmap,
+                        sourceWidth = w,
+                        sourceHeight = h,
+                        preferredRotation = rotationDegrees,
+                    ) ?: result
+                }
+
                 if (additionalRotation == 180) {
                     result = flipResult180(result)
                 }
@@ -964,8 +979,15 @@ class YOLOView @JvmOverloads constructor(
                         )
                         val metrics = HashMap<String, Any>(baseMetrics)
                         if (task == YOLOTask.POSE) {
-                            portraitNativeAnalyzer.schedule(imageProxy, bitmap)
+                            portraitNativeAnalyzer.schedule(
+                                imageProxy = imageProxy,
+                                bitmap = bitmap,
+                                isFrontCamera = isFrontCamera,
+                            )
                             metrics.putAll(portraitNativeAnalyzer.latestMetrics())
+                            onPortraitFaceResults?.invoke(
+                                portraitNativeAnalyzer.latestFaceResults()
+                            )
                         }
                         if (locked != null) {
                             metrics["subjectLocked"] = 1.0
@@ -2070,6 +2092,116 @@ class YOLOView @JvmOverloads constructor(
         consecutiveEmptyPoseFrames = 0
     }
 
+    private fun predictLandscapeFallback(
+        predictor: Predictor,
+        sourceBitmap: Bitmap,
+        sourceWidth: Int,
+        sourceHeight: Int,
+        preferredRotation: Int,
+    ): YOLOResult? {
+        val rotations = listOf(preferredRotation, 90, 270, 180)
+            .map { ((it % 360) + 360) % 360 }
+            .distinct()
+
+        var best: YOLOResult? = null
+        var bestScore = 0.0
+
+        for (rotation in rotations) {
+            val rotatedBitmap = ImageUtils.rotateBitmap(sourceBitmap, rotation)
+            val candidate = predictor.predict(
+                rotatedBitmap,
+                rotatedBitmap.width,
+                rotatedBitmap.height,
+                rotateForCamera = false,
+                isLandscape = rotatedBitmap.width > rotatedBitmap.height,
+            )
+            if (candidate.boxes.isEmpty()) continue
+
+            val mapped = mapRotatedResultToSource(
+                result = candidate,
+                rotation = rotation,
+                sourceWidth = sourceWidth,
+                sourceHeight = sourceHeight,
+            )
+            val score = mapped.boxes.sumOf { it.conf.toDouble() }
+            if (score > bestScore) {
+                best = mapped
+                bestScore = score
+            }
+        }
+
+        if (best != null) {
+            Log.d(TAG, "Landscape fallback recovered ${best!!.boxes.size} detection(s)")
+        }
+        return best
+    }
+
+    private fun mapRotatedResultToSource(
+        result: YOLOResult,
+        rotation: Int,
+        sourceWidth: Int,
+        sourceHeight: Int,
+    ): YOLOResult {
+        val normalizedRotation = ((rotation % 360) + 360) % 360
+        if (normalizedRotation == 0) {
+            return result.copy(origShape = Size(sourceWidth, sourceHeight))
+        }
+
+        val mappedBoxes = result.boxes.map { box ->
+            val mapped = inverseRotateRect(box.xywhn, normalizedRotation)
+            Box(
+                index = box.index,
+                cls = box.cls,
+                conf = box.conf,
+                xywh = RectF(
+                    mapped.left * sourceWidth,
+                    mapped.top * sourceHeight,
+                    mapped.right * sourceWidth,
+                    mapped.bottom * sourceHeight,
+                ),
+                xywhn = mapped,
+            )
+        }
+
+        return result.copy(
+            origShape = Size(sourceWidth, sourceHeight),
+            boxes = mappedBoxes,
+        )
+    }
+
+    private fun inverseRotateRect(rect: RectF, rotation: Int): RectF {
+        fun normalized(left: Float, top: Float, right: Float, bottom: Float): RectF {
+            return RectF(
+                min(left, right).coerceIn(0f, 1f),
+                min(top, bottom).coerceIn(0f, 1f),
+                max(left, right).coerceIn(0f, 1f),
+                max(top, bottom).coerceIn(0f, 1f),
+            )
+        }
+
+        return when (((rotation % 360) + 360) % 360) {
+            90 -> normalized(
+                1f - rect.bottom,
+                rect.left,
+                1f - rect.top,
+                rect.right,
+            )
+            180 -> normalized(
+                1f - rect.right,
+                1f - rect.bottom,
+                1f - rect.left,
+                1f - rect.top,
+            )
+            270 -> normalized(
+                rect.top,
+                1f - rect.right,
+                rect.bottom,
+                1f - rect.left,
+            )
+            else -> normalized(rect.left, rect.top, rect.right, rect.bottom)
+        }
+    }
+
     /**
      * 180° 추가 회전으로 추론한 결과의 좌표를 뒤집어 카메라 프리뷰와 일치시킵니다.
      * (x, y) → (W-x, H-y), normalized (x, y) → (1-x, 1-y)
@@ -2193,7 +2325,10 @@ class YOLOView @JvmOverloads constructor(
     fun setFocusPoint(x: Float, y: Float) {
         val factory = SurfaceOrientedMeteringPointFactory(1.0f, 1.0f)
         val point = factory.createPoint(x, y)
-        val action = FocusMeteringAction.Builder(point)
+        val meteringFlags = FocusMeteringAction.FLAG_AF or
+            FocusMeteringAction.FLAG_AE or
+            FocusMeteringAction.FLAG_AWB
+        val action = FocusMeteringAction.Builder(point, meteringFlags)
             .setAutoCancelDuration(3, TimeUnit.SECONDS)
             .build()
         camera?.cameraControl?.startFocusAndMetering(action)

@@ -1,14 +1,6 @@
 import 'package:flutter/material.dart';
 
-enum SpotCategory {
-  all,
-  cherry,
-  autumn,
-  sunrise,
-  sunset,
-  night,
-  snow,
-}
+enum SpotCategory { all, cherry, autumn, sunrise, sunset, night, snow }
 
 extension SpotCategoryExt on SpotCategory {
   String get label {
@@ -26,12 +18,12 @@ extension SpotCategoryExt on SpotCategory {
 
   String get emoji {
     const emojis = {
-      SpotCategory.all: '🗺️',
+      SpotCategory.all: '📍',
       SpotCategory.cherry: '🌸',
       SpotCategory.autumn: '🍁',
       SpotCategory.sunrise: '🌅',
       SpotCategory.sunset: '🌇',
-      SpotCategory.night: '🌙',
+      SpotCategory.night: '🌃',
       SpotCategory.snow: '❄️',
     };
     return emojis[this]!;
@@ -50,4 +42,3 @@ extension SpotCategoryExt on SpotCategory {
     return colors[this]!;
   }
 }
-

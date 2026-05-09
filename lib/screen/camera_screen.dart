@@ -40,9 +40,11 @@ import 'package:pose_camera_app/segmentation/composition_summary.dart';
 import 'package:pose_camera_app/segmentation/composition_temporal_filter.dart';
 import 'package:pose_camera_app/segmentation/fastscnn_view.dart';
 import 'package:pose_camera_app/segmentation/landscape_analyzer.dart';
+import 'package:pose_camera_app/utils/debug_log_flags.dart';
 
 const String poseModelPath = 'yolov8n-pose_float16.tflite';
 const double poseConfidenceThreshold = 0.15;
+const double groupPersonConfidenceThreshold = 0.08;
 const double poseIouThreshold = 0.65;
 
 class CameraScreen extends StatefulWidget {
@@ -68,6 +70,9 @@ class CameraScreen extends StatefulWidget {
 
 class _CameraScreenState extends State<CameraScreen> {
   static const _cameraAspect = 3.0 / 4.0;
+  static const bool _debugUseImageAnalysisFace = true;
+  static const int _portraitNativeFaceIntervalMs = 180;
+  static const int _portraitNativeFaceIntervalFrames = 6;
 
   final _cameraController = YOLOViewController();
   final _landscapeController = FastScnnViewController();
@@ -91,6 +96,7 @@ class _CameraScreenState extends State<CameraScreen> {
   late ShootingMode _shootingMode;
   Offset? _focusPoint;
   bool _showFocusIndicator = false;
+  Timer? _focusIndicatorTimer;
 
   double _selectedZoom = 1.0;
   double _currentZoom = 1.0;
@@ -149,6 +155,8 @@ class _CameraScreenState extends State<CameraScreen> {
   bool get _isPortraitMode => _shootingMode == ShootingMode.person;
   bool get _isLandscapeMode => _shootingMode == ShootingMode.landscape;
   bool get _isObjectMode => _shootingMode == ShootingMode.object;
+  bool get _isGroupPortraitMode =>
+      _isPortraitMode && _portraitIntent == portrait.PortraitIntent.group;
 
   /// 현재 기기 방향 기준 상대 기울기 (isLevel 판단 전용)
   /// 사용자가 상단 selector에서 선택한 구도 규칙. 인물/객체 모드에서만 사용.
@@ -161,35 +169,54 @@ class _CameraScreenState extends State<CameraScreen> {
   void initState() {
     super.initState();
     _shootingMode = widget.initialMode;
-    debugPrint('[CameraScreen] initState mode=${_shootingMode.name}');
+    if (DebugLogFlags.yoloDebug) {
+      debugPrint('[YOLO_DEBUG][screen] initState mode=${_shootingMode.name}');
+    }
 
     unawaited(_portraitHandler.init());
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      debugPrint('[CameraScreen] postFrame restartCamera scheduled');
+      if (DebugLogFlags.yoloDebug) {
+        debugPrint('[YOLO_DEBUG][startup] restartCamera scheduled');
+      }
       await Future<void>.delayed(const Duration(milliseconds: 300));
       if (!mounted) return;
 
       try {
-        debugPrint('[YOLO_DEBUG][startup] restartCamera start');
+        if (DebugLogFlags.yoloDebug) {
+          debugPrint('[YOLO_DEBUG][startup] restartCamera start');
+        }
         await _cameraController.restartCamera();
-        debugPrint('[YOLO_DEBUG][startup] restartCamera done');
+        if (DebugLogFlags.yoloDebug) {
+          debugPrint('[YOLO_DEBUG][startup] restartCamera done');
+        }
         await _cameraController.setZoomLevel(_selectedZoom);
-        debugPrint(
-          '[YOLO_DEBUG][startup] setZoomLevel done zoom=$_selectedZoom',
+        if (DebugLogFlags.yoloDebug) {
+          debugPrint(
+            '[YOLO_DEBUG][startup] setZoomLevel done zoom=$_selectedZoom',
+          );
+        }
+        await _cameraController.setPortraitFaceAnalysisThrottle(
+          intervalMs: _portraitNativeFaceIntervalMs,
+          intervalFrames: _portraitNativeFaceIntervalFrames,
         );
         await _configureZoomPresets();
-        debugPrint(
-          '[YOLO_DEBUG][startup] configureZoomPresets done presets=$_zoomPresets',
-        );
+        if (DebugLogFlags.yoloDebug) {
+          debugPrint(
+            '[YOLO_DEBUG][startup] configureZoomPresets done presets=$_zoomPresets',
+          );
+        }
       } catch (error, stackTrace) {
-        debugPrint('[YOLO_DEBUG][startup] startup error: $error');
-        debugPrintStack(stackTrace: stackTrace);
+        if (DebugLogFlags.yoloDebug) {
+          debugPrint('[YOLO_DEBUG][startup] startup error: $error');
+          debugPrintStack(stackTrace: stackTrace);
+        }
       }
     });
 
     _startTiltMonitoring();
     _cameraController.onImageMetrics = _onImageMetrics;
+    _cameraController.onPortraitFaceResults = _onPortraitFaceResults;
   }
 
   void _startTiltMonitoring() {
@@ -289,6 +316,39 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
+  void _onPortraitFaceResults(Map<String, dynamic> payload) {
+    if (!mounted || !_isPortraitMode) return;
+
+    final rawFaces = payload['faces'];
+    final results = <NativeFaceResult>[];
+    if (rawFaces is List) {
+      for (final item in rawFaces) {
+        if (item is Map) {
+          results.add(
+            NativeFaceResult.fromMap(Map<String, dynamic>.from(item)),
+          );
+        }
+      }
+    }
+
+    final imageWidth = (payload['imageWidth'] as num?)?.toInt() ?? 0;
+    final imageHeight = (payload['imageHeight'] as num?)?.toInt() ?? 0;
+    final rotation = (payload['rotationDegrees'] as num?)?.toInt() ?? 0;
+    final frameNumber = (payload['frameNumber'] as num?)?.toInt() ?? -1;
+    final timestampMs = (payload['timestampMs'] as num?)?.toInt();
+    final isFrontCamera = payload['isFrontCamera'] == true;
+
+    _portraitHandler.updateNativeFaceResults(
+      results,
+      imageWidth: imageWidth,
+      imageHeight: imageHeight,
+      rotationDegrees: rotation,
+      frameNumber: frameNumber,
+      timestampMs: timestampMs,
+      isFrontCamera: isFrontCamera,
+    );
+  }
+
   List<YOLOResult> _filterResultsForMode(List<YOLOResult> results) {
     switch (_shootingMode) {
       case ShootingMode.person:
@@ -332,6 +392,91 @@ class _CameraScreenState extends State<CameraScreen> {
       b.right.clamp(0.0, 1.0),
       b.bottom.clamp(0.0, 1.0),
     );
+  }
+
+  Rect _rectFromNormalizedLTRB(
+    double left,
+    double top,
+    double right,
+    double bottom,
+  ) {
+    final l = math.min(left, right).clamp(0.0, 1.0);
+    final r = math.max(left, right).clamp(0.0, 1.0);
+    final t = math.min(top, bottom).clamp(0.0, 1.0);
+    final b = math.max(top, bottom).clamp(0.0, 1.0);
+    return Rect.fromLTRB(l, t, r, b);
+  }
+
+  Rect _cameraToDisplayRect(Rect rect) {
+    switch (_deviceOrientationDeg) {
+      case 90:
+        return _rectFromNormalizedLTRB(
+          rect.top,
+          1.0 - rect.right,
+          rect.bottom,
+          1.0 - rect.left,
+        );
+      case 180:
+        return _rectFromNormalizedLTRB(
+          1.0 - rect.right,
+          1.0 - rect.bottom,
+          1.0 - rect.left,
+          1.0 - rect.top,
+        );
+      case 270:
+        return _rectFromNormalizedLTRB(
+          1.0 - rect.bottom,
+          rect.left,
+          1.0 - rect.top,
+          rect.right,
+        );
+      default:
+        return _rectFromNormalizedLTRB(
+          rect.left,
+          rect.top,
+          rect.right,
+          rect.bottom,
+        );
+    }
+  }
+
+  Rect _displayToCameraRect(Rect rect) {
+    switch (_deviceOrientationDeg) {
+      case 90:
+        return _rectFromNormalizedLTRB(
+          1.0 - rect.bottom,
+          rect.left,
+          1.0 - rect.top,
+          rect.right,
+        );
+      case 180:
+        return _rectFromNormalizedLTRB(
+          1.0 - rect.right,
+          1.0 - rect.bottom,
+          1.0 - rect.left,
+          1.0 - rect.top,
+        );
+      case 270:
+        return _rectFromNormalizedLTRB(
+          rect.top,
+          1.0 - rect.right,
+          rect.bottom,
+          1.0 - rect.left,
+        );
+      default:
+        return _rectFromNormalizedLTRB(
+          rect.left,
+          rect.top,
+          rect.right,
+          rect.bottom,
+        );
+    }
+  }
+
+  double get _displayCameraAspect {
+    return (_deviceOrientationDeg == 90 || _deviceOrientationDeg == 270)
+        ? 1.0 / _cameraAspect
+        : _cameraAspect;
   }
 
   static double _rectArea(Rect rect) => rect.width * rect.height;
@@ -674,7 +819,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
   int _yoloDebugObjFrame = 0;
   void _handleDetections(List<YOLOResult> results) {
-    if (++_yoloDebugObjFrame % 30 == 1) {
+    if (++_yoloDebugObjFrame % 30 == 1 && DebugLogFlags.yoloDebug) {
       debugPrint(
         '[YOLO_DEBUG][obj] cb#$_yoloDebugObjFrame results=${results.length} '
         'mode=${_shootingMode.name} mounted=$mounted front=$_isFrontCamera',
@@ -788,7 +933,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
   int _yoloDebugPoseFrame = 0;
   void _handlePoseDetections(List<YOLOResult> results) {
-    if (++_yoloDebugPoseFrame % 30 == 1) {
+    if (++_yoloDebugPoseFrame % 30 == 1 && DebugLogFlags.yoloDebug) {
       final personCount = results
           .where((r) => r.className.toLowerCase() == 'person')
           .length;
@@ -802,6 +947,11 @@ class _CameraScreenState extends State<CameraScreen> {
     _portraitHandler.deviceOrientationDeg = _deviceOrientationDeg;
     _portraitHandler.isFrontCamera = _isFrontCamera;
     _portraitHandler.setIntent(_portraitIntent);
+    _portraitHandler.setFaceAnalysisSource(
+      _debugUseImageAnalysisFace
+          ? FaceAnalysisSource.imageAnalysis
+          : FaceAnalysisSource.previewCapture,
+    );
     final currentOrientation = _deviceOrientationDeg;
     if (currentOrientation != _lastSentOrientationDeg) {
       _lastSentOrientationDeg = currentOrientation;
@@ -916,25 +1066,28 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   void _onTapFocus(Offset localPosition) {
-    if (_previewSize == Size.zero || !_isObjectMode) return;
+    if (_previewSize == Size.zero || _isLandscapeMode) return;
 
-    final detection = _bestDetectionAtScreenPoint(localPosition);
-    if (detection != null) {
-      _lockToDetection(detection);
-      return;
+    if (_isObjectMode) {
+      final detection = _bestDetectionAtScreenPoint(localPosition);
+      if (detection != null) {
+        _lockToDetection(detection);
+        return;
+      }
     }
 
     final nx = (localPosition.dx / _previewSize.width).clamp(0.0, 1.0);
     final ny = (localPosition.dy / _previewSize.height).clamp(0.0, 1.0);
 
-    _cameraController.setFocusPoint(nx, ny);
+    unawaited(_cameraController.setFocusPoint(nx, ny));
+    _focusIndicatorTimer?.cancel();
 
     setState(() {
       _focusPoint = localPosition;
       _showFocusIndicator = true;
     });
 
-    Future.delayed(const Duration(milliseconds: 1200), () {
+    _focusIndicatorTimer = Timer(const Duration(milliseconds: 1200), () {
       if (mounted) {
         setState(() => _showFocusIndicator = false);
       }
@@ -988,46 +1141,51 @@ class _CameraScreenState extends State<CameraScreen> {
 
   Rect _screenToCamera(Rect screen) {
     final sa = _previewSize.width / _previewSize.height;
-    if (sa < _cameraAspect) {
-      final vx = sa / _cameraAspect;
+    final displayCameraAspect = _displayCameraAspect;
+    Rect displayRect;
+    if (sa < displayCameraAspect) {
+      final vx = sa / displayCameraAspect;
       final ox = (1.0 - vx) / 2.0;
-      return Rect.fromLTRB(
+      displayRect = Rect.fromLTRB(
         screen.left * vx + ox,
         screen.top,
         screen.right * vx + ox,
         screen.bottom,
       );
     } else {
-      final vy = _cameraAspect / sa;
+      final vy = displayCameraAspect / sa;
       final oy = (1.0 - vy) / 2.0;
-      return Rect.fromLTRB(
+      displayRect = Rect.fromLTRB(
         screen.left,
         screen.top * vy + oy,
         screen.right,
         screen.bottom * vy + oy,
       );
     }
+    return _displayToCameraRect(displayRect);
   }
 
   Rect _cameraToScreen(Rect cam) {
+    final display = _cameraToDisplayRect(cam);
     final sa = _previewSize.width / _previewSize.height;
-    if (sa < _cameraAspect) {
-      final vx = sa / _cameraAspect;
+    final displayCameraAspect = _displayCameraAspect;
+    if (sa < displayCameraAspect) {
+      final vx = sa / displayCameraAspect;
       final ox = (1.0 - vx) / 2.0;
       return Rect.fromLTRB(
-        ((cam.left - ox) / vx).clamp(0.0, 1.0),
-        cam.top.clamp(0.0, 1.0),
-        ((cam.right - ox) / vx).clamp(0.0, 1.0),
-        cam.bottom.clamp(0.0, 1.0),
+        ((display.left - ox) / vx).clamp(0.0, 1.0),
+        display.top.clamp(0.0, 1.0),
+        ((display.right - ox) / vx).clamp(0.0, 1.0),
+        display.bottom.clamp(0.0, 1.0),
       );
     } else {
-      final vy = _cameraAspect / sa;
+      final vy = displayCameraAspect / sa;
       final oy = (1.0 - vy) / 2.0;
       return Rect.fromLTRB(
-        cam.left.clamp(0.0, 1.0),
-        ((cam.top - oy) / vy).clamp(0.0, 1.0),
-        cam.right.clamp(0.0, 1.0),
-        ((cam.bottom - oy) / vy).clamp(0.0, 1.0),
+        display.left.clamp(0.0, 1.0),
+        ((display.top - oy) / vy).clamp(0.0, 1.0),
+        display.right.clamp(0.0, 1.0),
+        ((display.bottom - oy) / vy).clamp(0.0, 1.0),
       );
     }
   }
@@ -1203,11 +1361,14 @@ class _CameraScreenState extends State<CameraScreen> {
       _subGuidance = landscapeSubGuidance;
       _coachingLevel = landscapeLevel;
     });
-    debugPrint(
-      '[Landscape] frame applied seg=${frame.result.width}x${frame.result.height} '
-      'front=${frame.isFrontCamera} zoom=${frame.zoomLevel.toStringAsFixed(2)} '
-      'mode=${decision.compositionMode.name} overlay=${decision.overlayType}',
-    );
+    if (DebugLogFlags.yoloDebug) {
+      debugPrint(
+        '[YOLO_DEBUG][landscape] frame applied '
+        'seg=${frame.result.width}x${frame.result.height} '
+        'front=${frame.isFrontCamera} zoom=${frame.zoomLevel.toStringAsFixed(2)} '
+        'mode=${decision.compositionMode.name} overlay=${decision.overlayType}',
+      );
+    }
   }
 
   CoachingLevel _landscapeCoachingLevel(CompositionGuideState state) {
@@ -1245,19 +1406,37 @@ class _CameraScreenState extends State<CameraScreen> {
 
     return YOLOView(
       key: ValueKey(
-        'yolo_${_isPortraitMode ? 'pose' : 'detect'}_${_isFrontCamera ? 'front' : 'back'}',
+        'yolo_${_isGroupPortraitMode
+            ? 'group_detect'
+            : _isPortraitMode
+            ? 'pose'
+            : 'detect'}_${_isFrontCamera ? 'front' : 'back'}',
       ),
       controller: _cameraController,
-      modelPath: _isPortraitMode ? poseModelPath : detectModelPath,
-      task: _isPortraitMode ? YOLOTask.pose : YOLOTask.detect,
+      modelPath: _isGroupPortraitMode
+          ? detectModelPath
+          : _isPortraitMode
+          ? poseModelPath
+          : detectModelPath,
+      task: _isGroupPortraitMode
+          ? YOLOTask.detect
+          : _isPortraitMode
+          ? YOLOTask.pose
+          : YOLOTask.detect,
       useGpu: true,
       showNativeUI: false,
       showOverlays: false,
-      confidenceThreshold: _isPortraitMode
+      confidenceThreshold: _isGroupPortraitMode
+          ? groupPersonConfidenceThreshold
+          : _isPortraitMode
           ? poseConfidenceThreshold
           : detectionConfidenceThreshold,
-      iouThreshold: _isPortraitMode ? poseIouThreshold : 0.45,
-      streamingConfig: _isPortraitMode
+      iouThreshold: _isGroupPortraitMode
+          ? 0.50
+          : _isPortraitMode
+          ? poseIouThreshold
+          : 0.45,
+      streamingConfig: _isPortraitMode && !_isGroupPortraitMode
           ? const YOLOStreamingConfig.withPoses()
           : const YOLOStreamingConfig.minimal(),
       lensFacing: _isFrontCamera ? LensFacing.front : LensFacing.back,
@@ -1371,10 +1550,77 @@ class _CameraScreenState extends State<CameraScreen> {
     );
   }
 
+  Widget _buildFocusIndicator() {
+    final point = _focusPoint;
+    if (!_showFocusIndicator || point == null || _previewSize == Size.zero) {
+      return const SizedBox.shrink();
+    }
+
+    const size = 72.0;
+    final maxLeft = math.max(0.0, _previewSize.width - size);
+    final maxTop = math.max(0.0, _previewSize.height - size);
+    final left = (point.dx - size / 2).clamp(0.0, maxLeft).toDouble();
+    final top = (point.dy - size / 2).clamp(0.0, maxTop).toDouble();
+    const focusColor = Color(0xFFFFD54F);
+
+    return Positioned(
+      left: left,
+      top: top,
+      child: IgnorePointer(
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: focusColor, width: 2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.28),
+                        blurRadius: 8,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Positioned(
+                right: -20,
+                top: 17,
+                child: Container(
+                  width: 18,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.35),
+                    borderRadius: BorderRadius.circular(9),
+                    border: Border.all(
+                      color: focusColor.withValues(alpha: 0.85),
+                    ),
+                  ),
+                  child: const Center(
+                    child: Icon(
+                      Icons.wb_sunny_outlined,
+                      size: 12,
+                      color: focusColor,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _accelerometerSub?.cancel();
     _countdownTimer?.cancel();
+    _focusIndicatorTimer?.cancel();
     _cameraController.stop();
     _landscapeController.stop();
     _portraitHandler.dispose();
@@ -1385,7 +1631,9 @@ class _CameraScreenState extends State<CameraScreen> {
   Widget build(BuildContext context) {
     if (!_loggedFirstBuild) {
       _loggedFirstBuild = true;
-      debugPrint('[CameraScreen] first build mode=${_shootingMode.name}');
+      if (DebugLogFlags.yoloDebug) {
+        debugPrint('[YOLO_DEBUG][screen] first build mode=${_shootingMode.name}');
+      }
     }
     return Scaffold(
       backgroundColor: Colors.black,
@@ -1461,19 +1709,22 @@ class _CameraScreenState extends State<CameraScreen> {
                   );
                 },
               ),
-            if (_isObjectMode)
+            if (!_isLandscapeMode &&
+                !(_isPortraitMode && _showPortraitDebugOverlay))
               GestureDetector(
                 behavior: HitTestBehavior.translucent,
-                onTapUp: _isDrawingRoi
+                onTapUp: _isObjectMode && _isDrawingRoi
                     ? null
                     : (details) => _onTapFocus(details.localPosition),
-                onPanStart: _isDrawingRoi
+                onPanStart: _isObjectMode && _isDrawingRoi
                     ? (d) => _onRoiPanStart(d.localPosition)
                     : null,
-                onPanUpdate: _isDrawingRoi
+                onPanUpdate: _isObjectMode && _isDrawingRoi
                     ? (d) => _onRoiPanUpdate(d.localPosition)
                     : null,
-                onPanEnd: _isDrawingRoi ? (_) => _onRoiPanEnd() : null,
+                onPanEnd: _isObjectMode && _isDrawingRoi
+                    ? (_) => _onRoiPanEnd()
+                    : null,
               ),
             if (_isObjectMode &&
                 (_lockedRoi != null ||
@@ -1516,20 +1767,7 @@ class _CameraScreenState extends State<CameraScreen> {
                   ),
                 ),
               ),
-            if (_isObjectMode && _showFocusIndicator && _focusPoint != null)
-              Positioned(
-                left: _focusPoint!.dx - 30,
-                top: _focusPoint!.dy - 30,
-                child: IgnorePointer(
-                  child: Container(
-                    width: 60,
-                    height: 60,
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.white, width: 1.5),
-                    ),
-                  ),
-                ),
-              ),
+            if (!_isLandscapeMode) _buildFocusIndicator(),
             AnimatedPositioned(
               duration: const Duration(milliseconds: 250),
               curve: Curves.easeOutCubic,
@@ -1597,6 +1835,111 @@ class _CameraScreenState extends State<CameraScreen> {
                     : null,
               ),
             ),
+            // Portrait debug toggles (visible when portrait debug overlay enabled)
+            if (_isPortraitMode && _showPortraitDebugOverlay)
+              Positioned(
+                top: 64,
+                right: 16,
+                child: Material(
+                  color: Colors.black.withOpacity(0.45),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 6,
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              'Face',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Switch.adaptive(
+                              value: _portraitHandler.isFaceAnalysisEnabled,
+                              activeColor: const Color(0xFF38BDF8),
+                              onChanged: (v) => setState(() {
+                                _portraitHandler.setFaceAnalysisEnabled(v);
+                              }),
+                            ),
+                          ],
+                        ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              'Lighting',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Switch.adaptive(
+                              value: _portraitHandler.isLightingAnalysisEnabled,
+                              activeColor: const Color(0xFF38BDF8),
+                              onChanged: (v) => setState(() {
+                                _portraitHandler.setLightingAnalysisEnabled(v);
+                              }),
+                            ),
+                          ],
+                        ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              'FQuality',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Switch.adaptive(
+                              value: _portraitHandler.isFaceQualityEnabled,
+                              activeColor: const Color(0xFF38BDF8),
+                              onChanged: (v) => setState(() {
+                                _portraitHandler.setFaceQualityEnabled(v);
+                              }),
+                            ),
+                          ],
+                        ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              'Capture',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Switch.adaptive(
+                              value: _portraitHandler
+                                  .isBitmapCaptureForFaceEnabled,
+                              activeColor: const Color(0xFF38BDF8),
+                              onChanged: (v) => setState(() {
+                                _portraitHandler.setBitmapCaptureForFaceEnabled(
+                                  v,
+                                );
+                              }),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             // 구도 규칙 selector — 인물/객체 모드만. 풍경은 자동 감지 사용.
             if (_isLandscapeMode)
               Positioned(
@@ -1627,14 +1970,17 @@ class _CameraScreenState extends State<CameraScreen> {
                 top: 60,
                 left: 0,
                 right: 0,
-                child: PortraitIntentSelector(
-                  selected: _portraitIntent,
-                  onChanged: (intent) {
-                    if (intent == _portraitIntent) return;
-                    setState(() => _portraitIntent = intent);
-                    _portraitHandler.setIntent(intent);
-                    _resetPortraitState();
-                  },
+                child: IgnorePointer(
+                  ignoring: _showPortraitDebugOverlay,
+                  child: PortraitIntentSelector(
+                    selected: _portraitIntent,
+                    onChanged: (intent) {
+                      if (intent == _portraitIntent) return;
+                      setState(() => _portraitIntent = intent);
+                      _portraitHandler.setIntent(intent);
+                      _resetPortraitState();
+                    },
+                  ),
                 ),
               ),
             if (!_isLandscapeMode)

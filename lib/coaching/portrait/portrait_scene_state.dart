@@ -9,43 +9,39 @@ import 'dart:ui';
 // ─── 샷 타입 ────────────────────────────────────────────────
 
 enum ShotType {
-  extremeCloseUp,  // 익스트림 클로즈업 (얼굴 일부만)
-  closeUp,         // 클로즈업 (얼굴+목, 어깨 안 보임)
-  headShot,        // 헤드샷 (머리+어깨 상단, 팔꿈치 안 보임)
-  upperBody,       // 상반신 (가슴~배꼽)
-  waistShot,       // 허리샷 (허리~엉덩이, 손 보이기 시작)
-  kneeShot,        // 무릎샷
-  fullBody,        // 전신
-  environmental,   // 환경 포트레이트 (인물 + 풍경)
-  groupShot,       // 그룹샷 (2명 이상)
+  extremeCloseUp, // 익스트림 클로즈업 (얼굴 일부만)
+  closeUp, // 클로즈업 (얼굴+목, 어깨 안 보임)
+  headShot, // 헤드샷 (머리+어깨 상단, 팔꿈치 안 보임)
+  upperBody, // 상반신 (가슴~배꼽)
+  waistShot, // 허리샷 (허리~엉덩이, 손 보이기 시작)
+  kneeShot, // 무릎샷
+  fullBody, // 전신
+  environmental, // 환경 포트레이트 (인물 + 풍경)
+  groupShot, // 그룹샷 (2명 이상)
   unknown,
 }
 
-enum PortraitIntent {
-  single,
-  environmental,
-  group,
-}
+enum PortraitIntent { single, environmental, group }
 
 // ─── 조명 상태 ──────────────────────────────────────────────
 
 enum LightingCondition {
-  normal,    // 순광 (front_light)
-  short,     // 사광 (short_light, 가장 이상적)
-  side,      // 측광 (side_light)
-  rim,       // 역사광 (rim_light)
-  back,      // 역광 (back_light)
+  normal, // 순광 (front_light)
+  short, // 사광 (short_light, 가장 이상적)
+  side, // 측광 (side_light)
+  rim, // 역사광 (rim_light)
+  back, // 역광 (back_light)
   unknown,
 }
 
 // ─── 코칭 우선순위 ──────────────────────────────────────────
 
 enum CoachingPriority {
-  critical,    // P0~P1: 사람 없음, 눈 감음, 강한 역광
+  critical, // P0~P1: 사람 없음, 눈 감음, 강한 역광
   composition, // P2~P3: 조명 개선, 구도 문제
-  pose,        // P4: 포즈 문제
-  refinement,  // P5: 세부 조정
-  perfect,     // P6: 모든 규칙 통과 (칭찬)
+  pose, // P4: 포즈 문제
+  refinement, // P5: 세부 조정
+  perfect, // P6: 모든 규칙 통과 (칭찬)
 }
 
 // ─── 코칭 결과 ──────────────────────────────────────────────
@@ -94,8 +90,8 @@ class PortraitSceneState {
   final double footSpaceRatio;
 
   // 인물 위치/크기
-  final double personCenterX;      // 인물 중심 x좌표 (정규화 0~1)
-  final double personBboxRatio;    // 인물 bbox / 프레임 면적 비율 (0~1)
+  final double personCenterX; // 인물 중심 x좌표 (정규화 0~1)
+  final double personBboxRatio; // 인물 bbox / 프레임 면적 비율 (0~1)
 
   // 키포인트 신뢰도
   final double shoulderConfidence;
@@ -111,15 +107,16 @@ class PortraitSceneState {
   final bool hasShoulders;
 
   // 다중 인물 데이터
-  final bool isGroupShot;             // 2명 이상인 경우
+  final bool isGroupShot; // 2명 이상인 경우
   final double secondPersonSizeRatio; // 두 번째 인물 크기 / 메인 인물 크기 (0~1)
-  final int groupCroppedCount;        // 바운딩박스가 프레임 가장자리에 걸리는 인원 수
-  final bool anyFaceEyesClosed;       // 감지된 얼굴 중 눈 감긴 사람이 있는지 (ML Kit)
-  final int closedFaceCount;          // 눈 감은 것으로 보이는 얼굴 수 (ML Kit)
+  final int groupCroppedCount; // 바운딩박스가 프레임 가장자리에 걸리는 인원 수
+  final bool anyFaceEyesClosed; // 감지된 얼굴 중 눈 감긴 사람이 있는지 (ML Kit)
+  final int closedFaceCount; // 눈 감은 것으로 보이는 얼굴 수 (ML Kit)
 
   // 조명 데이터
   final LightingCondition lightingCondition;
   final double lightingConfidence;
+  final List<double> faceQualityScores;
 
   // 추가 키포인트 위치
   final Offset? leftWristPosition;
@@ -132,21 +129,21 @@ class PortraitSceneState {
   final Offset? rightKneePosition;
 
   // 전신 전용 데이터
-  final double? ankleSpacingRatio;  // 발 간격 / 어깨 너비 비율 (null = 계산 불가)
-  final String? bottomJoint;        // 프레임 하단(85%+)에 가장 가까운 관절 이름
-  final double? bottomJointY;       // 해당 관절의 y좌표 (0~1)
+  final double? ankleSpacingRatio; // 발 간격 / 어깨 너비 비율 (null = 계산 불가)
+  final String? bottomJoint; // 프레임 하단(85%+)에 가장 가까운 관절 이름
+  final double? bottomJointY; // 해당 관절의 y좌표 (0~1)
   final bool lowerBodyTouchesBottom;
 
   // 카메라 안정성
-  final double cameraStability;     // 0.0=불안정, 1.0=매우 안정
+  final double cameraStability; // 0.0=불안정, 1.0=매우 안정
 
   // 눈 감김 정밀 추적
-  final bool eyeClosedConfirmed;    // 네이티브 raw 기반 연속 프레임 확정
+  final bool eyeClosedConfirmed; // 네이티브 raw 기반 연속 프레임 확정
 
   // 그룹샷 상세 데이터
-  final int faceHiddenCount;        // 얼굴 안 보이는 인원 수 (코 키포인트 없음)
-  final double spacingUnevenness;   // 인물 간 간격 불균등도 (0=균등)
-  final double heightVariation;     // 인물 키 차이 (bbox top Y 범위)
+  final int faceHiddenCount; // 얼굴 안 보이는 인원 수 (코 키포인트 없음)
+  final double spacingUnevenness; // 인물 간 간격 불균등도 (0=균등)
+  final double heightVariation; // 인물 키 차이 (bbox top Y 범위)
 
   const PortraitSceneState({
     this.personCount = 0,
@@ -187,6 +184,7 @@ class PortraitSceneState {
     this.closedFaceCount = 0,
     this.lightingCondition = LightingCondition.unknown,
     this.lightingConfidence = 0.0,
+    this.faceQualityScores = const [],
     this.leftWristPosition,
     this.rightWristPosition,
     this.leftAnklePosition,
@@ -211,9 +209,9 @@ class PortraitSceneState {
   bool get areEyesClosed =>
       eyeClosedConfirmed ||
       (leftEyeOpenProb != null &&
-       rightEyeOpenProb != null &&
-       leftEyeOpenProb! < 0.35 &&
-       rightEyeOpenProb! < 0.35);
+          rightEyeOpenProb != null &&
+          leftEyeOpenProb! < 0.35 &&
+          rightEyeOpenProb! < 0.35);
 
   bool get isOneEyeClosed =>
       leftEyeOpenProb != null &&
@@ -221,8 +219,7 @@ class PortraitSceneState {
       !areEyesClosed &&
       (leftEyeOpenProb! < 0.35 || rightEyeOpenProb! < 0.35);
 
-  bool get isSmiling =>
-      smileProbability != null && smileProbability! >= 0.65;
+  bool get isSmiling => smileProbability != null && smileProbability! >= 0.65;
 
   bool get hasFace => faceYaw != null;
   bool get hasPose => shoulderAngleDeg != null;
@@ -258,11 +255,9 @@ class PortraitSceneState {
       (leftKneePosition != null || rightKneePosition != null) &&
       kneeConfidence >= 0.15;
 
-  bool get hasReliableAnkles =>
-      hasAnyAnkle && ankleConfidence >= 0.15;
+  bool get hasReliableAnkles => hasAnyAnkle && ankleConfidence >= 0.15;
 
-  bool get hasReliableBothAnkles =>
-      hasBothAnkles && ankleConfidence >= 0.15;
+  bool get hasReliableBothAnkles => hasBothAnkles && ankleConfidence >= 0.15;
 
   /// 프레임 하단 근처에서 관절이 잘리고 있는지
   bool get isBottomJointCut => bottomJoint != null && bottomJointY != null;

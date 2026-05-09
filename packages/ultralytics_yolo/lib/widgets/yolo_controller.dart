@@ -16,7 +16,9 @@ class YOLOViewController {
   int _numItemsThreshold = 30;
 
   StreamSubscription<dynamic>? _metricsSubscription;
+  StreamSubscription<dynamic>? _portraitFaceResultsSubscription;
   void Function(Map<String, double>)? onImageMetrics;
+  void Function(Map<String, dynamic>)? onPortraitFaceResults;
 
   double get confidenceThreshold => _confidenceThreshold;
   double get iouThreshold => _iouThreshold;
@@ -30,6 +32,7 @@ class YOLOViewController {
     _viewId = viewId;
     _applyThresholds();
     _subscribeToMetrics(viewUniqueId);
+    _subscribeToPortraitFaceResults(viewUniqueId);
   }
 
   void _subscribeToMetrics(String viewUniqueId) {
@@ -48,9 +51,27 @@ class YOLOViewController {
     );
   }
 
+  void _subscribeToPortraitFaceResults(String viewUniqueId) {
+    final channel = ChannelConfig.createPortraitFaceResultsChannel(viewUniqueId);
+    _portraitFaceResultsSubscription = channel.receiveBroadcastStream().listen(
+      (event) {
+        if (event is Map && onPortraitFaceResults != null) {
+          final payload = <String, dynamic>{};
+          event.forEach((k, v) {
+            if (k is String) payload[k] = v;
+          });
+          onPortraitFaceResults!(payload);
+        }
+      },
+      onError: (e) => logInfo('portraitFaceResults stream error: $e'),
+    );
+  }
+
   void dispose() {
     _metricsSubscription?.cancel();
     _metricsSubscription = null;
+    _portraitFaceResultsSubscription?.cancel();
+    _portraitFaceResultsSubscription = null;
   }
 
   Future<void> _applyThresholds() async {
@@ -172,6 +193,22 @@ class YOLOViewController {
         });
       } catch (e) {
         logInfo('Error setting device orientation: $e');
+      }
+    }
+  }
+
+  Future<void> setPortraitFaceAnalysisThrottle({
+    int? intervalMs,
+    int? intervalFrames,
+  }) async {
+    if (_methodChannel != null) {
+      try {
+        await _methodChannel!.invokeMethod('setPortraitFaceAnalysisThrottle', {
+          'intervalMs': intervalMs,
+          'intervalFrames': intervalFrames,
+        });
+      } catch (e) {
+        logInfo('Error setting portrait face analysis throttle: $e');
       }
     }
   }

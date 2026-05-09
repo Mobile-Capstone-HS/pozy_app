@@ -169,8 +169,9 @@ class YOLOPlatformViewFactory(
         val resultChannelName = "com.ultralytics.yolo/detectionResults_$viewUniqueId"
         val controlChannelName = "com.ultralytics.yolo/controlChannel_$viewUniqueId"
         val metricsChannelName = "com.ultralytics.yolo/imageMetrics_$viewUniqueId"
+        val faceResultsChannelName = "com.ultralytics.yolo/portraitFaceResults_$viewUniqueId"
 
-        Log.d(TAG, "Final channel names - Result: $resultChannelName, Control: $controlChannelName, Metrics: $metricsChannelName")
+        Log.d(TAG, "Final channel names - Result: $resultChannelName, Control: $controlChannelName, Metrics: $metricsChannelName, Face: $faceResultsChannelName")
 
         // Event channel for streaming detection results
         val eventChannel = EventChannel(messenger, resultChannelName)
@@ -178,6 +179,7 @@ class YOLOPlatformViewFactory(
         val methodChannel = MethodChannel(messenger, controlChannelName)
         // Event channel for image metrics (brightness, blur, exposure)
         val metricsChannel = EventChannel(messenger, metricsChannelName)
+        val faceResultsChannel = EventChannel(messenger, faceResultsChannelName)
 
         // Create stream handler for detection results
         val eventHandler = CustomStreamHandler(viewId)
@@ -189,6 +191,8 @@ class YOLOPlatformViewFactory(
         // Set event handler and store it
         eventChannel.setStreamHandler(eventHandler)
         metricsChannel.setStreamHandler(metricsHandler)
+        val faceResultsHandler = CustomStreamHandler(viewId + 200000)
+        faceResultsChannel.setStreamHandler(faceResultsHandler)
         eventChannelHandlers[viewId] = eventHandler
 
         // Create the platform view with stream handler, not just the sink
@@ -200,6 +204,7 @@ class YOLOPlatformViewFactory(
             methodChannel,
             this, // Pass the factory itself for disposal callback
             metricsHandler,
+            faceResultsHandler,
         )
         
         // Set up method channel handler for the control channel
