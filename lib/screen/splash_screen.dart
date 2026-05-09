@@ -1,13 +1,14 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'main_shell.dart';
 
-// Blue accent used throughout the splash
-const _kBlue = Color(0xFF4A90E2);
-const _kBg = Color(0xFFF5F8FF); // very light blue-white
+const _kBlue = Color(0xFF2F9AF2);
+const _kDeepBlue = Color(0xFF1769C2);
+const _kBg = Color(0xFFF6FAFF);
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -33,10 +34,12 @@ class _SplashScreenState extends State<SplashScreen>
     super.initState();
     debugPrint('[SplashScreen] initState');
 
-    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.dark,
-    ));
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+      ),
+    );
 
     _logoController = AnimationController(
       vsync: this,
@@ -50,18 +53,18 @@ class _SplashScreenState extends State<SplashScreen>
 
     _bracketProgress = CurvedAnimation(
       parent: _logoController,
-      curve: const Interval(0.0, 0.48, curve: Curves.easeOut),
+      curve: const Interval(0.0, 0.48, curve: Curves.easeOutCubic),
     );
 
     _logoFade = CurvedAnimation(
       parent: _logoController,
-      curve: const Interval(0.28, 0.7, curve: Curves.easeOut),
+      curve: const Interval(0.28, 0.72, curve: Curves.easeOut),
     );
 
-    _logoScale = Tween<double>(begin: 0.9, end: 1.0).animate(
+    _logoScale = Tween<double>(begin: 0.92, end: 1.0).animate(
       CurvedAnimation(
         parent: _logoController,
-        curve: const Interval(0.28, 0.7, curve: Curves.easeOut),
+        curve: const Interval(0.28, 0.72, curve: Curves.easeOutBack),
       ),
     );
 
@@ -70,9 +73,10 @@ class _SplashScreenState extends State<SplashScreen>
       curve: const Interval(0.62, 1.0, curve: Curves.easeOut),
     );
 
-    _exitFade = Tween<double>(begin: 1.0, end: 0.0).animate(
-      CurvedAnimation(parent: _exitController, curve: Curves.easeIn),
-    );
+    _exitFade = Tween<double>(
+      begin: 1.0,
+      end: 0.0,
+    ).animate(CurvedAnimation(parent: _exitController, curve: Curves.easeIn));
 
     _logoController.forward();
     debugPrint('[SplashScreen] timer scheduled -> MainShell in 2400ms');
@@ -106,145 +110,283 @@ class _SplashScreenState extends State<SplashScreen>
       _loggedFirstBuild = true;
       debugPrint('[SplashScreen] first build');
     }
+
     return Scaffold(
       backgroundColor: _kBg,
       body: FadeTransition(
         opacity: _exitFade,
         child: Stack(
           children: [
-            // Soft gradient wash top-right
+            const DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Color(0xFFFFFFFF),
+                    Color(0xFFF3F9FF),
+                    Color(0xFFEAF5FF),
+                  ],
+                ),
+              ),
+              child: SizedBox.expand(),
+            ),
             Positioned(
-              top: -80,
-              right: -80,
-              child: AnimatedBuilder(
-                animation: _logoFade,
-                builder: (context, child) => Opacity(
-                  opacity: _logoFade.value * 0.45,
-                  child: Container(
-                    width: 340,
-                    height: 340,
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: RadialGradient(
-                        colors: [Color(0xFFBDD8FA), Colors.transparent],
-                      ),
-                    ),
-                  ),
+              top: -96,
+              right: -104,
+              child: Transform.rotate(
+                angle: 0.28,
+                child: CustomPaint(
+                  size: const Size(300, 300),
+                  painter: const _ShutterSplashShadowPainter(opacity: 0.085),
                 ),
               ),
             ),
-
-            // Soft gradient wash bottom-left
             Positioned(
-              bottom: -60,
-              left: -60,
-              child: AnimatedBuilder(
-                animation: _logoFade,
-                builder: (context, child) => Opacity(
-                  opacity: _logoFade.value * 0.3,
-                  child: Container(
-                    width: 260,
-                    height: 260,
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: RadialGradient(
-                        colors: [Color(0xFFBDD8FA), Colors.transparent],
-                      ),
-                    ),
-                  ),
+              bottom: -118,
+              left: -112,
+              child: Transform.rotate(
+                angle: -0.18,
+                child: CustomPaint(
+                  size: const Size(320, 320),
+                  painter: const _ShutterSplashShadowPainter(opacity: 0.075),
                 ),
               ),
             ),
-
-            // Center content
             Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Viewfinder brackets + Pozy logo
-                  AnimatedBuilder(
-                    animation: _logoController,
-                    builder: (context, child) {
-                      return SizedBox(
-                        width: 230,
-                        height: 150,
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            CustomPaint(
-                              size: const Size(230, 150),
-                              painter: _BracketPainter(
-                                progress: _bracketProgress.value,
-                              ),
-                            ),
-                            FadeTransition(
-                              opacity: _logoFade,
-                              child: ScaleTransition(
-                                scale: _logoScale,
-                                child: Image.asset(
-                                  'assets/images/pozy_logo.png',
-                                  width: 160,
-                                  height: 120,
-                                  fit: BoxFit.contain,
+              child: SafeArea(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Spacer(flex: 5),
+                    AnimatedBuilder(
+                      animation: _logoController,
+                      builder: (context, child) {
+                        return SizedBox(
+                          width: 292,
+                          height: 206,
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              Positioned.fill(
+                                child: CustomPaint(
+                                  painter: _LogoDepthPainter(
+                                    progress: _logoFade.value,
+                                  ),
                                 ),
                               ),
+                              CustomPaint(
+                                size: const Size(292, 206),
+                                painter: _BracketPainter(
+                                  progress: _bracketProgress.value,
+                                ),
+                              ),
+                              FadeTransition(
+                                opacity: _logoFade,
+                                child: ScaleTransition(
+                                  scale: _logoScale,
+                                  child: Container(
+                                    width: 248,
+                                    height: 174,
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(34),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: _kDeepBlue.withValues(
+                                            alpha: 0.14,
+                                          ),
+                                          blurRadius: 28,
+                                          spreadRadius: -10,
+                                          offset: const Offset(0, 18),
+                                        ),
+                                        BoxShadow(
+                                          color: Colors.white.withValues(
+                                            alpha: 0.92,
+                                          ),
+                                          blurRadius: 14,
+                                          spreadRadius: -6,
+                                          offset: const Offset(-8, -10),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Image.asset(
+                                      'assets/images/Pozy_logo2.png',
+                                      width: 238,
+                                      height: 166,
+                                      fit: BoxFit.contain,
+                                      errorBuilder:
+                                          (context, error, stackTrace) {
+                                            return Image.asset(
+                                              'assets/images/pozy_logo.png',
+                                              width: 238,
+                                              height: 166,
+                                              fit: BoxFit.contain,
+                                            );
+                                          },
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Positioned(
+                                right: 42,
+                                bottom: 26,
+                                child: Opacity(
+                                  opacity: _logoFade.value,
+                                  child: const _MiniLens(),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 22),
+                    FadeTransition(
+                      opacity: _taglineFade,
+                      child: Column(
+                        children: [
+                          const _RaisedDivider(),
+                          const SizedBox(height: 16),
+                          const Text(
+                            '\uCC0D\uB294 \uC21C\uAC04\uBD80\uD130 \uACE0\uB974\uB294 \uC21C\uAC04\uAE4C\uC9C0',
+                            style: TextStyle(
+                              fontFamily: 'Pretendard',
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF5798CF),
+                              height: 1.0,
                             ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-
-                  const SizedBox(height: 18),
-
-                  // Thin divider line
-                  FadeTransition(
-                    opacity: _taglineFade,
-                    child: Container(
-                      width: 32,
-                      height: 1.5,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(2),
-                        gradient: const LinearGradient(
-                          colors: [Colors.transparent, _kBlue, Colors.transparent],
-                        ),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-
-                  const SizedBox(height: 14),
-
-                  // Tagline
-                  FadeTransition(
-                    opacity: _taglineFade,
-                    child: const Text(
-                      '당신의 촬영을 보다 이롭게',
-                      style: TextStyle(
-                        fontFamily: 'Pretendard',
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFF7B9ABF),
-                        letterSpacing: 0.3,
-                        height: 1.0,
-                      ),
+                    const Spacer(flex: 4),
+                    FadeTransition(
+                      opacity: _taglineFade,
+                      child: const _PulsingDots(),
                     ),
-                  ),
-                ],
-              ),
-            ),
-
-            // Bottom pulsing dot
-            Positioned(
-              bottom: 52,
-              left: 0,
-              right: 0,
-              child: FadeTransition(
-                opacity: _taglineFade,
-                child: const Center(child: _PulsingDot()),
+                    const SizedBox(height: 48),
+                  ],
+                ),
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _LogoDepthPainter extends CustomPainter {
+  final double progress;
+
+  const _LogoDepthPainter({required this.progress});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final opacity = progress.clamp(0.0, 1.0);
+    if (opacity == 0) return;
+
+    final rect = Rect.fromCenter(
+      center: Offset(size.width / 2, size.height / 2 + 8),
+      width: size.width * 0.78,
+      height: size.height * 0.58,
+    );
+    final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(42));
+
+    final shadowPaint = Paint()
+      ..color = _kDeepBlue.withValues(alpha: 0.10 * opacity)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 22);
+    canvas.drawRRect(rrect.shift(const Offset(0, 18)), shadowPaint);
+
+    final platePaint = Paint()
+      ..shader = const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFFFFFFFF), Color(0xFFE9F6FF), Color(0xFFD9EEFF)],
+      ).createShader(rect);
+    canvas.drawRRect(rrect, platePaint);
+
+    final highlightPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0
+      ..shader = LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Colors.white.withValues(alpha: 0.88 * opacity),
+          Colors.white.withValues(alpha: 0.05),
+          _kBlue.withValues(alpha: 0.22 * opacity),
+        ],
+      ).createShader(rect);
+    canvas.drawRRect(rrect.deflate(1), highlightPaint);
+  }
+
+  @override
+  bool shouldRepaint(_LogoDepthPainter old) => old.progress != progress;
+}
+
+class _MiniLens extends StatelessWidget {
+  const _MiniLens();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 22,
+      height: 22,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: const RadialGradient(
+          center: Alignment(-0.45, -0.5),
+          radius: 0.9,
+          colors: [Colors.white, Color(0xFF7CCAFF), _kBlue, _kDeepBlue],
+          stops: [0.0, 0.2, 0.66, 1.0],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: _kDeepBlue.withValues(alpha: 0.24),
+            blurRadius: 12,
+            offset: const Offset(0, 7),
+          ),
+          BoxShadow(
+            color: Colors.white.withValues(alpha: 0.9),
+            blurRadius: 4,
+            offset: const Offset(-2, -2),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RaisedDivider extends StatelessWidget {
+  const _RaisedDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 54,
+      height: 5,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(99),
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Colors.white, Color(0xFF8FD0FF), _kBlue],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: _kDeepBlue.withValues(alpha: 0.14),
+            blurRadius: 12,
+            offset: const Offset(0, 7),
+          ),
+          BoxShadow(
+            color: Colors.white.withValues(alpha: 0.85),
+            blurRadius: 5,
+            offset: const Offset(0, -2),
+          ),
+        ],
       ),
     );
   }
@@ -259,52 +401,143 @@ class _BracketPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (progress == 0) return;
 
-    final paint = Paint()
-      ..color = _kBlue.withValues(alpha: (progress * 0.7).clamp(0.0, 1.0))
-      ..strokeWidth = 2.0
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-
-    const arm = 24.0;
-    const r = 5.0;
+    final opacity = progress.clamp(0.0, 1.0);
+    const arm = 33.0;
+    const inset = 8.0;
 
     void drawCorner(Offset corner, double xDir, double yDir) {
-      canvas.drawLine(corner, Offset(corner.dx + xDir * arm * progress, corner.dy), paint);
-      canvas.drawLine(corner, Offset(corner.dx, corner.dy + yDir * arm * progress), paint);
+      final horizontalEnd = Offset(
+        corner.dx + xDir * arm * progress,
+        corner.dy,
+      );
+      final verticalEnd = Offset(corner.dx, corner.dy + yDir * arm * progress);
+
+      final shadowPaint = Paint()
+        ..color = _kDeepBlue.withValues(alpha: 0.12 * opacity)
+        ..strokeWidth = 4.8
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3.5);
+      final basePaint = Paint()
+        ..shader =
+            LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                const Color(0xFF7CC8FF).withValues(alpha: 0.72 * opacity),
+                _kBlue.withValues(alpha: 0.62 * opacity),
+                _kDeepBlue.withValues(alpha: 0.46 * opacity),
+              ],
+            ).createShader(
+              Rect.fromCenter(
+                center: corner,
+                width: arm * 1.6,
+                height: arm * 1.6,
+              ),
+            )
+        ..strokeWidth = 3.7
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round;
+      final glossPaint = Paint()
+        ..color = Colors.white.withValues(alpha: 0.46 * opacity)
+        ..strokeWidth = 1.0
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round;
+
+      final path = Path()
+        ..moveTo(corner.dx, corner.dy)
+        ..lineTo(horizontalEnd.dx, horizontalEnd.dy)
+        ..moveTo(corner.dx, corner.dy)
+        ..lineTo(verticalEnd.dx, verticalEnd.dy);
+
+      canvas.drawPath(path.shift(const Offset(0, 2.5)), shadowPaint);
+      canvas.drawPath(path, basePaint);
+
+      final glossPath = Path()
+        ..moveTo(corner.dx + xDir * 4, corner.dy - 1.0)
+        ..lineTo(corner.dx + xDir * arm * 0.72 * progress, corner.dy - 1.0);
+      canvas.drawPath(glossPath, glossPaint);
     }
 
-    drawCorner(const Offset(r, r), 1, 1);
-    drawCorner(Offset(size.width - r, r), -1, 1);
-    drawCorner(Offset(r, size.height - r), 1, -1);
-    drawCorner(Offset(size.width - r, size.height - r), -1, -1);
+    drawCorner(const Offset(inset, inset), 1, 1);
+    drawCorner(Offset(size.width - inset, inset), -1, 1);
+    drawCorner(Offset(inset, size.height - inset), 1, -1);
+    drawCorner(Offset(size.width - inset, size.height - inset), -1, -1);
   }
 
   @override
   bool shouldRepaint(_BracketPainter old) => old.progress != progress;
 }
 
-class _PulsingDot extends StatefulWidget {
-  const _PulsingDot();
+class _ShutterSplashShadowPainter extends CustomPainter {
+  final double opacity;
+
+  const _ShutterSplashShadowPainter({required this.opacity});
 
   @override
-  State<_PulsingDot> createState() => _PulsingDotState();
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = math.min(size.width, size.height) * 0.47;
+    final paint = Paint()
+      ..color = _kBlue.withValues(alpha: opacity)
+      ..style = PaintingStyle.fill
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10);
+
+    for (var index = 0; index < 6; index++) {
+      final angle = (math.pi * 2 / 6) * index - math.pi / 2;
+      final nextAngle = angle + math.pi / 3;
+      final path = Path()
+        ..moveTo(
+          center.dx + math.cos(angle + 0.25) * radius * 0.22,
+          center.dy + math.sin(angle + 0.25) * radius * 0.22,
+        )
+        ..lineTo(
+          center.dx + math.cos(angle) * radius,
+          center.dy + math.sin(angle) * radius,
+        )
+        ..quadraticBezierTo(
+          center.dx + math.cos((angle + nextAngle) / 2) * radius * 1.06,
+          center.dy + math.sin((angle + nextAngle) / 2) * radius * 1.06,
+          center.dx + math.cos(nextAngle) * radius,
+          center.dy + math.sin(nextAngle) * radius,
+        )
+        ..lineTo(
+          center.dx + math.cos(nextAngle - 0.25) * radius * 0.22,
+          center.dy + math.sin(nextAngle - 0.25) * radius * 0.22,
+        )
+        ..close();
+      canvas.drawPath(path, paint);
+    }
+
+    final centerPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.36)
+      ..style = PaintingStyle.fill
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
+    canvas.drawCircle(center, radius * 0.28, centerPaint);
+  }
+
+  @override
+  bool shouldRepaint(_ShutterSplashShadowPainter old) => old.opacity != opacity;
 }
 
-class _PulsingDotState extends State<_PulsingDot>
+class _PulsingDots extends StatefulWidget {
+  const _PulsingDots();
+
+  @override
+  State<_PulsingDots> createState() => _PulsingDotsState();
+}
+
+class _PulsingDotsState extends State<_PulsingDots>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
-  late final Animation<double> _anim;
 
   @override
   void initState() {
     super.initState();
     _ctrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 950),
-    )..repeat(reverse: true);
-    _anim = Tween<double>(begin: 0.3, end: 1.0).animate(
-      CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
-    );
+      duration: const Duration(milliseconds: 1100),
+    )..repeat();
   }
 
   @override
@@ -315,16 +548,47 @@ class _PulsingDotState extends State<_PulsingDot>
 
   @override
   Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: _anim,
-      child: Container(
-        width: 5,
-        height: 5,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: _kBlue.withValues(alpha: 0.7),
-        ),
-      ),
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (context, child) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(3, (index) {
+            final phase = (_ctrl.value + (index * 0.18)) % 1.0;
+            final opacity = phase < 0.5
+                ? 0.35 + (phase * 1.3)
+                : 1.0 - ((phase - 0.5) * 1.1);
+            return Container(
+              width: 6,
+              height: 6,
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  center: const Alignment(-0.45, -0.5),
+                  radius: 0.85,
+                  colors: [
+                    Colors.white.withValues(alpha: opacity.clamp(0.35, 0.9)),
+                    const Color(
+                      0xFF8BD3FF,
+                    ).withValues(alpha: opacity.clamp(0.35, 0.85)),
+                    _kBlue.withValues(alpha: opacity.clamp(0.35, 0.82)),
+                  ],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: _kDeepBlue.withValues(
+                      alpha: (opacity * 0.14).clamp(0.05, 0.14),
+                    ),
+                    blurRadius: 7,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+            );
+          }),
+        );
+      },
     );
   }
 }
