@@ -47,7 +47,7 @@ def generate_contact_sheet_for_candidate(
         raise FileNotFoundError(str(source_path))
 
     image_rgb, exif_orientation = load_image_rgb(source_path)
-    height, width = image_rgb.shape[:2]
+    _, width = image_rgb.shape[:2]
     candidate_id = str(candidate_id or source_path.stem)
     safe_id = _safe_name(candidate_id)
 
