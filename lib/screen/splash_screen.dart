@@ -211,14 +211,14 @@ class _SplashScreenState extends State<SplashScreen>
                                       ],
                                     ),
                                     child: Image.asset(
-                                      'assets/images/Pozy_logo2.png',
+                                      'assets/images/pozy_logo2.png',
                                       width: 238,
                                       height: 166,
                                       fit: BoxFit.contain,
                                       errorBuilder:
                                           (context, error, stackTrace) {
                                             return Image.asset(
-                                              'assets/images/pozy_logo.png',
+                                              'assets/images/pozy_logo2.png',
                                               width: 238,
                                               height: 166,
                                               fit: BoxFit.contain,
