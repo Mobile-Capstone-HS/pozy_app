@@ -7,7 +7,6 @@ import '../widget/home_bottom_nav.dart';
 import 'camera_screen.dart';
 import 'map_spot_screen.dart';
 
-// ── PlaceTag 배지 정의 ──────────────────────────────────────────
 const _tagInfo = <PlaceTag, ({Color color, IconData icon, String label})>{
   PlaceTag.nature: (
     color: Color(0xFF43A047),
@@ -29,16 +28,6 @@ const _tagInfo = <PlaceTag, ({Color color, IconData icon, String label})>{
     icon: Icons.palette_outlined,
     label: '문화',
   ),
-  PlaceTag.leisure: (
-    color: Color(0xFF00ACC1),
-    icon: Icons.directions_run,
-    label: '레포츠',
-  ),
-  PlaceTag.festival: (
-    color: Color(0xFFE91E63),
-    icon: Icons.celebration_outlined,
-    label: '축제',
-  ),
   PlaceTag.landmark: (
     color: Color(0xFF607D8B),
     icon: Icons.place_outlined,
@@ -56,7 +45,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  // 앱 세션 내에서 1회만 API 호출 — 탭 전환 시 재로딩 없음
+  // Cache the home feed for the current session.
   static _HomeData? _cache;
 
   final _api = TourApiService();
@@ -69,15 +58,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<_HomeData> _loadData() async {
-    final results = await Future.wait([
-      _api.fetchWeeklySpots(count: 10),
-      _api.fetchCurrentEvents(count: 8),
-    ]);
-
-    final data = _HomeData(
-      weeklySpots: results[0],
-      events: results[1],
-    );
+    final data = _HomeData(weeklySpots: await _api.fetchWeeklySpots(count: 10));
     _cache = data;
     return data;
   }
@@ -129,9 +110,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     return _ErrorBody(
                       hasApiKey: _api.hasApiKey,
                       onRetry: () => setState(() {
-                          _cache = null;
-                          _dataFuture = _loadData();
-                        }),
+                        _cache = null;
+                        _dataFuture = _loadData();
+                      }),
                       onMap: () => _openMap(),
                     );
                   }
@@ -158,9 +139,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
 class _HomeData {
   final List<TourPlace> weeklySpots;
-  final List<TourPlace> events;
 
-  const _HomeData({required this.weeklySpots, required this.events});
+  const _HomeData({required this.weeklySpots});
 }
 
 class _Header extends StatelessWidget {
@@ -176,8 +156,8 @@ class _Header extends StatelessWidget {
       child: Row(
         children: [
           Image.asset(
-            'assets/images/pozy_logo.png',
-            height: 28,
+            'assets/images/pozy_logo2.png',
+            height: 40,
             fit: BoxFit.contain,
           ),
           const Spacer(),
@@ -292,10 +272,10 @@ class _ErrorBody extends StatelessWidget {
           ),
           child: Column(
             children: [
-              const Text('📷', style: TextStyle(fontSize: 48)),
+              const Text('📍', style: TextStyle(fontSize: 48)),
               const SizedBox(height: 12),
               Text(
-                hasApiKey ? '추천 장소를 불러오는 중 문제가 생겼어요' : '관광 정보 API 키 설정이 필요해요',
+                hasApiKey ? '추천 장소를 불러오는 중 문제가 생겼어요' : '관광 정보 API 설정이 필요해요',
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   fontFamily: 'Pretendard',
@@ -308,8 +288,8 @@ class _ErrorBody extends StatelessWidget {
               const SizedBox(height: 8),
               Text(
                 hasApiKey
-                    ? '네트워크 상태를 확인하고 다시 시도해 주세요.'
-                    : '.env 파일에 TOUR_API_KEY를 추가하면\n실제 추천 장소를 가져올 수 있어요.',
+                    ? '네트워크 상태를 확인하고 다시 시도해 주세요'
+                    : '.env 파일에 TOUR_API_KEY를 추가하면\n추천 장소를 가져올 수 있어요',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontFamily: 'Pretendard',
@@ -388,7 +368,6 @@ class _Body extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final weekly = data.weeklySpots;
-    final events = data.events;
 
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
@@ -401,21 +380,13 @@ class _Body extends StatelessWidget {
           if (weekly.isNotEmpty) const SizedBox(height: 14),
           if (weekly.length > 1)
             _PlaceSection(
-              title: '이번 주 사진 찍으러 가기 좋은\n${TourApiService.weeklyAreaName} 추천 스팟 📸',
+              title:
+                  '이번 주 사진 찍으러 가기 좋은\n${TourApiService.weeklyAreaName} 추천 스팟 📸',
               places: weekly.skip(1).toList(),
               onMoreTap: onMap,
               onPlaceTap: onPlaceTap,
             ),
           if (weekly.length > 1) const SizedBox(height: 14),
-          if (events.isNotEmpty)
-            _PlaceSection(
-              title: '분위기까지 함께 담기 좋은\n축제 촬영 스팟 🎉',
-              places: events,
-              onMoreTap: onMap,
-              onPlaceTap: onPlaceTap,
-              showTagBadge: false,
-            ),
-          if (events.isNotEmpty) const SizedBox(height: 14),
           _CTABanner(onTap: onMap),
           const SizedBox(height: 14),
         ],
@@ -566,14 +537,12 @@ class _PlaceSection extends StatelessWidget {
   final List<TourPlace> places;
   final VoidCallback onMoreTap;
   final ValueChanged<TourPlace> onPlaceTap;
-  final bool showTagBadge;
 
   const _PlaceSection({
     required this.title,
     required this.places,
     required this.onMoreTap,
     required this.onPlaceTap,
-    this.showTagBadge = true,
   });
 
   @override
@@ -637,7 +606,6 @@ class _PlaceSection extends StatelessWidget {
             itemBuilder: (_, index) => _PlaceCard(
               place: visiblePlaces[index],
               onTap: () => onPlaceTap(visiblePlaces[index]),
-              showTagBadge: showTagBadge,
             ),
           ),
         ),
@@ -649,19 +617,12 @@ class _PlaceSection extends StatelessWidget {
 class _PlaceCard extends StatelessWidget {
   final TourPlace place;
   final VoidCallback onTap;
-  final bool showTagBadge;
 
-  const _PlaceCard({
-    required this.place,
-    required this.onTap,
-    this.showTagBadge = true,
-  });
+  const _PlaceCard({required this.place, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final tag = _tagInfo[place.placeTag]!;
-    final regionLabel = _placeRegionLabel(place);
-
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -715,28 +676,7 @@ class _PlaceCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (showTagBadge)
-                      _PlaceTagBadge(tag: tag)
-                    else
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.place,
-                            color: Colors.white70,
-                            size: 11,
-                          ),
-                          const SizedBox(width: 3),
-                          Text(
-                            regionLabel,
-                            style: const TextStyle(
-                              fontFamily: 'Pretendard',
-                              fontSize: 11,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.white70,
-                            ),
-                          ),
-                        ],
-                      ),
+                    _PlaceTagBadge(tag: tag),
                     const SizedBox(height: 6),
                     Text(
                       place.title,
@@ -850,23 +790,15 @@ String _placeRegionLabel(TourPlace place) {
 String _placeRegionDescription(TourPlace place) {
   final region = _placeRegionLabel(place);
   const descriptions = {
-    '서울': '도심 야경과 감성 스냅이 살아나는 이번 주 촬영지',
-    '제주': '바다와 오름 풍경을 한 컷에 담기 좋은 이번 주 지역',
-    '강원': '산과 호수 풍경이 시원하게 펼쳐지는 이번 주 명소',
+    '강원': '산과 호수 풍경을 시원하게 담기 좋은 이번 주 명소',
     '부산': '바다와 도시 야경을 함께 담기 좋은 이번 주 스팟',
-    '경남': '드라이브와 자연 풍경 촬영이 잘 어울리는 이번 주 지역',
+    '경남': '드라이브와 자연 풍경 촬영에 잘 어울리는 이번 주 지역',
     '경기': '가볍게 떠나기 좋은 근교 감성 스팟이 모인 지역',
     '전북': '한옥과 로컬 감성을 담기 좋은 이번 주 촬영지',
-    '전남': '바다와 섬 풍경이 깊게 남는 이번 주 추천 지역',
     '경북': '전통과 자연 풍경을 함께 담기 좋은 이번 주 명소',
     '충남': '노을과 바닷가 분위기를 담기 좋은 이번 주 스팟',
-    '충북': '호수와 숲 풍경이 차분하게 어울리는 이번 주 지역',
-    '대구': '도시 감성과 전망 포인트가 살아나는 이번 주 촬영지',
-    '광주': '전시와 거리 풍경을 함께 담기 좋은 이번 주 지역',
+    '광주': '도시와 거리 풍경을 함께 담기 좋은 이번 주 지역',
     '인천': '항구와 바다 무드를 한 번에 담기 좋은 이번 주 스팟',
-    '대전': '한적한 공원과 도심 풍경이 어울리는 이번 주 지역',
-    '울산': '바다와 산 풍경을 함께 담기 좋은 이번 주 촬영지',
-    '세종': '여유로운 산책 풍경이 잘 살아나는 이번 주 지역',
   };
 
   return descriptions[region] ?? '지금 카메라 들고 떠나기 좋은 이번 주 추천 지역';
@@ -898,7 +830,7 @@ class _CTABanner extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '추천 촬영지를 지도에서 바로 열고',
+                  '추천 촬영지를 지도에서 바로 보고',
                   style: TextStyle(
                     fontFamily: 'Pretendard',
                     fontSize: 12,

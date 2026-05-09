@@ -602,8 +602,6 @@ class _MapSpotScreenState extends State<MapSpotScreen>
     score += place.photoSpotScore;
     if (place.photoUrl != null) score += 4;
     if (config.matchesTitle(place.title)) score += 6;
-    if (place.contentTypeId == '15') score += 2;
-
     switch (place.placeTag) {
       case PlaceTag.nature:
         score += 3;
@@ -616,8 +614,6 @@ class _MapSpotScreenState extends State<MapSpotScreen>
         break;
       case PlaceTag.culture:
       case PlaceTag.history:
-      case PlaceTag.leisure:
-      case PlaceTag.festival:
         score += 1;
         break;
     }
@@ -1525,7 +1521,7 @@ class _NearbyPlaceListPanel extends StatelessWidget {
                 : places.isEmpty
                 ? const Center(
                     child: Text(
-                      '내 주변에서 불러온 관광 스팟이 아직 없습니다',
+                      '내 주변에서 불러온 촬영 스팟이 아직 없습니다',
                       style: TextStyle(
                         fontFamily: 'Pretendard',
                         fontSize: 13,
@@ -1788,11 +1784,9 @@ class _TourPlaceCard extends StatelessWidget {
     required this.onRouteTap,
   });
 
-  String get _typeLabel => place.contentTypeId == '15' ? '축제 스팟' : '촬영 스팟';
+  String get _typeLabel => '촬영 스팟';
 
-  String get _introText => place.contentTypeId == '15'
-      ? '축제 분위기와 현장 스냅을 함께 담기 좋은 추천 장소예요.'
-      : '지금 바로 사진 찍으러 가기 좋은 추천 장소예요.';
+  String get _introText => '지금 바로 사진 찍으러 가기 좋은 추천 장소예요.';
 
   @override
   Widget build(BuildContext context) {
@@ -1958,28 +1952,6 @@ class _TourPlaceCard extends StatelessWidget {
                             color: Colors.grey.shade500,
                             height: 1.4,
                           ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-                if (place.festivalDateRange != null) ...[
-                  const SizedBox(height: 5),
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.calendar_today_outlined,
-                        size: 13,
-                        color: Colors.grey.shade400,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        place.festivalDateRange!,
-                        style: TextStyle(
-                          fontFamily: 'Pretendard',
-                          fontSize: 12,
-                          color: Colors.grey.shade500,
-                          height: 1.4,
                         ),
                       ),
                     ],
