@@ -127,10 +127,12 @@ class _FeatureExtractor {
       bottom.clamp(0.0, 1.0),
     );
 
-    final unionMarginMin = math.min(
-      math.min(union.left, union.top),
-      math.min(1.0 - union.right, 1.0 - union.bottom),
-    ).clamp(0.0, 0.5);
+    final unionMarginMin = math
+        .min(
+          math.min(union.left, union.top),
+          math.min(1.0 - union.right, 1.0 - union.bottom),
+        )
+        .clamp(0.0, 0.5);
 
     return SceneGeometry(
       numObjects: valid.length.toDouble(),
@@ -180,20 +182,32 @@ class _EmaSmoother {
 
   ObjectFeatures updateImageMetrics(ObjectImageMetrics m) {
     _brightness = _ema(_brightness, m.brightness, _alphaBrightness);
-    _subjectBrightness =
-        _ema(_subjectBrightness, m.subjectBrightness, _alphaBrightness);
-    _backgroundBrightness =
-        _ema(_backgroundBrightness, m.backgroundBrightness, _alphaBrightness);
+    _subjectBrightness = _ema(
+      _subjectBrightness,
+      m.subjectBrightness,
+      _alphaBrightness,
+    );
+    _backgroundBrightness = _ema(
+      _backgroundBrightness,
+      m.backgroundBrightness,
+      _alphaBrightness,
+    );
 
     _globalBlurScore = _ema(_globalBlurScore, m.globalBlurScore, _alphaBlur);
     _subjectBlurScore = _ema(_subjectBlurScore, m.subjectBlurScore, _alphaBlur);
 
     _highlightRatio = _ema(_highlightRatio, m.highlightRatio, _alphaExposure);
     _shadowRatio = _ema(_shadowRatio, m.shadowRatio, _alphaExposure);
-    _subjectHighlightRatio =
-        _ema(_subjectHighlightRatio, m.subjectHighlightRatio, _alphaExposure);
-    _subjectShadowRatio =
-        _ema(_subjectShadowRatio, m.subjectShadowRatio, _alphaExposure);
+    _subjectHighlightRatio = _ema(
+      _subjectHighlightRatio,
+      m.subjectHighlightRatio,
+      _alphaExposure,
+    );
+    _subjectShadowRatio = _ema(
+      _subjectShadowRatio,
+      m.subjectShadowRatio,
+      _alphaExposure,
+    );
 
     _lightDirectionIndex = m.lightDirectionIndex;
 
@@ -222,22 +236,22 @@ class _EmaSmoother {
   }
 
   ObjectFeatures _snapshot() => ObjectFeatures(
-        numObjects: _numObjects ?? 0,
-        areaRatio: _areaRatio ?? 0,
-        sceneCenterX: _sceneCenterX ?? 0.5,
-        sceneCenterY: _sceneCenterY ?? 0.5,
-        unionMarginMin: _unionMarginMin ?? 0.5,
-        brightness: _brightness ?? 0.5,
-        subjectBrightness: _subjectBrightness ?? 0.5,
-        backgroundBrightness: _backgroundBrightness ?? 0.5,
-        globalBlurScore: _globalBlurScore ?? 999,
-        subjectBlurScore: _subjectBlurScore ?? 999,
-        highlightRatio: _highlightRatio ?? 0,
-        shadowRatio: _shadowRatio ?? 0,
-        subjectHighlightRatio: _subjectHighlightRatio ?? 0,
-        subjectShadowRatio: _subjectShadowRatio ?? 0,
-        lightDirectionIndex: _lightDirectionIndex,
-      );
+    numObjects: _numObjects ?? 0,
+    areaRatio: _areaRatio ?? 0,
+    sceneCenterX: _sceneCenterX ?? 0.5,
+    sceneCenterY: _sceneCenterY ?? 0.5,
+    unionMarginMin: _unionMarginMin ?? 0.5,
+    brightness: _brightness ?? 0.5,
+    subjectBrightness: _subjectBrightness ?? 0.5,
+    backgroundBrightness: _backgroundBrightness ?? 0.5,
+    globalBlurScore: _globalBlurScore ?? 999,
+    subjectBlurScore: _subjectBlurScore ?? 999,
+    highlightRatio: _highlightRatio ?? 0,
+    shadowRatio: _shadowRatio ?? 0,
+    subjectHighlightRatio: _subjectHighlightRatio ?? 0,
+    subjectShadowRatio: _subjectShadowRatio ?? 0,
+    lightDirectionIndex: _lightDirectionIndex,
+  );
 
   static double _ema(double? prev, double value, double alpha) {
     if (prev == null) return value;
@@ -330,8 +344,7 @@ class _IssueAccumulator {
 
 class _CoachingEngine {
   /// 사용자가 선택한 구도 규칙. none이면 기본 imbalance 검사 사용.
-  CompositionRule _rule =
-      CompositionRuleRegistry.of(CompositionRuleType.none);
+  CompositionRule _rule = CompositionRuleRegistry.of(CompositionRuleType.none);
 
   void setRule(CompositionRule rule) {
     _rule = rule;
@@ -357,6 +370,7 @@ class _CoachingEngine {
   static const _smallSubjectMulti = 0.030;
 
   final _IssueAccumulator _acc = _IssueAccumulator();
+  double _shootReady = 0.0;
 
   CoachingResult decide(
     ObjectFeatures s, {
@@ -366,32 +380,32 @@ class _CoachingEngine {
     bool updateImageQuality = true,
   }) {
     final dark = subjectLocked
-        ? (s.subjectBrightness < _subjectDark &&
-                s.subjectShadowRatio > 0.18) ||
-            s.subjectBrightness < (_subjectDark - 0.03)
+        ? (s.subjectBrightness < _subjectDark && s.subjectShadowRatio > 0.18) ||
+              s.subjectBrightness < (_subjectDark - 0.03)
         : (s.subjectBrightness < _subjectDark && s.shadowRatio > 0.20) ||
-            (s.brightness < _globalDark && s.shadowRatio > _shadowWarn);
+              (s.brightness < _globalDark && s.shadowRatio > _shadowWarn);
 
     final over = subjectLocked
         ? (s.subjectBrightness > 0.83) ||
-            (s.subjectHighlightRatio > 0.16 && s.subjectBrightness > 0.70)
+              (s.subjectHighlightRatio > 0.16 && s.subjectBrightness > 0.70)
         : (s.brightness > _overBright) ||
-            (s.highlightRatio > _highlightWarn && s.subjectBrightness > 0.72);
+              (s.highlightRatio > _highlightWarn && s.subjectBrightness > 0.72);
 
     final backlight =
         s.subjectBrightness < (s.backgroundBrightness - _backlightDiff) &&
-            s.backgroundBrightness > _backlightMinBg &&
-            s.subjectBrightness < 0.38;
+        s.backgroundBrightness > _backlightMinBg &&
+        s.subjectBrightness < 0.38;
     final severeTilt = tiltDeg.abs() >= _tiltWarnDeg;
     final mildTilt = tiltDeg.abs() >= _tiltCautionDeg;
 
     final blur = subjectLocked
         ? s.subjectBlurScore < _blurCritical
         : s.subjectBlurScore < _blurCritical &&
-            s.globalBlurScore < _blurWarning;
+              s.globalBlurScore < _blurWarning;
 
-    final smallSubjectThreshold =
-        s.numObjects <= 2 ? _smallSubjectSingle : _smallSubjectMulti;
+    final smallSubjectThreshold = s.numObjects <= 2
+        ? _smallSubjectSingle
+        : _smallSubjectMulti;
     final smallSubject =
         s.numObjects >= 1 && s.areaRatio < smallSubjectThreshold;
 
@@ -401,19 +415,20 @@ class _CoachingEngine {
     final subjectCenter = Offset(s.sceneCenterX, s.sceneCenterY);
     final imbalance = ruleActive
         ? _rule.scoreAlignment(subjectCenter) < 0.45
-        : (s.sceneCenterX - 0.5).abs() >
-            (s.numObjects <= 2 ? 0.17 : 0.24);
+        : (s.sceneCenterX - 0.5).abs() > (s.numObjects <= 2 ? 0.17 : 0.24);
 
     final tightFramingSingle =
         s.numObjects <= 2 && s.unionMarginMin < 0.025 && s.areaRatio > 0.18;
     final tightFramingMulti =
         s.numObjects >= 3 && s.unionMarginMin < 0.012 && s.areaRatio > 0.28;
     final tightFraming = tightFramingSingle || tightFramingMulti;
-    final clippedSubject = subjectLocked &&
+    final clippedSubject =
+        subjectLocked &&
         s.numObjects >= 1 &&
         s.unionMarginMin < 0.04 &&
         s.areaRatio > 0.05;
-    final tooClose = subjectLocked &&
+    final tooClose =
+        subjectLocked &&
         s.numObjects >= 1 &&
         (s.areaRatio > 0.62 ||
             (s.areaRatio > 0.50 && s.unionMarginMin < 0.010));
@@ -435,11 +450,18 @@ class _CoachingEngine {
     );
 
     // 공통: 점수 및 광원 방향 계산
-    final rawScore = _computeGoodScore(s, tiltDeg, subjectLocked: subjectLocked);
+    final rawScore = _computeGoodScore(
+      s,
+      tiltDeg,
+      subjectLocked: subjectLocked,
+    );
     // 객체가 충분히 인식되지 않았으면 점수를 숨김 (EMA 딜레이 대응)
     final double? score = s.numObjects >= 0.5 ? rawScore : null;
-    final lightDir = LightDirection.values[
-        s.lightDirectionIndex.clamp(0, LightDirection.values.length - 1)];
+    final lightDir =
+        LightDirection.values[s.lightDirectionIndex.clamp(
+          0,
+          LightDirection.values.length - 1,
+        )];
 
     // 방향 힌트 헬퍼
     DirectionHint directionFromCenter(ObjectFeatures f) {
@@ -453,6 +475,36 @@ class _CoachingEngine {
     }
 
     // 피사체 고정 조건은 다른 모든 코칭보다 우선한다.
+    if (s.numObjects < 0.5) {
+      _shootReady = (_shootReady - 0.20).clamp(0.0, 1.0);
+      return CoachingResult(
+        guidance: '피사체를 화면 안에 담아보세요',
+        subGuidance: '인식되면 밝기, 수평, 구도를 기준으로 바로 코칭할게요',
+        level: CoachingLevel.caution,
+        score: null,
+        lightDirection: lightDir,
+      );
+    }
+
+    final shootReadyCandidate =
+        s.numObjects >= 0.5 &&
+        rawScore >= 72.0 &&
+        tiltDeg.abs() < _tiltCautionDeg &&
+        _acc.blur < 0.24 &&
+        _acc.dark < 0.24 &&
+        _acc.over < 0.24 &&
+        _acc.backlight < 0.24 &&
+        _acc.clippedSubject < 0.18 &&
+        _acc.tooClose < 0.24 &&
+        _acc.smallSubject < 0.35 &&
+        _acc.tightFraming < 0.35 &&
+        _acc.imbalance < 0.45;
+    _shootReady =
+        (shootReadyCandidate ? _shootReady + 0.18 : _shootReady - 0.20).clamp(
+          0.0,
+          1.0,
+        );
+
     if (_acc.clippedSubject >= 0.24) {
       return CoachingResult(
         guidance: '피사체가 화면에서 잘리고 있어요',
@@ -471,6 +523,26 @@ class _CoachingEngine {
         level: CoachingLevel.caution,
         score: score,
         directionHint: DirectionHint.back,
+        lightDirection: lightDir,
+      );
+    }
+
+    if (_acc.tiltStrong >= 0.24) {
+      return CoachingResult(
+        guidance: '화면이 기울어졌어요',
+        subGuidance: '수평선을 맞춘 뒤 찍어보세요',
+        level: CoachingLevel.warning,
+        score: score,
+        lightDirection: lightDir,
+      );
+    }
+
+    if (_acc.tiltMild >= 0.32) {
+      return CoachingResult(
+        guidance: '조금만 수평을 맞춰보세요',
+        subGuidance: '기울기를 줄이면 사진이 더 안정적으로 보여요',
+        level: CoachingLevel.caution,
+        score: score,
         lightDirection: lightDir,
       );
     }
@@ -542,12 +614,8 @@ class _CoachingEngine {
       }
       final moveRight = s.sceneCenterX < 0.5;
       return CoachingResult(
-        guidance: moveRight
-            ? '구도가 왼쪽으로 치우쳐 있어요'
-            : '구도가 오른쪽으로 치우쳐 있어요',
-        subGuidance: moveRight
-            ? '카메라를 조금 오른쪽으로 옮겨보세요'
-            : '카메라를 조금 왼쪽으로 옮겨보세요',
+        guidance: moveRight ? '구도가 왼쪽으로 치우쳐 있어요' : '구도가 오른쪽으로 치우쳐 있어요',
+        subGuidance: moveRight ? '카메라를 조금 오른쪽으로 옮겨보세요' : '카메라를 조금 왼쪽으로 옮겨보세요',
         level: CoachingLevel.caution,
         score: score,
         directionHint: moveRight ? DirectionHint.right : DirectionHint.left,
@@ -567,14 +635,29 @@ class _CoachingEngine {
     }
 
     // 치명적 결함이 있으면 good 불가
-    final hasCriticalIssue = _acc.blur >= 0.35 ||
+    final hasCriticalIssue =
+        _acc.blur >= 0.35 ||
         _acc.dark >= 0.35 ||
         _acc.over >= 0.35 ||
         _acc.backlight >= 0.35 ||
         _acc.clippedSubject >= 0.35 ||
-        _acc.tooClose >= 0.35;
+        _acc.tooClose >= 0.35 ||
+        _acc.tiltStrong >= 0.24 ||
+        _acc.tiltMild >= 0.32 ||
+        _acc.imbalance >= 0.45 ||
+        _acc.tightFraming >= 0.48;
 
-    if (!hasCriticalIssue && rawScore >= 70.0) {
+    if (_shootReady >= 0.62) {
+      return CoachingResult(
+        guidance: '지금 찍기 좋아요',
+        subGuidance: '피사체와 구도가 안정적이에요',
+        level: CoachingLevel.good,
+        score: score,
+        lightDirection: lightDir,
+      );
+    }
+
+    if (!hasCriticalIssue && rawScore >= 78.0) {
       return CoachingResult(
         guidance: '지금 찍어보세요',
         subGuidance: '현재 장면이 비교적 안정적이에요',
@@ -637,20 +720,33 @@ class _CoachingEngine {
 
     // 균형 (8점) — sceneCenterX 0.5 기준 거리 선형
     final balanceThreshold = s.numObjects <= 2 ? 0.15 : 0.22;
-    final balanceScore =
-        _lerp((s.sceneCenterX - 0.5).abs(), 0.0, balanceThreshold, 8.0, 0.0);
+    final balanceScore = _lerp(
+      (s.sceneCenterX - 0.5).abs(),
+      0.0,
+      balanceThreshold,
+      8.0,
+      0.0,
+    );
 
     return blurScore + brightnessScore + framingScore + balanceScore;
   }
 
   static double _lerp(
-      double value, double inMin, double inMax, double outMin, double outMax) {
+    double value,
+    double inMin,
+    double inMax,
+    double outMin,
+    double outMax,
+  ) {
     if (inMax <= inMin) return outMin;
     final t = ((value - inMin) / (inMax - inMin)).clamp(0.0, 1.0);
     return outMin + t * (outMax - outMin);
   }
 
-  void reset() => _acc.reset();
+  void reset() {
+    _acc.reset();
+    _shootReady = 0.0;
+  }
 }
 
 class ObjectCoach {
@@ -690,6 +786,81 @@ class ObjectCoach {
     _engine.setRule(rule);
   }
 
+  Rect _rectFromNormalizedLTRB(
+    double left,
+    double top,
+    double right,
+    double bottom,
+  ) {
+    final l = math.min(left, right).clamp(0.0, 1.0);
+    final r = math.max(left, right).clamp(0.0, 1.0);
+    final t = math.min(top, bottom).clamp(0.0, 1.0);
+    final b = math.max(top, bottom).clamp(0.0, 1.0);
+    return Rect.fromLTRB(l, t, r, b);
+  }
+
+  Rect _cameraToDisplayRect(Rect rect) {
+    switch (_deviceOrientationDeg) {
+      case 90:
+        return _rectFromNormalizedLTRB(
+          rect.top,
+          1.0 - rect.right,
+          rect.bottom,
+          1.0 - rect.left,
+        );
+      case 180:
+        return _rectFromNormalizedLTRB(
+          1.0 - rect.right,
+          1.0 - rect.bottom,
+          1.0 - rect.left,
+          1.0 - rect.top,
+        );
+      case 270:
+        return _rectFromNormalizedLTRB(
+          1.0 - rect.bottom,
+          rect.left,
+          1.0 - rect.top,
+          rect.right,
+        );
+      default:
+        return _rectFromNormalizedLTRB(
+          rect.left,
+          rect.top,
+          rect.right,
+          rect.bottom,
+        );
+    }
+  }
+
+  SceneGeometry _orientGeometryForDisplay(SceneGeometry geometry) {
+    final roi = geometry.unionRoi;
+    final orientedRoi = roi == null ? null : _cameraToDisplayRect(roi);
+    final center = _cameraToDisplayRect(
+      Rect.fromCenter(
+        center: Offset(geometry.sceneCenterX, geometry.sceneCenterY),
+        width: 0.001,
+        height: 0.001,
+      ),
+    ).center;
+    final unionMarginMin = orientedRoi == null
+        ? geometry.unionMarginMin
+        : math
+              .min(
+                math.min(orientedRoi.left, orientedRoi.top),
+                math.min(1.0 - orientedRoi.right, 1.0 - orientedRoi.bottom),
+              )
+              .clamp(0.0, 0.5);
+
+    return SceneGeometry(
+      numObjects: geometry.numObjects,
+      areaRatio: geometry.areaRatio,
+      sceneCenterX: center.dx.clamp(0.0, 1.0),
+      sceneCenterY: center.dy.clamp(0.0, 1.0),
+      unionMarginMin: unionMarginMin,
+      unionRoi: orientedRoi,
+    );
+  }
+
   CoachingResult updateDetections(
     List<YOLOResult> results,
     Size frameSize, {
@@ -710,25 +881,8 @@ class ObjectCoach {
       return _currentResult;
     }
 
-    var geometry = _extractor.extract(results);
+    final geometry = _orientGeometryForDisplay(_extractor.extract(results));
     // 거꾸로 든 경우(180°) 감지 좌표 반전 보정
-    if (_deviceOrientationDeg == 180) {
-      geometry = SceneGeometry(
-        numObjects: geometry.numObjects,
-        areaRatio: geometry.areaRatio,
-        sceneCenterX: 1.0 - geometry.sceneCenterX,
-        sceneCenterY: 1.0 - geometry.sceneCenterY,
-        unionMarginMin: geometry.unionMarginMin,
-        unionRoi: geometry.unionRoi == null
-            ? null
-            : Rect.fromLTRB(
-                1.0 - geometry.unionRoi!.right,
-                1.0 - geometry.unionRoi!.bottom,
-                1.0 - geometry.unionRoi!.left,
-                1.0 - geometry.unionRoi!.top,
-              ),
-      );
-    }
     _latestGeometry = geometry;
     _smoother.updateGeometry(geometry);
     final current = _smoother.current;

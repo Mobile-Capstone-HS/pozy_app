@@ -11,7 +11,7 @@ class TourApiService {
   static const _baseUrl = 'https://apis.data.go.kr/B551011/KorService2';
   static const _weeklyCandidatePages = 5;
   static const _weeklyRowsPerPage = 20;
-  static const _allowedContentTypes = {'12', '14', '15', '28'};
+  static const _allowedContentTypes = {'12', '14'};
 
   static const _areaCodes = [
     '1',
@@ -193,41 +193,6 @@ class TourApiService {
       return [...withPhoto, ...withoutPhoto].take(count).toList();
     } catch (error) {
       debugPrint('TourApiService.searchByKeywords error: $error');
-      return [];
-    }
-  }
-
-  Future<List<TourPlace>> fetchCurrentEvents({int count = 8}) async {
-    final key = _serviceKey;
-    if (key == null || key.isEmpty) return [];
-
-    final now = DateTime.now();
-    final eventStart = '${now.year}${now.month.toString().padLeft(2, '0')}01';
-
-    final uri = Uri.parse('$_baseUrl/searchFestival2').replace(
-      queryParameters: {
-        'serviceKey': key,
-        'numOfRows': '60',
-        'pageNo': '1',
-        'MobileOS': 'ETC',
-        'MobileApp': 'Pozy',
-        '_type': 'json',
-        'eventStartDate': eventStart,
-        'arrange': 'A',
-      },
-    );
-
-    try {
-      final resp = await http.get(uri).timeout(const Duration(seconds: 10));
-      if (resp.statusCode != 200) return [];
-      final places = _parseItems(resp.body);
-      final valid = places.where((p) {
-        return p.photoUrl != null &&
-            p.title.codeUnits.any((c) => c >= 0xAC00 && c <= 0xD7AF);
-      }).toList()..shuffle(Random());
-      return valid.take(count).toList();
-    } catch (error) {
-      debugPrint('TourApiService.fetchCurrentEvents error: $error');
       return [];
     }
   }
