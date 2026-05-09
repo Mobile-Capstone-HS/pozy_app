@@ -51,6 +51,7 @@ __pycache__/
 !.env.example
 *.litertlm
 *.tflite
+assets/models/lighting_model.tflite
 *.onnx
 *.pt
 *.pth
