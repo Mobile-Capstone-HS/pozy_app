@@ -2,13 +2,11 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
-import '../config/experimental_features.dart';
 import '../feature/a_cut/layer/evaluation/hybrid_photo_evaluation_service.dart';
 import '../feature/a_cut/layer/evaluation/photo_evaluation_service.dart';
 import '../feature/a_cut/model/model_score_detail.dart';
 import '../feature/a_cut/model/photo_evaluation_result.dart';
 import '../firebase/history_service.dart';
-import 'explanation_backend_debug_screen.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_shadows.dart';
 import '../theme/app_text_styles.dart';
@@ -318,10 +316,6 @@ class _ResultView extends StatelessWidget {
               backendLabel: result.explanationBackend,
             ),
           ],
-          if (ExperimentalFeatures.enableGemmaExplanationDebug) ...[
-            const SizedBox(height: 16),
-            _ExplanationDebugEntryCard(imageBytes: imageBytes, result: result),
-          ],
           if (result.scoreDetails.isNotEmpty) ...[
             const SizedBox(height: 16),
             _AdvancedDetailSection(details: result.scoreDetails.toList()),
@@ -340,84 +334,6 @@ class _ResultView extends StatelessWidget {
             ),
           ],
         ],
-      ),
-    );
-  }
-}
-
-class _ExplanationDebugEntryCard extends StatelessWidget {
-  const _ExplanationDebugEntryCard({
-    required this.imageBytes,
-    required this.result,
-  });
-
-  final Uint8List imageBytes;
-  final PhotoEvaluationResult result;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) => ExplanationBackendDebugScreen(
-              imageBytes: imageBytes,
-              result: result,
-            ),
-          ),
-        );
-      },
-      borderRadius: BorderRadius.circular(18),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: AppShadows.card,
-        ),
-        child: const Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '실험용 설명 백엔드 비교',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                color: AppColors.primaryText,
-              ),
-            ),
-            SizedBox(height: 6),
-            Text(
-              'Gemini 텍스트 전용, Gemini 이미지+점수, 온디바이스 Gemma를 같은 사진으로 비교해 볼 수 있어요.',
-              style: TextStyle(
-                fontSize: 12,
-                height: 1.45,
-                fontWeight: FontWeight.w600,
-                color: AppColors.secondaryText,
-              ),
-            ),
-            SizedBox(height: 12),
-            Row(
-              children: [
-                Text(
-                  '디버그 화면 열기',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF4F46E5),
-                  ),
-                ),
-                SizedBox(width: 6),
-                Icon(
-                  Icons.arrow_forward_rounded,
-                  size: 16,
-                  color: Color(0xFF4F46E5),
-                ),
-              ],
-            ),
-          ],
-        ),
       ),
     );
   }

@@ -1,8 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-import '../../../../config/experimental_features.dart';
 import '../../../../services/gemini_photo_explanation_services.dart';
-import '../../../../services/on_device_gemma_explanation_service.dart';
 import '../../../../services/photo_explanation_service.dart';
 import '../../model/photo_evaluation_result.dart';
 import 'photo_evaluation_service.dart';
@@ -19,7 +17,7 @@ import 'photo_evaluation_service.dart';
 /// If Gemini is unavailable the method still returns a valid result with
 /// scores but without explanation fields.
 ///
-/// To swap Gemma/Gemini/VILA later, implement [PhotoExplanationService] and
+/// To swap explanation backends later, implement [PhotoExplanationService] and
 /// inject it via the [explainer] constructor parameter.
 class HybridPhotoEvaluationService implements PhotoEvaluationService {
   HybridPhotoEvaluationService({
@@ -108,21 +106,6 @@ class HybridPhotoEvaluationService implements PhotoEvaluationService {
   }
 
   static PhotoExplanationService _defaultExplainer() {
-    if (ExperimentalFeatures.preferOnDeviceGemmaExplanation) {
-      final gemmaPrimary = ExperimentalFeatures.useOnDeviceGemmaVlmExplanation
-          ? OnDeviceGemmaExplanationService.visual()
-          : OnDeviceGemmaExplanationService();
-      return FallbackPhotoExplanationService(
-        primary: gemmaPrimary,
-        fallbacks: [
-          GeminiImageScoresPhotoExplanationService(useLegacyGeminiPrompt: true),
-          const TemplatePhotoExplanationService(),
-        ],
-        backendId: 'experimental_gemma_chain',
-        backendLabel: 'Gemma -> Gemini -> Template',
-      );
-    }
-
     return FallbackPhotoExplanationService(
       primary: GeminiImageScoresPhotoExplanationService(
         useLegacyGeminiPrompt: true,

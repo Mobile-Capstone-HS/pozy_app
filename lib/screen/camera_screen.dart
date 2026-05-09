@@ -33,7 +33,6 @@ import 'package:pose_camera_app/screen/camera/widgets/silhouette_painter.dart';
 import 'package:pose_camera_app/coaching/subject/subject_detection.dart'
     show detectModelPath, detectionConfidenceThreshold;
 import 'package:pose_camera_app/feature/landscape/landscape_overlay_painter.dart';
-import 'package:pose_camera_app/screen/landscape_asset_test_screen.dart';
 import 'package:pose_camera_app/segmentation/composition_engine.dart';
 import 'package:pose_camera_app/segmentation/composition_resolver.dart';
 import 'package:pose_camera_app/segmentation/composition_summary.dart';
@@ -1632,7 +1631,9 @@ class _CameraScreenState extends State<CameraScreen> {
     if (!_loggedFirstBuild) {
       _loggedFirstBuild = true;
       if (DebugLogFlags.yoloDebug) {
-        debugPrint('[YOLO_DEBUG][screen] first build mode=${_shootingMode.name}');
+        debugPrint(
+          '[YOLO_DEBUG][screen] first build mode=${_shootingMode.name}',
+        );
       }
     }
     return Scaffold(
@@ -1936,31 +1937,6 @@ class _CameraScreenState extends State<CameraScreen> {
                           ],
                         ),
                       ],
-                    ),
-                  ),
-                ),
-              ),
-            // 구도 규칙 selector — 인물/객체 모드만. 풍경은 자동 감지 사용.
-            if (_isLandscapeMode)
-              Positioned(
-                top: 60,
-                left: 16,
-                child: FilledButton.tonalIcon(
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const LandscapeAssetTestScreen(),
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.science_outlined, size: 18),
-                  label: const Text('샘플 테스트'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Colors.black.withValues(alpha: 0.55),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 10,
                     ),
                   ),
                 ),

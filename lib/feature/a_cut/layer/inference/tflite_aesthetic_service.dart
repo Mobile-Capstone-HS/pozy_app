@@ -87,12 +87,6 @@ class TfliteAestheticService {
     Map<String, Future<Uint8List>>? inputCache,
   }) async {
     final resolvedConfig = await _resolveContract(contract);
-    if (_isModelDisabledForBatch(resolvedConfig, imageIndex)) {
-      return TfliteSingleModelRun(
-        model: resolvedConfig,
-        detail: _debugFallbackDetail(resolvedConfig),
-      );
-    }
     final detail = await _runContract(
       imageBytes,
       resolvedConfig,
@@ -122,10 +116,6 @@ class TfliteAestheticService {
       resolvedConfigs.add(resolvedConfig);
 
       try {
-        if (_isModelDisabledForBatch(resolvedConfig, imageIndex)) {
-          scoreDetails.add(_debugFallbackDetail(resolvedConfig));
-          continue;
-        }
         final detail = await _runContract(
           imageBytes,
           resolvedConfig,
@@ -1060,46 +1050,6 @@ class TfliteAestheticService {
       return AestheticModelOutputType.distribution;
     }
     return fallback;
-  }
-
-  bool _isModelDisabledForBatch(
-    ResolvedAestheticModelConfig contract,
-    int? imageIndex,
-  ) {
-    if (imageIndex == null) {
-      return false;
-    }
-
-    final disabled = switch (contract.id) {
-      'koniq_mobile' => ExperimentalFeatures.disableKoniqDuringBatchScoring,
-      'flive_image_mobile' =>
-        ExperimentalFeatures.disableFliveDuringBatchScoring,
-      'nima_mobile' => ExperimentalFeatures.disableNimaDuringBatchScoring,
-      'rgnet_aadb_gpu' => ExperimentalFeatures.disableRgnetDuringBatchScoring,
-      'alamp_aadb_gpu' => ExperimentalFeatures.disableAlampDuringBatchScoring,
-      _ => false,
-    };
-
-    if (disabled) {
-      debugPrint(
-        '[AcutPerf] model_skipped image_index=$imageIndex '
-        'model=${contract.id} reason=debug_flag',
-      );
-    }
-    return disabled;
-  }
-
-  ModelScoreDetail _debugFallbackDetail(ResolvedAestheticModelConfig contract) {
-    return ModelScoreDetail(
-      id: '${contract.id}_debug_skipped',
-      label: '${contract.displayLabel} (debug skipped)',
-      dimension: contract.dimension,
-      rawScore: 0.5,
-      normalizedScore: 0.5,
-      weight: contract.weight,
-      interpretation:
-          '${contract.displayInterpretation} (debug fallback because model was skipped)',
-    );
   }
 
   double _blend(List<ModelScoreDetail> details) {
