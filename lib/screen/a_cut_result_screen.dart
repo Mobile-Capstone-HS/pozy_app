@@ -8,6 +8,7 @@ import '../firebase/history_service.dart';
 import '../feature/a_cut/layer/evaluation/photo_evaluation_service.dart';
 import '../feature/a_cut/layer/scoring/image_scoring_service.dart';
 import '../feature/a_cut/model/multi_photo_ranking_result.dart';
+import '../feature/a_cut/model/photo_evaluation_result.dart';
 import '../feature/a_cut/model/photo_type_mode.dart';
 import '../feature/a_cut/model/scored_photo_result.dart';
 import '../services/gemini_photo_explanation_services.dart';
