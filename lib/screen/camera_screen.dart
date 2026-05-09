@@ -30,7 +30,6 @@ import 'package:pose_camera_app/coaching/portrait/portrait_scene_state.dart'
     as portrait;
 import 'package:pose_camera_app/coaching/portrait/silhouette_shapes.dart';
 import 'package:pose_camera_app/screen/camera/widgets/silhouette_painter.dart';
-import 'package:pose_camera_app/screen/camera/widgets/silhouette_selector.dart';
 import 'package:pose_camera_app/coaching/subject/subject_detection.dart'
     show detectModelPath, detectionConfidenceThreshold;
 import 'package:pose_camera_app/feature/landscape/landscape_overlay_painter.dart';
@@ -1596,11 +1595,29 @@ class _CameraScreenState extends State<CameraScreen> {
               ),
             ),
             if (_isPortraitMode && _selectedSilhouette != SilhouetteType.none)
-              IgnorePointer(
-                child: CustomPaint(
-                  painter: SilhouettePainter(type: _selectedSilhouette),
-                  size: Size.infinite,
-                ),
+              Builder(
+                builder: (context) {
+                  Rect? targetBox;
+                  final bodyRect = _portraitOverlayData.bodyGuideRect;
+                  if (bodyRect != null) {
+                    final size = MediaQuery.of(context).size;
+                    targetBox = Rect.fromLTWH(
+                      bodyRect.left * size.width,
+                      bodyRect.top * size.height,
+                      bodyRect.width * size.width,
+                      bodyRect.height * size.height,
+                    );
+                  }
+                  return IgnorePointer(
+                    child: CustomPaint(
+                      painter: SilhouettePainter(
+                        type: _selectedSilhouette,
+                        targetBox: targetBox,
+                      ),
+                      size: Size.infinite,
+                    ),
+                  );
+                },
               ),
             if (!_isLandscapeMode &&
                 !(_isPortraitMode && _showPortraitDebugOverlay))
@@ -1892,18 +1909,9 @@ class _CameraScreenState extends State<CameraScreen> {
                     _sceneCoach.setRule(_activeRule);
                     _portraitHandler.setRule(_activeRule);
                   },
-                ),
-              ),
-            if (_isPortraitMode)
-              AnimatedPositioned(
-                duration: const Duration(milliseconds: 250),
-                curve: Curves.easeOutCubic,
-                top: _isRuleSelectorExpanded ? 212 : 148,
-                left: 0,
-                right: 0,
-                child: SilhouetteSelector(
-                  selected: _selectedSilhouette,
-                  onChanged: (type) {
+                  showSilhouetteTab: _isPortraitMode,
+                  selectedSilhouette: _selectedSilhouette,
+                  onSilhouetteChanged: (type) {
                     if (type == _selectedSilhouette) return;
                     setState(() => _selectedSilhouette = type);
                   },

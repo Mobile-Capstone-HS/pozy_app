@@ -8,6 +8,7 @@ import '../firebase/history_service.dart';
 import '../feature/a_cut/layer/evaluation/photo_evaluation_service.dart';
 import '../feature/a_cut/layer/scoring/image_scoring_service.dart';
 import '../feature/a_cut/model/multi_photo_ranking_result.dart';
+import '../feature/a_cut/model/photo_evaluation_result.dart';
 import '../feature/a_cut/model/photo_type_mode.dart';
 import '../feature/a_cut/model/scored_photo_result.dart';
 import '../services/gemini_photo_explanation_services.dart';
@@ -125,6 +126,9 @@ class _ACutResultScreenState extends State<ACutResultScreen> {
         loading: true,
       );
     });
+    debugPrint(
+      '[AcutPerf] bestcut_detail_explanation_loading=true file="${scored.fileName}"',
+    );
 
     try {
       final bytes = await scored.asset.originBytes;
@@ -150,6 +154,9 @@ class _ACutResultScreenState extends State<ACutResultScreen> {
         ),
       );
 
+      debugPrint(
+        '[AcutPerf] bestcut_detail_explanation_loading=false file="${scored.fileName}" success=${result.isSuccessful}',
+      );
       if (!mounted) return;
       setState(() {
         _explanationCache[scored.asset.id] = result.isSuccessful
@@ -157,6 +164,9 @@ class _ACutResultScreenState extends State<ACutResultScreen> {
             : _AcutExplanationState(error: result.error ?? '설명을 생성하지 못했습니다.');
       });
     } catch (error) {
+      debugPrint(
+        '[AcutPerf] bestcut_detail_explanation_loading=false file="${scored.fileName}" success=false',
+      );
       if (!mounted) return;
       setState(() {
         _explanationCache[scored.asset.id] = _AcutExplanationState(
@@ -571,10 +581,6 @@ class _BestCutThumbnailTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final score = result.finalScore == null
-        ? '-'
-        : '${(result.finalScore! * 100).round()}';
-
     return GestureDetector(
       onTap: onTap,
       child: Column(
@@ -607,15 +613,6 @@ class _BestCutThumbnailTile extends StatelessWidget {
                     left: 7,
                     top: 7,
                     child: _RankBadge(result: result),
-                  ),
-                  Positioned(
-                    right: 7,
-                    bottom: 7,
-                    child: _HighlightPill(
-                      label: '$score점',
-                      background: Colors.black.withValues(alpha: 0.68),
-                      foreground: Colors.white,
-                    ),
                   ),
                 ],
               ),
@@ -692,7 +689,7 @@ class _RankingNoticeCard extends StatelessWidget {
   }
 }
 
-class _BestCutImageViewer extends StatelessWidget {
+class _BestCutImageViewer extends StatefulWidget {
   final ScoredPhotoResult result;
   final _AcutExplanationState? explanationState;
   final Future<void> Function()? onRequestDetail;
@@ -704,184 +701,374 @@ class _BestCutImageViewer extends StatelessWidget {
   });
 
   @override
+  State<_BestCutImageViewer> createState() => _BestCutImageViewerState();
+}
+
+class _BestCutImageViewerState extends State<_BestCutImageViewer> {
+  late Future<Uint8List?> _imageFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _imageFuture = widget.result.asset.originBytes;
+  }
+
+  @override
+  void didUpdateWidget(covariant _BestCutImageViewer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.result.asset.id != widget.result.asset.id) {
+      _imageFuture = widget.result.asset.originBytes;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final result = widget.result;
     final evaluation = result.evaluation!;
-    final current = explanationState;
+    final current = widget.explanationState;
     final explanation = current?.result;
     final loading = current?.loading == true;
     final error = current?.error;
-    final basicExplanation = explanation?.shortReason.trim().isNotEmpty == true
-        ? explanation!.shortReason
-        : evaluation.primaryHint;
     final detailedReason = explanation?.detailedReason.trim() ?? '';
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0F1115),
+      backgroundColor: Colors.white,
       body: SafeArea(
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(14, 8, 14, 10),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: Row(
                 children: [
                   IconButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close_rounded, color: Colors.white),
+                    icon: const Icon(
+                      Icons.arrow_back_ios_new_rounded,
+                      color: AppColors.primaryText,
+                      size: 20,
+                    ),
                   ),
-                  const SizedBox(width: 4),
                   Expanded(
                     child: Text(
                       result.fileName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
                       style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primaryText,
                       ),
                     ),
                   ),
-                  _HighlightPill(
-                    label: result.rankLabel,
-                    background: Colors.white.withValues(alpha: 0.16),
-                    foreground: Colors.white,
-                  ),
+                  const SizedBox(width: 48),
                 ],
               ),
             ),
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(18, 0, 18, 24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(18),
-                      child: AspectRatio(
-                        aspectRatio: 1,
-                        child: FutureBuilder<Uint8List?>(
-                          future: result.asset.thumbnailDataWithSize(
-                            const ThumbnailSize(1600, 1600),
+              child: FutureBuilder<Uint8List?>(
+                future: _imageFuture,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                      child: CircularProgressIndicator(
+                        color: AppColors.primaryText,
+                        strokeWidth: 2.4,
+                      ),
+                    );
+                  }
+
+                  if (snapshot.data == null) {
+                    return const Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.broken_image_outlined,
+                            color: AppColors.lightText,
+                            size: 42,
                           ),
-                          builder: (context, snapshot) {
-                            if (!snapshot.hasData || snapshot.data == null) {
-                              return Container(
-                                color: const Color(0xFF1F2937),
-                                child: const Icon(
-                                  Icons.broken_image_outlined,
-                                  color: Colors.white70,
-                                  size: 42,
-                                ),
-                              );
-                            }
-                            return Image.memory(
-                              snapshot.data!,
-                              fit: BoxFit.contain,
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        _HighlightPill(
-                          label: evaluation.acutLabel,
-                          background: _categoryColor(evaluation.acutLabel),
-                          foreground: Colors.white,
-                        ),
-                        _HighlightPill(
-                          label: '점수 ${evaluation.finalPct}',
-                          background: Colors.white.withValues(alpha: 0.14),
-                          foreground: Colors.white,
-                        ),
-                        _HighlightPill(
-                          label: evaluation.verdict,
-                          background: Colors.white.withValues(alpha: 0.14),
-                          foreground: Colors.white,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    Text(
-                      basicExplanation,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        height: 1.55,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    SizedBox(
-                      height: 44,
-                      child: FilledButton(
-                        onPressed:
-                            loading || (explanation != null && error == null)
-                            ? null
-                            : onRequestDetail,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: AppColors.primaryText,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(999),
+                          SizedBox(height: 12),
+                          Text(
+                            '사진을 불러오지 못했어요.',
+                            style: TextStyle(
+                              color: AppColors.secondaryText,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
-                          textStyle: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        child: Text(
-                          loading
-                              ? '설명 생성 중...'
-                              : error != null
-                              ? '상세 설명 다시 시도'
-                              : explanation == null
-                              ? '상세 설명 보기'
-                              : '상세 설명 완료',
-                        ),
+                        ],
                       ),
+                    );
+                  }
+
+                  return InteractiveViewer(
+                    minScale: 1,
+                    maxScale: 4,
+                    child: Center(
+                      child: Image.memory(snapshot.data!, fit: BoxFit.contain),
                     ),
-                    if (detailedReason.isNotEmpty) ...[
-                      const SizedBox(height: 16),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Text(
-                          detailedReason,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            height: 1.55,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ],
-                    if (error != null) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        error,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          height: 1.45,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFFFCA5A5),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
+                  );
+                },
               ),
+            ),
+            _BestCutImageDetailPanel(
+              result: result,
+              evaluation: evaluation,
+              loading: loading,
+              explanationLoaded: explanation != null && error == null,
+              detailedReason: detailedReason,
+              error: error,
+              onRequestDetail: widget.onRequestDetail,
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _BestCutImageDetailPanel extends StatelessWidget {
+  final ScoredPhotoResult result;
+  final PhotoEvaluationResult evaluation;
+  final bool loading;
+  final bool explanationLoaded;
+  final String detailedReason;
+  final String? error;
+  final Future<void> Function()? onRequestDetail;
+
+  const _BestCutImageDetailPanel({
+    required this.result,
+    required this.evaluation,
+    required this.loading,
+    required this.explanationLoaded,
+    required this.detailedReason,
+    required this.error,
+    this.onRequestDetail,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final maxPanelHeight = MediaQuery.sizeOf(context).height * 0.46;
+
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: maxPanelHeight),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          border: Border(top: BorderSide(color: AppColors.border)),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _HighlightPill(
+                    label: evaluation.acutLabel,
+                    background: _categoryColor(evaluation.acutLabel),
+                    foreground: Colors.white,
+                  ),
+                  _HighlightPill(
+                    label: '종합 ${evaluation.finalPct}점',
+                    background: AppColors.soft,
+                    foreground: AppColors.primaryText,
+                  ),
+                  _HighlightPill(
+                    label: result.rankLabel,
+                    background: AppColors.soft,
+                    foreground: AppColors.primaryText,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              _ScoreSummaryRow(
+                label: '기술적 점수',
+                pct: evaluation.technicalPct,
+                color: const Color(0xFF60A5FA),
+              ),
+              const SizedBox(height: 10),
+              _ScoreSummaryRow(
+                label: '미적 점수',
+                pct: evaluation.aestheticPct,
+                color: const Color(0xFFA78BFA),
+              ),
+              const SizedBox(height: 16),
+              _DetailExplanationButton(
+                loading: loading,
+                hasLoadedExplanation: explanationLoaded,
+                hasError: error != null,
+                onPressed: onRequestDetail,
+              ),
+              if (detailedReason.isNotEmpty) ...[
+                const SizedBox(height: 14),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Text(
+                    detailedReason,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      height: 1.55,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.primaryText,
+                    ),
+                  ),
+                ),
+              ],
+              if (error != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  error!,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    height: 1.45,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFFDC2626),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ScoreSummaryRow extends StatelessWidget {
+  final String label;
+  final int? pct;
+  final Color color;
+
+  const _ScoreSummaryRow({
+    required this.label,
+    required this.pct,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final value = pct;
+    final widthFactor = value == null
+        ? 0.0
+        : (value / 100).clamp(0.0, 1.0).toDouble();
+
+    return Row(
+      children: [
+        SizedBox(
+          width: 82,
+          child: Text(
+            label,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: AppColors.secondaryText,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Container(
+            height: 8,
+            decoration: BoxDecoration(
+              color: AppColors.track,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            alignment: Alignment.centerLeft,
+            child: FractionallySizedBox(
+              widthFactor: widthFactor,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        SizedBox(
+          width: 42,
+          child: Text(
+            value == null ? '-' : '$value점',
+            textAlign: TextAlign.right,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              color: AppColors.primaryText,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _DetailExplanationButton extends StatelessWidget {
+  final bool loading;
+  final bool hasLoadedExplanation;
+  final bool hasError;
+  final Future<void> Function()? onPressed;
+
+  const _DetailExplanationButton({
+    required this.loading,
+    required this.hasLoadedExplanation,
+    required this.hasError,
+    this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      height: 44,
+      child: FilledButton(
+        onPressed: loading || hasLoadedExplanation ? null : onPressed,
+        style: FilledButton.styleFrom(
+          backgroundColor: AppColors.buttonDark,
+          foregroundColor: Colors.white,
+          disabledBackgroundColor: AppColors.track,
+          disabledForegroundColor: AppColors.secondaryText,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(999),
+          ),
+          textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900),
+        ),
+        child: loading
+            ? const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppColors.secondaryText,
+                    ),
+                  ),
+                  SizedBox(width: 8),
+                  Text('상세 설명 생성 중...'),
+                ],
+              )
+            : Text(
+                hasError
+                    ? '상세 설명 다시 시도'
+                    : hasLoadedExplanation
+                    ? '상세 설명 완료'
+                    : '상세 설명 보기',
+              ),
       ),
     );
   }

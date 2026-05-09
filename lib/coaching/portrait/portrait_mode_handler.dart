@@ -302,6 +302,7 @@ class PortraitModeHandler {
   double? _smileProb;
   Rect? _trackedMainBox;
   Rect? _smoothedFaceRect;
+  Rect? _smoothedBodyRect;
   final Map<int, Offset> _smoothedPosePoints = <int, Offset>{};
   List<NativeFaceResult> _latestNativeFaceResults = const [];
   int _nativeFaceImageWidth = 0;
@@ -340,6 +341,7 @@ class PortraitModeHandler {
 
   static const double _faceMetricAlpha = 0.3;
   static const double _faceRectAlpha = 0.35;
+  static const double _bodyRectAlpha = 0.2;
 
   // ─── 외부 설정 ────────────────────────────────────
   bool isFrontCamera = false;
@@ -437,6 +439,7 @@ class PortraitModeHandler {
     _smileProb = null;
     _trackedMainBox = null;
     _smoothedFaceRect = null;
+    _smoothedBodyRect = null;
     _smoothedPosePoints.clear();
     _latestNativeFaceResults = const [];
     _nativeFaceImageWidth = 0;
@@ -1229,11 +1232,15 @@ class PortraitModeHandler {
       eyeConfidence: eyeConf,
       shoulderConfidence: sConf,
       faceGuideRect: faceRect,
-      bodyGuideRect: Rect.fromLTRB(
-        main.normalizedBox.left.clamp(0.0, 1.0).toDouble(),
-        main.normalizedBox.top.clamp(0.0, 1.0).toDouble(),
-        main.normalizedBox.right.clamp(0.0, 1.0).toDouble(),
-        main.normalizedBox.bottom.clamp(0.0, 1.0).toDouble(),
+      bodyGuideRect: _smoothedBodyRect = _smoothRect(
+        _smoothedBodyRect,
+        Rect.fromLTRB(
+          main.normalizedBox.left.clamp(0.0, 1.0).toDouble(),
+          main.normalizedBox.top.clamp(0.0, 1.0).toDouble(),
+          main.normalizedBox.right.clamp(0.0, 1.0).toDouble(),
+          main.normalizedBox.bottom.clamp(0.0, 1.0).toDouble(),
+        ),
+        alpha: _bodyRectAlpha,
       ),
       targetEyeLineY: _targetEyeLineY(shot),
       targetHeadroomTop: _targetHeadroomTop(shot),
@@ -1993,15 +2000,16 @@ class PortraitModeHandler {
     return previous + (next - previous) * _faceMetricAlpha;
   }
 
-  Rect? _smoothRect(Rect? previous, Rect? next) {
+  Rect? _smoothRect(Rect? previous, Rect? next, {double? alpha}) {
     if (next == null) return previous;
     if (previous == null) return next;
 
+    final a = alpha ?? _faceRectAlpha;
     return Rect.fromLTRB(
-      previous.left + (next.left - previous.left) * _faceRectAlpha,
-      previous.top + (next.top - previous.top) * _faceRectAlpha,
-      previous.right + (next.right - previous.right) * _faceRectAlpha,
-      previous.bottom + (next.bottom - previous.bottom) * _faceRectAlpha,
+      previous.left + (next.left - previous.left) * a,
+      previous.top + (next.top - previous.top) * a,
+      previous.right + (next.right - previous.right) * a,
+      previous.bottom + (next.bottom - previous.bottom) * a,
     );
   }
 
