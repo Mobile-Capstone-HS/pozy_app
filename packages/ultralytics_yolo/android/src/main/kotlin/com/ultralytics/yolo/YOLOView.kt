@@ -933,6 +933,16 @@ class YOLOView @JvmOverloads constructor(
                 }
 
                 // 180° 추가 회전한 경우 좌표를 미러링하여 프리뷰와 일치시킴
+                if (!shouldNormalizePoseRotation && isLandscape && result.boxes.isEmpty()) {
+                    result = predictLandscapeFallback(
+                        predictor = p,
+                        sourceBitmap = bitmap,
+                        sourceWidth = w,
+                        sourceHeight = h,
+                        preferredRotation = rotationDegrees,
+                    ) ?: result
+                }
+
                 if (additionalRotation == 180) {
                     result = flipResult180(result)
                 }
@@ -2068,6 +2078,116 @@ class YOLOView @JvmOverloads constructor(
     private fun resetPoseStreamStability() {
         lastStablePoseDetections = emptyList()
         consecutiveEmptyPoseFrames = 0
+    }
+
+    private fun predictLandscapeFallback(
+        predictor: Predictor,
+        sourceBitmap: Bitmap,
+        sourceWidth: Int,
+        sourceHeight: Int,
+        preferredRotation: Int,
+    ): YOLOResult? {
+        val rotations = listOf(preferredRotation, 90, 270, 180)
+            .map { ((it % 360) + 360) % 360 }
+            .distinct()
+
+        var best: YOLOResult? = null
+        var bestScore = 0.0
+
+        for (rotation in rotations) {
+            val rotatedBitmap = ImageUtils.rotateBitmap(sourceBitmap, rotation)
+            val candidate = predictor.predict(
+                rotatedBitmap,
+                rotatedBitmap.width,
+                rotatedBitmap.height,
+                rotateForCamera = false,
+                isLandscape = rotatedBitmap.width > rotatedBitmap.height,
+            )
+            if (candidate.boxes.isEmpty()) continue
+
+            val mapped = mapRotatedResultToSource(
+                result = candidate,
+                rotation = rotation,
+                sourceWidth = sourceWidth,
+                sourceHeight = sourceHeight,
+            )
+            val score = mapped.boxes.sumOf { it.conf.toDouble() }
+            if (score > bestScore) {
+                best = mapped
+                bestScore = score
+            }
+        }
+
+        if (best != null) {
+            Log.d(TAG, "Landscape fallback recovered ${best!!.boxes.size} detection(s)")
+        }
+        return best
+    }
+
+    private fun mapRotatedResultToSource(
+        result: YOLOResult,
+        rotation: Int,
+        sourceWidth: Int,
+        sourceHeight: Int,
+    ): YOLOResult {
+        val normalizedRotation = ((rotation % 360) + 360) % 360
+        if (normalizedRotation == 0) {
+            return result.copy(origShape = Size(sourceWidth, sourceHeight))
+        }
+
+        val mappedBoxes = result.boxes.map { box ->
+            val mapped = inverseRotateRect(box.xywhn, normalizedRotation)
+            Box(
+                index = box.index,
+                cls = box.cls,
+                conf = box.conf,
+                xywh = RectF(
+                    mapped.left * sourceWidth,
+                    mapped.top * sourceHeight,
+                    mapped.right * sourceWidth,
+                    mapped.bottom * sourceHeight,
+                ),
+                xywhn = mapped,
+            )
+        }
+
+        return result.copy(
+            origShape = Size(sourceWidth, sourceHeight),
+            boxes = mappedBoxes,
+        )
+    }
+
+    private fun inverseRotateRect(rect: RectF, rotation: Int): RectF {
+        fun normalized(left: Float, top: Float, right: Float, bottom: Float): RectF {
+            return RectF(
+                min(left, right).coerceIn(0f, 1f),
+                min(top, bottom).coerceIn(0f, 1f),
+                max(left, right).coerceIn(0f, 1f),
+                max(top, bottom).coerceIn(0f, 1f),
+            )
+        }
+
+        return when (((rotation % 360) + 360) % 360) {
+            90 -> normalized(
+                1f - rect.bottom,
+                rect.left,
+                1f - rect.top,
+                rect.right,
+            )
+            180 -> normalized(
+                1f - rect.right,
+                1f - rect.bottom,
+                1f - rect.left,
+                1f - rect.top,
+            )
+            270 -> normalized(
+                rect.top,
+                1f - rect.right,
+                rect.bottom,
+                1f - rect.left,
+            )
+            else -> normalized(rect.left, rect.top, rect.right, rect.bottom)
+        }
     }
 
     /**

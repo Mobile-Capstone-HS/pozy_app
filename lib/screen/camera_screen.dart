@@ -331,6 +331,91 @@ class _CameraScreenState extends State<CameraScreen> {
     );
   }
 
+  Rect _rectFromNormalizedLTRB(
+    double left,
+    double top,
+    double right,
+    double bottom,
+  ) {
+    final l = math.min(left, right).clamp(0.0, 1.0);
+    final r = math.max(left, right).clamp(0.0, 1.0);
+    final t = math.min(top, bottom).clamp(0.0, 1.0);
+    final b = math.max(top, bottom).clamp(0.0, 1.0);
+    return Rect.fromLTRB(l, t, r, b);
+  }
+
+  Rect _cameraToDisplayRect(Rect rect) {
+    switch (_deviceOrientationDeg) {
+      case 90:
+        return _rectFromNormalizedLTRB(
+          rect.top,
+          1.0 - rect.right,
+          rect.bottom,
+          1.0 - rect.left,
+        );
+      case 180:
+        return _rectFromNormalizedLTRB(
+          1.0 - rect.right,
+          1.0 - rect.bottom,
+          1.0 - rect.left,
+          1.0 - rect.top,
+        );
+      case 270:
+        return _rectFromNormalizedLTRB(
+          1.0 - rect.bottom,
+          rect.left,
+          1.0 - rect.top,
+          rect.right,
+        );
+      default:
+        return _rectFromNormalizedLTRB(
+          rect.left,
+          rect.top,
+          rect.right,
+          rect.bottom,
+        );
+    }
+  }
+
+  Rect _displayToCameraRect(Rect rect) {
+    switch (_deviceOrientationDeg) {
+      case 90:
+        return _rectFromNormalizedLTRB(
+          1.0 - rect.bottom,
+          rect.left,
+          1.0 - rect.top,
+          rect.right,
+        );
+      case 180:
+        return _rectFromNormalizedLTRB(
+          1.0 - rect.right,
+          1.0 - rect.bottom,
+          1.0 - rect.left,
+          1.0 - rect.top,
+        );
+      case 270:
+        return _rectFromNormalizedLTRB(
+          rect.top,
+          1.0 - rect.right,
+          rect.bottom,
+          1.0 - rect.left,
+        );
+      default:
+        return _rectFromNormalizedLTRB(
+          rect.left,
+          rect.top,
+          rect.right,
+          rect.bottom,
+        );
+    }
+  }
+
+  double get _displayCameraAspect {
+    return (_deviceOrientationDeg == 90 || _deviceOrientationDeg == 270)
+        ? 1.0 / _cameraAspect
+        : _cameraAspect;
+  }
+
   static double _rectArea(Rect rect) => rect.width * rect.height;
 
   static double _rectAspect(Rect rect) =>
@@ -983,46 +1068,51 @@ class _CameraScreenState extends State<CameraScreen> {
 
   Rect _screenToCamera(Rect screen) {
     final sa = _previewSize.width / _previewSize.height;
-    if (sa < _cameraAspect) {
-      final vx = sa / _cameraAspect;
+    final displayCameraAspect = _displayCameraAspect;
+    Rect displayRect;
+    if (sa < displayCameraAspect) {
+      final vx = sa / displayCameraAspect;
       final ox = (1.0 - vx) / 2.0;
-      return Rect.fromLTRB(
+      displayRect = Rect.fromLTRB(
         screen.left * vx + ox,
         screen.top,
         screen.right * vx + ox,
         screen.bottom,
       );
     } else {
-      final vy = _cameraAspect / sa;
+      final vy = displayCameraAspect / sa;
       final oy = (1.0 - vy) / 2.0;
-      return Rect.fromLTRB(
+      displayRect = Rect.fromLTRB(
         screen.left,
         screen.top * vy + oy,
         screen.right,
         screen.bottom * vy + oy,
       );
     }
+    return _displayToCameraRect(displayRect);
   }
 
   Rect _cameraToScreen(Rect cam) {
+    final display = _cameraToDisplayRect(cam);
     final sa = _previewSize.width / _previewSize.height;
-    if (sa < _cameraAspect) {
-      final vx = sa / _cameraAspect;
+    final displayCameraAspect = _displayCameraAspect;
+    if (sa < displayCameraAspect) {
+      final vx = sa / displayCameraAspect;
       final ox = (1.0 - vx) / 2.0;
       return Rect.fromLTRB(
-        ((cam.left - ox) / vx).clamp(0.0, 1.0),
-        cam.top.clamp(0.0, 1.0),
-        ((cam.right - ox) / vx).clamp(0.0, 1.0),
-        cam.bottom.clamp(0.0, 1.0),
+        ((display.left - ox) / vx).clamp(0.0, 1.0),
+        display.top.clamp(0.0, 1.0),
+        ((display.right - ox) / vx).clamp(0.0, 1.0),
+        display.bottom.clamp(0.0, 1.0),
       );
     } else {
-      final vy = _cameraAspect / sa;
+      final vy = displayCameraAspect / sa;
       final oy = (1.0 - vy) / 2.0;
       return Rect.fromLTRB(
-        cam.left.clamp(0.0, 1.0),
-        ((cam.top - oy) / vy).clamp(0.0, 1.0),
-        cam.right.clamp(0.0, 1.0),
-        ((cam.bottom - oy) / vy).clamp(0.0, 1.0),
+        display.left.clamp(0.0, 1.0),
+        ((display.top - oy) / vy).clamp(0.0, 1.0),
+        display.right.clamp(0.0, 1.0),
+        ((display.bottom - oy) / vy).clamp(0.0, 1.0),
       );
     }
   }
@@ -1329,8 +1419,9 @@ class _CameraScreenState extends State<CameraScreen> {
         color: Colors.black.withValues(alpha: 0.58),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: (hasIssue ? const Color(0xFFFBBF24) : Colors.white)
-              .withValues(alpha: 0.45),
+          color: (hasIssue ? const Color(0xFFFBBF24) : Colors.white).withValues(
+            alpha: 0.45,
+          ),
         ),
       ),
       child: Row(
