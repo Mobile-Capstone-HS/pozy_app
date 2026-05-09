@@ -3,6 +3,10 @@ import 'package:flutter/material.dart';
 
 import '../../../composition/composition_rule.dart';
 import '../../../composition/composition_rule_registry.dart';
+import '../../../coaching/portrait/silhouette_shapes.dart';
+import 'silhouette_selector.dart';
+
+enum _Tab { rule, silhouette }
 
 /// 카메라 상단에 표시되는 구도 규칙 선택 칩 리스트.
 ///
@@ -12,11 +16,18 @@ class CompositionRuleSelector extends StatefulWidget {
   final ValueChanged<CompositionRuleType> onChanged;
   final ValueChanged<bool>? onExpandedChanged;
 
+  final bool showSilhouetteTab;
+  final SilhouetteType? selectedSilhouette;
+  final ValueChanged<SilhouetteType>? onSilhouetteChanged;
+
   const CompositionRuleSelector({
     super.key,
     required this.selected,
     required this.onChanged,
     this.onExpandedChanged,
+    this.showSilhouetteTab = false,
+    this.selectedSilhouette,
+    this.onSilhouetteChanged,
   });
 
   @override
@@ -26,6 +37,63 @@ class CompositionRuleSelector extends StatefulWidget {
 
 class _CompositionRuleSelectorState extends State<CompositionRuleSelector> {
   bool _isExpanded = false;
+  _Tab _currentTab = _Tab.rule;
+
+  Widget _buildTabButton(String title, _Tab tab) {
+    final isSelected = _currentTab == tab;
+    return GestureDetector(
+      onTap: () => setState(() => _currentTab = tab),
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(
+              color: isSelected ? Colors.white : Colors.transparent,
+              width: 2.0,
+            ),
+          ),
+        ),
+        child: Text(
+          title,
+          style: TextStyle(
+            color: isSelected ? Colors.white : Colors.white54,
+            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+            fontSize: 14,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRuleList() {
+    return ListView.separated(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      itemCount: CompositionRuleRegistry.ordered.length,
+      separatorBuilder: (_, _) => const SizedBox(width: 8),
+      itemBuilder: (context, index) {
+        final type = CompositionRuleRegistry.ordered[index];
+        final rule = CompositionRuleRegistry.of(type);
+        final isSelected = type == widget.selected;
+        return _RuleChip(
+          label: rule.label,
+          icon: rule.icon,
+          selected: isSelected,
+          onTap: () {
+            widget.onChanged(type);
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildSilhouetteList() {
+    return SilhouetteSelector(
+      selected: widget.selectedSilhouette ?? SilhouetteType.none,
+      onChanged: widget.onSilhouetteChanged ?? (_) {},
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -47,7 +115,12 @@ class _CompositionRuleSelectorState extends State<CompositionRuleSelector> {
           clipBehavior: Clip.hardEdge,
           child: InkWell(
             onTap: () {
-              setState(() => _isExpanded = true);
+              setState(() {
+                _isExpanded = true;
+                if (!widget.showSilhouetteTab && _currentTab == _Tab.silhouette) {
+                  _currentTab = _Tab.rule;
+                }
+              });
               widget.onExpandedChanged?.call(true);
             },
             child: const Padding(
@@ -99,28 +172,24 @@ class _CompositionRuleSelectorState extends State<CompositionRuleSelector> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  if (widget.showSilhouetteTab) ...[
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _buildTabButton('구도', _Tab.rule),
+                        const SizedBox(width: 16),
+                        _buildTabButton('실루엣', _Tab.silhouette),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                  ] else ...[
+                    const SizedBox(height: 8),
+                  ],
                   SizedBox(
                     height: 40,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      itemCount: CompositionRuleRegistry.ordered.length,
-                      separatorBuilder: (_, _) => const SizedBox(width: 8),
-                      itemBuilder: (context, index) {
-                        final type = CompositionRuleRegistry.ordered[index];
-                        final rule = CompositionRuleRegistry.of(type);
-                        final isSelected = type == widget.selected;
-                        return _RuleChip(
-                          label: rule.label,
-                          icon: rule.icon,
-                          selected: isSelected,
-                          onTap: () {
-                            widget.onChanged(type);
-                          },
-                        );
-                      },
-                    ),
+                    child: _currentTab == _Tab.rule || !widget.showSilhouetteTab
+                        ? _buildRuleList()
+                        : _buildSilhouetteList(),
                   ),
                 ],
               ),
@@ -185,3 +254,4 @@ class _RuleChip extends StatelessWidget {
     );
   }
 }
+
