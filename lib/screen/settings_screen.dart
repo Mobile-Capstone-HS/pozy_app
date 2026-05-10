@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../theme/app_colors.dart';
+import '../widget/app_top_bar.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -9,94 +10,140 @@ class SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          '설정',
-          style: TextStyle(
-            fontFamily: 'Pretendard',
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-          ),
+      backgroundColor: AppColors.background,
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              child: AppTopBar(
+                title: '설정',
+                leadingIcon: Icons.arrow_back_ios_new_rounded,
+                onBack: () => Navigator.of(context).maybePop(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: ListView(
+                padding: EdgeInsets.zero,
+                children: [
+                  _buildModernSettingsItem(
+                    context,
+                    title: '권한 관리',
+                    description: '카메라, 사진 보관함, 위치 접근 권한을 확인하고 변경할 수 있어요.',
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const PermissionManagementScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  _buildSettingsDivider(),
+                  _buildModernSettingsItem(
+                    context,
+                    title: '서비스 이용약관',
+                    description: 'POZY 서비스 이용 조건과 기본 정책을 확인할 수 있어요.',
+                    onTap: () => _showTermsPage(
+                      context,
+                      '서비스 이용약관',
+                      _getTermsOfService(),
+                    ),
+                  ),
+                  _buildSettingsDivider(),
+                  _buildModernSettingsItem(
+                    context,
+                    title: '개인정보 처리방침',
+                    description: '수집되는 정보와 이용 목적, 보관 방식에 대해 안내해드려요.',
+                    onTap: () => _showTermsPage(
+                      context,
+                      '개인정보 처리방침',
+                      _getPrivacyPolicy(),
+                    ),
+                  ),
+                  _buildSettingsDivider(),
+                  _buildModernSettingsItem(
+                    context,
+                    title: '위치기반서비스 이용약관',
+                    description: '위치 정보 사용 범위와 관련 안내를 확인할 수 있어요.',
+                    onTap: () => _showTermsPage(
+                      context,
+                      '위치기반서비스 이용약관',
+                      _getLocationTerms(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
-        elevation: 0,
-      ),
-      backgroundColor: const Color(0xFFF6F7FB),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-        children: [
-          _buildSettingsItem(
-            context,
-            icon: Icons.admin_panel_settings_outlined,
-            title: '권한 관리',
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const PermissionManagementScreen(),
-                ),
-              );
-            },
-          ),
-          const Divider(height: 1, color: Colors.transparent),
-          _buildSettingsItem(
-            context,
-            icon: Icons.article_outlined,
-            title: '서비스 이용약관',
-            onTap: () => _showTermsPage(
-              context,
-              '서비스 이용약관',
-              _getTermsOfService(),
-            ),
-          ),
-          const Divider(height: 1, color: Colors.transparent),
-          _buildSettingsItem(
-            context,
-            icon: Icons.privacy_tip_outlined,
-            title: '개인정보 처리방침',
-            onTap: () => _showTermsPage(
-              context,
-              '개인정보 처리방침',
-              _getPrivacyPolicy(),
-            ),
-          ),
-          const Divider(height: 1, color: Colors.transparent),
-          _buildSettingsItem(
-            context,
-            icon: Icons.location_on_outlined,
-            title: '위치기반서비스 이용약관',
-            onTap: () => _showTermsPage(
-              context,
-              '위치기반서비스 이용약관',
-              _getLocationTerms(),
-            ),
-          ),
-        ],
       ),
     );
   }
 
-  Widget _buildSettingsItem(
+  Widget _buildModernSettingsItem(
     BuildContext context, {
-    required IconData icon,
     required String title,
+    String? description,
     required VoidCallback onTap,
   }) {
-    return Container(
-      color: Colors.white,
-      margin: const EdgeInsets.only(bottom: 2),
-      child: ListTile(
-        leading: Icon(icon, color: Colors.grey.shade700),
-        title: Text(
-          title,
-          style: const TextStyle(
-            fontFamily: 'Pretendard',
-            fontSize: 16,
-            fontWeight: FontWeight.w500,
-          ),
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 26, 18, 26),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontFamily: 'Pretendard',
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.primaryText,
+                    ),
+                  ),
+                  if (description != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      description,
+                      style: const TextStyle(
+                        fontFamily: 'Pretendard',
+                        fontSize: 14,
+                        height: 1.5,
+                        color: AppColors.secondaryText,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(width: 16),
+            const Padding(
+              padding: EdgeInsets.only(top: 2),
+              child: Icon(
+                Icons.chevron_right_rounded,
+                color: AppColors.lightText,
+                size: 28,
+              ),
+            ),
+          ],
         ),
-        trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-        onTap: onTap,
+      ),
+    );
+  }
+
+  Widget _buildSettingsDivider() {
+    return const Padding(
+      padding: EdgeInsets.symmetric(horizontal: 24),
+      child: Divider(
+        height: 1,
+        thickness: 1,
+        color: Color(0xFFF0F3F7),
       ),
     );
   }
@@ -318,18 +365,21 @@ class _PermissionManagementScreenState extends State<PermissionManagementScreen>
 
   void _showPermissionMessage(String message) {
     final messenger = ScaffoldMessenger.of(context);
-    messenger
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          duration: const Duration(seconds: 2),
-          action: SnackBarAction(
-            label: '설정 열기',
-            onPressed: openAppSettings,
-          ),
+    messenger.hideCurrentSnackBar();
+    final controller = messenger.showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 3),
+        action: SnackBarAction(
+          label: '설정 열기',
+          onPressed: openAppSettings,
         ),
-      );
+      ),
+    );
+    Future<void>.delayed(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      controller.close();
+    });
   }
 
   @override
