@@ -93,12 +93,23 @@ class FastScnnNativeBridge {
     final height = (map['height'] as num?)?.toInt() ?? 0;
     if (width <= 0 || height <= 0) return null;
 
-    final flat = (map['classMapFlat'] as List?)?.cast<num>();
-    if (flat == null || flat.length != width * height) return null;
+    final flatBytes = map['classMapBytes'];
+    final flatNumbers = (map['classMapFlat'] as List?)?.cast<num>();
+    if (flatBytes is! Uint8List &&
+        (flatNumbers == null || flatNumbers.length != width * height)) {
+      return null;
+    }
+    if (flatBytes is Uint8List && flatBytes.length != width * height) {
+      return null;
+    }
 
     final classMap = List<List<int>>.generate(
       height,
-      (y) => List<int>.generate(width, (x) => flat[y * width + x].toInt()),
+      (y) => List<int>.generate(width, (x) {
+        final index = y * width + x;
+        if (flatBytes is Uint8List) return flatBytes[index];
+        return flatNumbers![index].toInt();
+      }),
     );
     return SegmentationResult(classMap: classMap, height: height, width: width);
   }
