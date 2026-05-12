@@ -17,45 +17,49 @@ class PortraitIntentSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const items = [
-      (PortraitIntent.single, Icons.person_outline, '\uC0AC\uB78C'),
-      (
-        PortraitIntent.environmental,
-        Icons.landscape_outlined,
-        '\uD658\uACBD',
-      ),
-      (PortraitIntent.group, Icons.groups_outlined, '\uB2E4\uC911'),
+      (PortraitIntent.single, Icons.person_outline_rounded, '사람'),
+      (PortraitIntent.environmental, Icons.landscape_outlined, '환경'),
+      (PortraitIntent.group, Icons.groups_outlined, '다중'),
     ];
 
-    final chips = items.map((item) {
-      final isSelected = item.$1 == selected;
-      return _IntentChip(
-        icon: item.$2,
-        label: item.$3,
-        selected: isSelected,
-        compact: compact,
-        onTap: () => onChanged(item.$1),
-      );
-    }).toList(growable: false);
+    final entries = items
+        .map(
+          (item) => _IntentChip(
+            icon: item.$2,
+            label: item.$3,
+            selected: item.$1 == selected,
+            compact: compact,
+            onTap: () => onChanged(item.$1),
+          ),
+        )
+        .toList(growable: false);
 
     if (compact) {
       return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        padding: const EdgeInsets.all(4),
         decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.26),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
-        ),
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (var i = 0; i < chips.length; i++) ...[
-                if (i > 0) const SizedBox(width: 6),
-                chips[i],
-              ],
-            ],
+          color: const Color(0xFFF8FBFF).withValues(alpha: 0.94),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: const Color(0xFFBFDBFE).withValues(alpha: 0.34),
           ),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x160F172A),
+              blurRadius: 12,
+              offset: Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (var i = 0; i < entries.length; i++) ...[
+              if (i > 0) const SizedBox(height: 6),
+              entries[i],
+            ],
+          ],
         ),
       );
     }
@@ -65,9 +69,9 @@ class PortraitIntentSelector extends StatelessWidget {
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 12),
-        itemCount: chips.length,
+        itemCount: entries.length,
         separatorBuilder: (_, _) => const SizedBox(width: 8),
-        itemBuilder: (context, index) => chips[index],
+        itemBuilder: (context, index) => entries[index],
       ),
     );
   }
@@ -91,32 +95,32 @@ class _IntentChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bg = selected
-        ? const Color(0xFFEAF2FF)
-        : Colors.black.withValues(alpha: 0.35);
-    final fg = selected ? const Color(0xFF111827) : Colors.white;
+        ? const Color(0xFFBFDBFE)
+        : const Color(0xFFFDFEFF);
+    final fg = selected ? const Color(0xFF10367D) : const Color(0xFF1F2937);
 
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
         padding: EdgeInsets.symmetric(
-          horizontal: compact ? 11 : 12,
-          vertical: compact ? 6 : 8,
+          horizontal: compact ? 12 : 12,
+          vertical: compact ? 10 : 8,
         ),
         decoration: BoxDecoration(
           color: bg,
-          borderRadius: BorderRadius.circular(compact ? 14 : 20),
+          borderRadius: BorderRadius.circular(compact ? 10 : 20),
           border: Border.all(
             color: selected
-                ? Colors.white
-                : Colors.white.withValues(alpha: 0.25),
+                ? const Color(0xFF93C5FD)
+                : const Color(0xFFE5EEF8),
           ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: compact ? 14 : 16, color: fg),
-            SizedBox(width: compact ? 4 : 6),
+            Icon(icon, size: compact ? 17 : 16, color: fg),
+            SizedBox(width: compact ? 8 : 6),
             Text(
               label,
               style: TextStyle(
@@ -125,6 +129,14 @@ class _IntentChip extends StatelessWidget {
                 fontWeight: FontWeight.w700,
               ),
             ),
+            if (compact && selected) ...[
+              const SizedBox(width: 10),
+              const Icon(
+                Icons.check_rounded,
+                size: 17,
+                color: Color(0xFF10367D),
+              ),
+            ],
           ],
         ),
       ),

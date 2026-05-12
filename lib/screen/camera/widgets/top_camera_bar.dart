@@ -12,6 +12,7 @@ class TopCameraBar extends StatelessWidget {
   final bool isRoiLocked;
   final VoidCallback? onToggleRoiLock;
   final Widget? badge;
+  final Widget? trailing;
 
   const TopCameraBar({
     super.key,
@@ -24,63 +25,72 @@ class TopCameraBar extends StatelessWidget {
     required this.isRoiLocked,
     required this.onToggleRoiLock,
     this.badge,
+    this.trailing,
   });
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.sizeOf(context).width;
-    final lockIcon = isRoiLocked
-        ? Icons.lock_rounded
-        : isDrawingRoi
-        ? Icons.close_rounded
-        : Icons.center_focus_weak_rounded;
-    final lockTint = isRoiLocked
-        ? const Color(0xFF38BDF8)
-        : isDrawingRoi
-        ? const Color(0xFFFBBF24)
-        : null;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isNarrow = constraints.maxWidth <= 360;
+        final badgeMaxWidth = constraints.maxWidth * (isNarrow ? 0.48 : 0.56);
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        GlassIconButton(icon: Icons.arrow_back_ios_new_rounded, onTap: onBack),
-        if (badge != null) ...[
-          const SizedBox(width: 10),
-          Expanded(
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: screenWidth * 0.58),
-                child: badge!,
-              ),
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            GlassIconButton(
+              icon: Icons.arrow_back_ios_new_rounded,
+              onTap: onBack,
+              diameter: 36,
             ),
-          ),
-        ] else
-          const Spacer(),
-        if (onToggleRoiLock != null) ...[
-          const SizedBox(width: 10),
-          GlassIconButton(
-            icon: lockIcon,
-            onTap: onToggleRoiLock!,
-            tint: lockTint,
-          ),
-        ],
-        if (onToggleTorch != null) ...[
-          const SizedBox(width: 8),
-          GlassIconButton(
-            icon: torchOn ? Icons.flash_on_rounded : Icons.flash_off_rounded,
-            onTap: onToggleTorch!,
-            tint: torchOn ? const Color(0xFFFBBF24) : null,
-          ),
-        ],
-        const SizedBox(width: 8),
-        GlassIconButton(
-          icon: Icons.timer_outlined,
-          onTap: onCycleTimer,
-          tint: timerSeconds > 0 ? const Color(0xFF38BDF8) : null,
-          label: timerSeconds > 0 ? '${timerSeconds}s' : null,
-        ),
-      ],
+            const SizedBox(width: 8),
+            Expanded(
+              child: badge == null
+                  ? const SizedBox.shrink()
+                  : Align(
+                      alignment: Alignment.centerLeft,
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(maxWidth: badgeMaxWidth),
+                        child: badge!,
+                      ),
+                    ),
+            ),
+            if (timerSeconds > 0)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FBFF).withValues(alpha: 0.92),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: const Color(0xFF38BDF8).withValues(alpha: 0.18),
+                  ),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x120F172A),
+                      blurRadius: 10,
+                      offset: Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: Text(
+                  '${timerSeconds}s',
+                  style: const TextStyle(
+                    color: Color(0xFF1D4ED8),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            if (trailing != null) ...[
+              if (timerSeconds > 0) const SizedBox(width: 8),
+              Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: trailing!,
+              ),
+            ],
+          ],
+        );
+      },
     );
   }
 }

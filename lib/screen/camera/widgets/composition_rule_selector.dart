@@ -1,24 +1,22 @@
 import 'dart:ui';
+
 import 'package:flutter/material.dart';
 
+import '../../../coaching/portrait/silhouette_shapes.dart';
 import '../../../composition/composition_rule.dart';
 import '../../../composition/composition_rule_registry.dart';
-import '../../../coaching/portrait/silhouette_shapes.dart';
 import 'silhouette_selector.dart';
 
 enum _Tab { rule, silhouette }
 
-/// 카메라 상단에 표시되는 구도 규칙 선택 칩 리스트.
-///
-/// 인물/객체 모드에서만 노출. 풍경 모드는 자동 감지 사용.
 class CompositionRuleSelector extends StatefulWidget {
   final CompositionRuleType selected;
   final ValueChanged<CompositionRuleType> onChanged;
   final ValueChanged<bool>? onExpandedChanged;
-
   final bool showSilhouetteTab;
   final SilhouetteType? selectedSilhouette;
   final ValueChanged<SilhouetteType>? onSilhouetteChanged;
+  final bool initiallyExpanded;
 
   const CompositionRuleSelector({
     super.key,
@@ -28,6 +26,7 @@ class CompositionRuleSelector extends StatefulWidget {
     this.showSilhouetteTab = false,
     this.selectedSilhouette,
     this.onSilhouetteChanged,
+    this.initiallyExpanded = false,
   });
 
   @override
@@ -39,163 +38,230 @@ class _CompositionRuleSelectorState extends State<CompositionRuleSelector> {
   bool _isExpanded = false;
   _Tab _currentTab = _Tab.rule;
 
-  Widget _buildTabButton(String title, _Tab tab) {
-    final isSelected = _currentTab == tab;
-    return GestureDetector(
-      onTap: () => setState(() => _currentTab = tab),
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(
-              color: isSelected ? Colors.white : Colors.transparent,
-              width: 2.0,
+  @override
+  void initState() {
+    super.initState();
+    _isExpanded = widget.initiallyExpanded;
+  }
+
+  String _tabTitle(_Tab tab) {
+    switch (tab) {
+      case _Tab.rule:
+        return '구도';
+      case _Tab.silhouette:
+        return '포즈';
+    }
+  }
+
+  String _silhouetteLabel(SilhouetteType type) {
+    switch (type) {
+      case SilhouetteType.none:
+        return '없음';
+      case SilhouetteType.standing:
+        return '전신';
+      case SilhouetteType.halfBody:
+        return '상반신';
+      case SilhouetteType.sitting:
+        return '앉은 자세';
+    }
+  }
+
+  void _expand() {
+    setState(() {
+      _isExpanded = true;
+      if (!widget.showSilhouetteTab && _currentTab == _Tab.silhouette) {
+        _currentTab = _Tab.rule;
+      }
+    });
+    widget.onExpandedChanged?.call(true);
+  }
+
+  void _collapse() {
+    setState(() => _isExpanded = false);
+    widget.onExpandedChanged?.call(false);
+  }
+
+  Widget _buildSummaryPill() {
+    final ruleLabel = CompositionRuleRegistry.of(widget.selected).label;
+    final silhouette = widget.selectedSilhouette ?? SilhouetteType.none;
+    final summary = widget.showSilhouetteTab
+        ? '$ruleLabel · ${_silhouetteLabel(silhouette)}'
+        : ruleLabel;
+
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(14),
+      clipBehavior: Clip.hardEdge,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: _expand,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FBFF).withValues(alpha: 0.95),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: const Color(0xFF38BDF8).withValues(alpha: 0.20),
             ),
           ),
-        ),
-        child: Text(
-          title,
-          style: TextStyle(
-            color: isSelected ? Colors.white : Colors.white54,
-            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-            fontSize: 14,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.tune_rounded, size: 12, color: Color(0xFF1D4ED8)),
+              const SizedBox(width: 4),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 128),
+                child: Text(
+                  summary,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF111827),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 2),
+              const Icon(
+                Icons.keyboard_arrow_down_rounded,
+                size: 15,
+                color: Color(0xFF6B7280),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  Widget _buildRuleList() {
-    return ListView.separated(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      itemCount: CompositionRuleRegistry.ordered.length,
-      separatorBuilder: (_, _) => const SizedBox(width: 8),
-      itemBuilder: (context, index) {
-        final type = CompositionRuleRegistry.ordered[index];
-        final rule = CompositionRuleRegistry.of(type);
-        final isSelected = type == widget.selected;
-        return _RuleChip(
-          label: rule.label,
-          icon: rule.icon,
-          selected: isSelected,
-          onTap: () {
-            widget.onChanged(type);
-          },
-        );
-      },
+  Widget _buildTabButton(_Tab tab) {
+    final isSelected = _currentTab == tab;
+    return GestureDetector(
+      onTap: () => setState(() => _currentTab = tab),
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        curve: Curves.easeOut,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+          decoration: BoxDecoration(
+            color: isSelected
+              ? const Color(0xFFBFDBFE).withValues(alpha: 0.72)
+              : const Color(0xFFF8FBFF),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected
+                ? const Color(0xFF93C5FD)
+                : const Color(0xFFE5EEF8),
+          ),
+        ),
+        child: Text(
+          _tabTitle(tab),
+          style: TextStyle(
+            color: isSelected
+                ? const Color(0xFF1D4ED8)
+                : const Color(0xFF6B7280),
+            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+            fontSize: 10,
+          ),
+        ),
+      ),
     );
   }
 
-  Widget _buildSilhouetteList() {
-    return SilhouetteSelector(
-      selected: widget.selectedSilhouette ?? SilhouetteType.none,
-      onChanged: widget.onSilhouetteChanged ?? (_) {},
+  Widget _buildRuleOptions() {
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: CompositionRuleRegistry.ordered.map((type) {
+        final rule = CompositionRuleRegistry.of(type);
+        return _RuleChip(
+          label: rule.label,
+          icon: rule.icon,
+          selected: type == widget.selected,
+          onTap: () => widget.onChanged(type),
+        );
+      }).toList(),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final glassDecoration = BoxDecoration(
-      color: Colors.black.withValues(alpha: 0.3),
-      borderRadius: BorderRadius.circular(24),
-      border: Border.all(
-        color: Colors.white.withValues(alpha: 0.25),
-        width: 1.0,
-      ),
-    );
+    final activeTab = widget.showSilhouetteTab ? _currentTab : _Tab.rule;
 
     if (!_isExpanded) {
       return Align(
-        alignment: Alignment.center,
-        child: Material(
-          color: Colors.transparent,
-          shape: const CircleBorder(),
-          clipBehavior: Clip.hardEdge,
-          child: InkWell(
-            onTap: () {
-              setState(() {
-                _isExpanded = true;
-                if (!widget.showSilhouetteTab && _currentTab == _Tab.silhouette) {
-                  _currentTab = _Tab.rule;
-                }
-              });
-              widget.onExpandedChanged?.call(true);
-            },
-            child: const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              child: Icon(
-                Icons.keyboard_arrow_down_rounded,
-                color: Colors.white,
-                size: 30,
-                shadows: [
-                  Shadow(
-                    color: Colors.black54,
-                    blurRadius: 4,
-                    offset: Offset(0, 1),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
+        alignment: Alignment.centerLeft,
+        child: _buildSummaryPill(),
       );
     }
 
     return Align(
-      alignment: Alignment.center,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(24),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-            child: Container(
-              padding: const EdgeInsets.only(top: 4, bottom: 10),
-              decoration: glassDecoration,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  GestureDetector(
-                    onTap: () {
-                      setState(() => _isExpanded = false);
-                      widget.onExpandedChanged?.call(false);
-                    },
+      alignment: Alignment.centerLeft,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(18),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 220),
+            padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FBFF).withValues(alpha: 0.92),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: const Color(0xFF38BDF8).withValues(alpha: 0.16),
+              ),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x140F172A),
+                  blurRadius: 18,
+                  offset: Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: GestureDetector(
+                    onTap: _collapse,
                     behavior: HitTestBehavior.opaque,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 40,
-                        vertical: 2,
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(10),
                       ),
                       child: const Icon(
-                        Icons.keyboard_arrow_up_rounded,
-                        color: Colors.white,
-                        size: 28,
+                        Icons.close_rounded,
+                        color: Color(0xFF6B7280),
+                        size: 16,
                       ),
                     ),
                   ),
-                  if (widget.showSilhouetteTab) ...[
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        _buildTabButton('구도', _Tab.rule),
-                        const SizedBox(width: 16),
-                        _buildTabButton('실루엣', _Tab.silhouette),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                  ] else ...[
-                    const SizedBox(height: 8),
-                  ],
-                  SizedBox(
-                    height: 40,
-                    child: _currentTab == _Tab.rule || !widget.showSilhouetteTab
-                        ? _buildRuleList()
-                        : _buildSilhouetteList(),
+                ),
+                if (widget.showSilhouetteTab) ...[
+                  const SizedBox(height: 2),
+                  Wrap(
+                    spacing: 4,
+                    runSpacing: 4,
+                    children: [
+                      _buildTabButton(_Tab.rule),
+                      _buildTabButton(_Tab.silhouette),
+                    ],
                   ),
+                  const SizedBox(height: 5),
                 ],
-              ),
+                if (activeTab == _Tab.rule)
+                  _buildRuleOptions()
+                else
+                  SilhouetteSelector(
+                    selected: widget.selectedSilhouette ?? SilhouetteType.none,
+                    onChanged: widget.onSilhouetteChanged ?? (_) {},
+                  ),
+              ],
             ),
           ),
         ),
@@ -220,34 +286,34 @@ class _RuleChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bg = selected
-        ? Colors.white.withValues(alpha: 0.85)
-        : Colors.black.withValues(alpha: 0.35);
-    final fg = selected ? Colors.black : Colors.white;
+        ? const Color(0xFFBFDBFE).withValues(alpha: 0.78)
+        : const Color(0xFFF8FBFF);
+    final fg = selected ? const Color(0xFF1D4ED8) : const Color(0xFF111827);
+
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
         decoration: BoxDecoration(
           color: bg,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: selected
-                ? Colors.white
-                : Colors.white.withValues(alpha: 0.25),
-            width: 1.0,
+                ? const Color(0xFF93C5FD)
+                : const Color(0xFFE5EEF8),
           ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 16, color: fg),
-            const SizedBox(width: 6),
+            Icon(icon, size: 14, color: fg),
+            const SizedBox(width: 4),
             Text(
               label,
               style: TextStyle(
                 color: fg,
-                fontSize: 12,
+                fontSize: 11,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -257,4 +323,3 @@ class _RuleChip extends StatelessWidget {
     );
   }
 }
-

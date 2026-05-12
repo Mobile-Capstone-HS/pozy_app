@@ -184,7 +184,6 @@ class PortraitOverlayPainter extends CustomPainter {
         y: footY,
         width: size.width,
         color: _Colors.greenSoft,
-        label: '발끝 여유',
       );
     } else if (isKneeShot) {
       final kneeY = size.height * 0.82;
@@ -193,7 +192,6 @@ class PortraitOverlayPainter extends CustomPainter {
         y: kneeY,
         width: size.width,
         color: _Colors.yellowSoft,
-        label: '무릎선 피하기',
       );
     }
 
@@ -204,7 +202,6 @@ class PortraitOverlayPainter extends CustomPainter {
         y: headroomTop * size.height,
         width: size.width,
         color: const Color(0x55FFFFFF),
-        label: '머리 여유',
       );
     }
   }
@@ -214,7 +211,6 @@ class PortraitOverlayPainter extends CustomPainter {
     required double y,
     required double width,
     required Color color,
-    required String label,
   }) {
     canvas.drawLine(
       Offset(width * 0.16, y),
@@ -224,7 +220,6 @@ class PortraitOverlayPainter extends CustomPainter {
         ..strokeWidth = 1.5
         ..strokeCap = StrokeCap.round,
     );
-    _drawLabel(canvas, label, Offset(width * 0.5, y - 14), color);
   }
 
   // ─── 구도 그리드 (사용자 선택 규칙 기반) ───────────

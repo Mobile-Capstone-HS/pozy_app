@@ -72,19 +72,19 @@ class CompositionGuideResolver {
       if (current > desired) {
         return const CompositionGuideResult(
           state: CompositionGuideState.moveDown,
-          message: '카메라를 조금 내려주세요',
+          message: '카메라를 조금 내려보세요',
         );
       }
       return const CompositionGuideResult(
         state: CompositionGuideState.moveUp,
-        message: '카메라를 조금 들어주세요',
+        message: '카메라를 조금 올려보세요',
       );
     }
 
     if (i.horizonValid && i.bestHorizonThirdDistance <= kHorizonGoodDistance) {
       return const CompositionGuideResult(
         state: CompositionGuideState.aligned,
-        message: '좋아요. 이미 가까운 3분할선에 충분히 맞는 구도예요.',
+        message: '좋아요. 수평선이 3분할선 근처에 안정적으로 있어요.',
       );
     }
 
@@ -92,13 +92,13 @@ class CompositionGuideResolver {
       if (i.skyRatio < kRatioLowThreshold) {
         return const CompositionGuideResult(
           state: CompositionGuideState.adjustSkyMore,
-          message: '카메라를 조금 들어서 하늘을 더 담아보세요',
+          message: '카메라를 조금 올려 하늘을 더 담아보세요',
         );
       }
       if (i.skyRatio > kRatioHighThreshold) {
         return const CompositionGuideResult(
           state: CompositionGuideState.adjustGroundMore,
-          message: '카메라를 조금 내려서 지면을 더 담아보세요',
+          message: '카메라를 조금 내려 지면을 더 담아보세요',
         );
       }
     }
@@ -106,20 +106,20 @@ class CompositionGuideResolver {
     if (_isSkyNearThird(i.skyRatio)) {
       return const CompositionGuideResult(
         state: CompositionGuideState.aligned,
-        message: '하늘 분포가 3분할선 근처에 있어 지금 구도가 잘 맞아요',
+        message: '하늘 비율이 3분할선 근처에 있어 현재 구도가 안정적이에요',
       );
     }
 
     if (i.compositionQualityScore >= kAlignedScoreThreshold) {
       return const CompositionGuideResult(
         state: CompositionGuideState.aligned,
-        message: '좋아요, 지금 구도로 촬영해보세요',
+        message: '좋아요. 지금 찍기 좋아요.',
       );
     }
 
     return const CompositionGuideResult(
       state: CompositionGuideState.nearlyAligned,
-      message: '3분할선을 보면서 수평선 위치를 조금만 더 맞춰보세요',
+      message: '3분할선을 보면서 수평선 위치를 조금만 더 맞춰보세요.',
     );
   }
 

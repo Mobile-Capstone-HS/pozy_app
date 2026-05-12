@@ -15,6 +15,7 @@ import 'package:pose_camera_app/composition/composition_rule.dart';
 import 'package:pose_camera_app/composition/composition_rule_registry.dart';
 import 'package:pose_camera_app/screen/camera/shooting_mode.dart';
 import 'package:pose_camera_app/screen/camera/widgets/bottom_camera_controls.dart';
+import 'package:pose_camera_app/screen/camera/widgets/camera_side_tool_bar.dart';
 import 'package:pose_camera_app/screen/camera/widgets/composition_grid_painter.dart';
 import 'package:pose_camera_app/screen/camera/widgets/composition_rule_selector.dart';
 import 'package:pose_camera_app/screen/camera/widgets/portrait_intent_selector.dart';
@@ -74,11 +75,11 @@ class _CameraScreenState extends State<CameraScreen> {
   static const int _portraitNativeFaceIntervalFrames = 6;
   static const double _screenSideInset = 16;
   static const double _topBarTop = 8;
-  static const double _overlayTop = 68;
+  static const double _overlayTop = 76;
   static const double _objectSelectionHintTop = 110;
-  static const double _coachingBubbleTopCollapsed = 120;
-  static const double _coachingBubbleTopExpanded = 176;
-  static const double _portraitExpandedBubbleTopOffset = 28;
+  static const double _coachingBubbleTopCollapsed = 72;
+  static const double _coachingBubbleTopExpanded = 124;
+  static const double _portraitExpandedBubbleTopOffset = 10;
   static const double _coachingBubbleRightInset = 12;
   static const double _groupCounterLeftInset = 16;
   static const double _sampleTestButtonLeftInset = 16;
@@ -118,6 +119,8 @@ class _CameraScreenState extends State<CameraScreen> {
   bool _torchOn = false;
   bool _showPortraitDebugOverlay = false;
   bool _isRuleSelectorExpanded = false;
+  bool _showSideToolSelector = false;
+  bool _showPortraitIntentSelector = false;
 
   bool _isDrawingRoi = false;
   Offset? _roiDragStart;
@@ -1048,6 +1051,9 @@ class _CameraScreenState extends State<CameraScreen> {
       _lightDirection = LightDirection.unknown;
       _focusPoint = null;
       _showFocusIndicator = false;
+      _showSideToolSelector = false;
+      _isRuleSelectorExpanded = false;
+      _showPortraitIntentSelector = false;
       _tiltX = 0.0;
       _gravX = 0.0;
       _gravY = 9.8;
@@ -1099,6 +1105,9 @@ class _CameraScreenState extends State<CameraScreen> {
       _landscapeDecision = null;
       _landscapeOverlayAdvice = const LandscapeOverlayAdvice.none();
       _selectedSilhouette = SilhouetteType.none;
+      _showSideToolSelector = false;
+      _isRuleSelectorExpanded = false;
+      _showPortraitIntentSelector = false;
     });
   }
 
@@ -1539,6 +1548,217 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
+  String? _bottomShotTypeLabel() {
+    if (!_isPortraitMode) return null;
+
+    final label = _shotTypeLabel();
+    if (label.isEmpty || label == '\uC778\uBB3C \uCF54\uCE6D \uD65C\uC131') {
+      return null;
+    }
+
+    if (_portraitIntent == portrait.PortraitIntent.environmental ||
+        _portraitIntent == portrait.PortraitIntent.group) {
+      return label;
+    }
+
+    switch (_portraitOverlayData.shotType) {
+      case portrait.ShotType.upperBody:
+      case portrait.ShotType.waistShot:
+      case portrait.ShotType.kneeShot:
+      case portrait.ShotType.fullBody:
+      case portrait.ShotType.environmental:
+      case portrait.ShotType.groupShot:
+        return label;
+      case portrait.ShotType.extremeCloseUp:
+      case portrait.ShotType.closeUp:
+      case portrait.ShotType.headShot:
+      case portrait.ShotType.unknown:
+        return null;
+    }
+  }
+
+  void _toggleSideToolSelector() {
+    setState(() {
+      _showPortraitIntentSelector = false;
+      _showSideToolSelector = !_showSideToolSelector;
+      _isRuleSelectorExpanded = _showSideToolSelector;
+    });
+  }
+
+  void _togglePortraitIntentSelector() {
+    if (!_isPortraitMode) return;
+
+    setState(() {
+      _showSideToolSelector = false;
+      _isRuleSelectorExpanded = false;
+      _showPortraitIntentSelector = !_showPortraitIntentSelector;
+    });
+  }
+
+  void _setPortraitIntent(portrait.PortraitIntent intent) {
+    if (intent == _portraitIntent) {
+      setState(() => _showPortraitIntentSelector = false);
+      return;
+    }
+
+    setState(() {
+      _portraitIntent = intent;
+      _showPortraitIntentSelector = false;
+    });
+    _portraitHandler.setIntent(intent);
+    _resetPortraitState();
+  }
+
+  (IconData, String) _portraitIntentButtonMeta() {
+    switch (_portraitIntent) {
+      case portrait.PortraitIntent.single:
+        return (Icons.person_outline_rounded, '사람');
+      case portrait.PortraitIntent.environmental:
+        return (Icons.landscape_outlined, '환경');
+      case portrait.PortraitIntent.group:
+        return (Icons.groups_outlined, '다중');
+    }
+  }
+
+  List<CameraSideToolAction> _buildSideToolActions() {
+    final actions = <CameraSideToolAction>[];
+
+    if (_isPortraitMode) {
+      final meta = _portraitIntentButtonMeta();
+      actions.add(
+        CameraSideToolAction(
+          icon: meta.$1,
+          label: meta.$2,
+          onTap: _togglePortraitIntentSelector,
+          active: _showPortraitIntentSelector,
+          activeColor: const Color(0xFFE5E7EB),
+        ),
+      );
+    }
+
+    if (!_isFrontCamera) {
+      actions.add(
+        CameraSideToolAction(
+          icon: _torchOn ? Icons.flash_on_rounded : Icons.flash_off_rounded,
+          label: '플래시',
+          onTap: _toggleTorch,
+          active: _torchOn,
+          activeColor: const Color(0xFFFBBF24),
+        ),
+      );
+    }
+
+    actions.add(
+      CameraSideToolAction(
+        icon: Icons.timer_outlined,
+        label: '타이머',
+        onTap: _cycleTimer,
+        active: _timerSeconds > 0,
+      ),
+    );
+
+    if (_isObjectMode) {
+      actions.add(
+        CameraSideToolAction(
+          icon: _lockedRoi != null
+              ? Icons.lock_rounded
+              : _isDrawingRoi
+              ? Icons.close_rounded
+              : Icons.center_focus_weak_rounded,
+          label: '고정',
+          onTap: _toggleRoiLock,
+          active: _lockedRoi != null,
+        ),
+      );
+    }
+
+    if (_isLandscapeMode) {
+      actions.add(
+        CameraSideToolAction(
+          icon: Icons.science_outlined,
+          label: '테스트',
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const LandscapeAssetTestScreen(),
+              ),
+            );
+          },
+        ),
+      );
+    }
+
+    return actions;
+  }
+
+  Widget _buildCompositionTrigger(bool isNarrowScreen) {
+    final active = _showSideToolSelector;
+    final label = _isPortraitMode ? '구도·포즈' : '구도';
+
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(13),
+      clipBehavior: Clip.hardEdge,
+      child: InkWell(
+        onTap: _toggleSideToolSelector,
+        borderRadius: BorderRadius.circular(13),
+        child: Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: isNarrowScreen ? 8 : 9,
+            vertical: 5.5,
+          ),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FBFF).withValues(
+              alpha: active ? 0.96 : 0.92,
+            ),
+            borderRadius: BorderRadius.circular(13),
+            border: Border.all(
+              color: active
+                  ? const Color(0xFF38BDF8).withValues(alpha: 0.34)
+                  : const Color(0xFF38BDF8).withValues(alpha: 0.18),
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x120F172A),
+                blurRadius: 12,
+                offset: Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                _isPortraitMode
+                    ? Icons.accessibility_new_rounded
+                    : Icons.grid_view_rounded,
+                size: 13,
+                color: Color(0xFF1D4ED8),
+              ),
+              const SizedBox(width: 4),
+              const Text(
+                '구도',
+                style: TextStyle(
+                  color: Color(0xFF111827),
+                  fontSize: 9.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(width: 2),
+              Icon(
+                active
+                    ? Icons.keyboard_arrow_up_rounded
+                    : Icons.keyboard_arrow_down_rounded,
+                size: 14,
+                color: Color(0xFF6B7280),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildPortraitGroupCounter() {
     final count = _portraitOverlayData.groupPersonCount;
     final hidden = _portraitOverlayData.groupFaceHiddenCount;
@@ -1675,10 +1895,24 @@ class _CameraScreenState extends State<CameraScreen> {
         );
       }
     }
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final isNarrowScreen = screenWidth <= 360;
+    final sideToolLeftInset = isNarrowScreen ? 14.0 : 16.0;
+    final sideToolTopInset = isNarrowScreen ? 138.0 : 148.0;
+    final selectorTopInset = isNarrowScreen ? 50.0 : 54.0;
+    final portraitSelectorTopInset = sideToolTopInset;
+    final selectorRightInset = isNarrowScreen ? 18.0 : 22.0;
+    final portraitSelectorLeftInset = sideToolLeftInset + 56.0;
+    final selectorPanelWidth = math.min(screenWidth * 0.58, 248.0);
     final bubbleTop = _isRuleSelectorExpanded
         ? _coachingBubbleTopExpanded +
-              (_isPortraitMode ? _portraitExpandedBubbleTopOffset : 0)
+              (_isPortraitMode ? _portraitExpandedBubbleTopOffset : 0) +
+              (!_isPortraitMode ? 8 : 0)
         : _coachingBubbleTopCollapsed;
+    final bubbleRightInset = isNarrowScreen ? 18.0 : 22.0;
+    final bubbleMaxWidth = math.min(screenWidth * 0.58, 280.0);
+    final showCoachingBubble =
+        !_showSideToolSelector && !(_isObjectMode && _isDrawingRoi);
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
@@ -1789,56 +2023,63 @@ class _CameraScreenState extends State<CameraScreen> {
             if (_isObjectMode && _isDrawingRoi)
               Positioned(
                 top: _objectSelectionHintTop,
-                left: _bottomControlsHorizontalInset,
-                right: _bottomControlsHorizontalInset,
+                left: sideToolLeftInset,
                 child: IgnorePointer(
-                  child: Center(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.56),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.16),
                       ),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.65),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: const Text(
-                        '\uD53C\uC0AC\uCCB4\uB97C \uD0ED\uD558\uAC70\uB098 \uB4DC\uB798\uADF8\uD574 \uC120\uD0DD\uD558\uC138\uC694',
-                        style: TextStyle(color: Colors.white, fontSize: 13),
+                    ),
+                    child: const Text(
+                      '\uD53C\uC0AC\uCCB4\uB97C \uD0ED\uD558\uAC70\uB098 \uB4DC\uB798\uADF8\uD574 \uC120\uD0DD\uD558\uC138\uC694',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
                 ),
               ),
             if (!_isLandscapeMode) _buildFocusIndicator(),
-            AnimatedPositioned(
-              duration: const Duration(milliseconds: 250),
-              curve: Curves.easeOutCubic,
-              top: bubbleTop,
-              right: _coachingBubbleRightInset,
-              child: IgnorePointer(
-                child: CoachingSpeechBubble(
-                  guidance: _isPortraitMode
-                      ? _portraitCoaching.message
-                      : _guidance,
-                  subGuidance: _isPortraitMode
-                      ? _portraitSubGuidance()
-                      : _subGuidance,
-                  level: _isPortraitMode
-                      ? _portraitCoachingLevel()
-                      : _coachingLevel,
-                  score: _isPortraitMode ? null : _coachingScore,
-                  directionHint: _isPortraitMode
-                      ? DirectionHint.none
-                      : _directionHint,
-                  lightDirection: _isPortraitMode
-                      ? LightDirection.unknown
-                      : _lightDirection,
+            if (showCoachingBubble)
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeOutCubic,
+                top: bubbleTop,
+                right: bubbleRightInset,
+                child: IgnorePointer(
+                  child: CoachingSpeechBubble(
+                    guidance: _isPortraitMode
+                        ? _portraitCoaching.message
+                        : _guidance,
+                    subGuidance: _isPortraitMode
+                        ? _portraitSubGuidance()
+                        : _subGuidance,
+                    level: _isPortraitMode
+                        ? _portraitCoachingLevel()
+                        : _coachingLevel,
+                    score: null,
+                    directionHint: _isPortraitMode
+                        ? DirectionHint.none
+                        : _directionHint,
+                    lightDirection: _isPortraitMode
+                        ? LightDirection.unknown
+                        : _lightDirection,
+                    maxWidth: bubbleMaxWidth,
+                  ),
                 ),
               ),
-            ),
             if (_isPortraitMode &&
-                _portraitIntent == portrait.PortraitIntent.group)
+                _portraitIntent == portrait.PortraitIntent.group &&
+                !_showSideToolSelector)
               AnimatedPositioned(
                 duration: const Duration(milliseconds: 250),
                 curve: Curves.easeOutCubic,
@@ -1853,81 +2094,76 @@ class _CameraScreenState extends State<CameraScreen> {
               child: TopCameraBar(
                 onBack: widget.onBack,
                 torchOn: _torchOn,
-                onToggleTorch: (_isFrontCamera || _isLandscapeMode)
-                    ? null
-                    : _toggleTorch,
+                onToggleTorch: _isFrontCamera ? null : _toggleTorch,
                 timerSeconds: _timerSeconds,
                 onCycleTimer: _cycleTimer,
                 isDrawingRoi: _isDrawingRoi,
                 isRoiLocked: _lockedRoi != null,
                 onToggleRoiLock: _isObjectMode ? _toggleRoiLock : null,
-                badge: _isPortraitMode
-                    ? PortraitIntentSelector(
-                        selected: _portraitIntent,
-                        compact: true,
-                        onChanged: (intent) {
-                          if (intent == _portraitIntent) return;
-                          setState(() => _portraitIntent = intent);
-                          _portraitHandler.setIntent(intent);
-                          _resetPortraitState();
-                        },
-                      )
-                    : null,
+                badge: null,
+                trailing: _buildCompositionTrigger(isNarrowScreen),
               ),
             ),
-            // 구도 규칙 selector — 인물/객체 모드만. 풍경은 자동 감지 사용.
-            if (_isLandscapeMode)
+            if (_isPortraitMode && _showPortraitIntentSelector)
               Positioned(
-                top: _overlayTop,
-                left: _sampleTestButtonLeftInset,
-                child: FilledButton.tonalIcon(
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const LandscapeAssetTestScreen(),
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.science_outlined, size: 18),
-                  label: const Text('샘플 테스트'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Colors.black.withValues(alpha: 0.55),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 10,
-                    ),
+                top: portraitSelectorTopInset,
+                left: portraitSelectorLeftInset,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: math.min(screenWidth * 0.46, 184.0),
+                  ),
+                  child: PortraitIntentSelector(
+                    selected: _portraitIntent,
+                    compact: true,
+                    onChanged: _setPortraitIntent,
                   ),
                 ),
               ),
-            if (!_isLandscapeMode)
+            // 구도 규칙 selector — 인물/객체 모드만. 풍경은 자동 감지 사용.
+            if (_showSideToolSelector)
               Positioned(
-                top: _overlayTop,
-                left: _bottomControlsHorizontalInset,
-                right: _bottomControlsHorizontalInset,
-                child: CompositionRuleSelector(
-                  selected: _selectedRule,
-                  onExpandedChanged: (expanded) =>
-                      setState(() => _isRuleSelectorExpanded = expanded),
-                  onChanged: (type) {
-                    if (type == _selectedRule) return;
-                    setState(() => _selectedRule = type);
-                    // Phase 4에서 코칭 엔진에도 전달.
-                    _sceneCoach.setRule(_activeRule);
-                    _portraitHandler.setRule(_activeRule);
-                  },
-                  showSilhouetteTab: _isPortraitMode,
-                  selectedSilhouette: _selectedSilhouette,
-                  onSilhouetteChanged: (type) {
-                    if (type == _selectedSilhouette) return;
-                    setState(() => _selectedSilhouette = type);
-                  },
+                top: selectorTopInset,
+                right: selectorRightInset,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: selectorPanelWidth),
+                  child: CompositionRuleSelector(
+                    selected: _selectedRule,
+                    initiallyExpanded: true,
+                    onExpandedChanged: (expanded) => setState(() {
+                      _isRuleSelectorExpanded = expanded;
+                      if (!expanded) {
+                        _showSideToolSelector = false;
+                      }
+                    }),
+                    onChanged: (type) {
+                      if (type == _selectedRule) return;
+                      setState(() => _selectedRule = type);
+                      // Phase 4에서 코칭 엔진에도 전달.
+                      _sceneCoach.setRule(_activeRule);
+                      _portraitHandler.setRule(_activeRule);
+                    },
+                    showSilhouetteTab: _isPortraitMode,
+                    selectedSilhouette: _selectedSilhouette,
+                    onSilhouetteChanged: (type) {
+                      if (type == _selectedSilhouette) return;
+                      setState(() => _selectedSilhouette = type);
+                    },
+                  ),
                 ),
               ),
             Positioned(
+              left: 0,
+              child: CameraSideToolBar(
+                actions: _buildSideToolActions(),
+                topInset: sideToolTopInset,
+                horizontalInset: sideToolLeftInset,
+                alignLeft: true,
+              ),
+            ),
+            Positioned(
               left: _bottomControlsHorizontalInset,
               right: _bottomControlsHorizontalInset,
-              bottom: MediaQuery.of(context).padding.bottom,
+              bottom: MediaQuery.of(context).padding.bottom + 6,
               child: BottomCameraControls(
                 zoomPresets: _zoomPresets,
                 selectedZoom: _selectedZoom,
@@ -1937,7 +2173,7 @@ class _CameraScreenState extends State<CameraScreen> {
                     ? _portraitCoaching.priority ==
                           portrait.CoachingPriority.perfect
                     : _coachingLevel == CoachingLevel.good,
-                shotTypeLabel: _isPortraitMode ? _shotTypeLabel() : null,
+                shotTypeLabel: _bottomShotTypeLabel(),
                 onSelectZoom: _setZoom,
                 onGallery: () => widget.onMoveTab(1),
                 onCapture: _captureAndSavePhoto,
