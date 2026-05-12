@@ -124,11 +124,11 @@ class _CompositionRuleSelectorState extends State<CompositionRuleSelector> {
               widget.onExpandedChanged?.call(true);
             },
             child: const Padding(
-              padding: EdgeInsets.all(8.0),
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
               child: Icon(
                 Icons.keyboard_arrow_down_rounded,
                 color: Colors.white,
-                size: 32,
+                size: 30,
                 shadows: [
                   Shadow(
                     color: Colors.black54,
@@ -152,7 +152,7 @@ class _CompositionRuleSelectorState extends State<CompositionRuleSelector> {
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
             child: Container(
-              padding: const EdgeInsets.only(top: 4, bottom: 12),
+              padding: const EdgeInsets.only(top: 4, bottom: 10),
               decoration: glassDecoration,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -164,7 +164,10 @@ class _CompositionRuleSelectorState extends State<CompositionRuleSelector> {
                     },
                     behavior: HitTestBehavior.opaque,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 40,
+                        vertical: 2,
+                      ),
                       child: const Icon(
                         Icons.keyboard_arrow_up_rounded,
                         color: Colors.white,

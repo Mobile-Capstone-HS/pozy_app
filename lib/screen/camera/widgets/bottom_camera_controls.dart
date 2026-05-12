@@ -41,17 +41,18 @@ class BottomCameraControls extends StatelessWidget {
       children: [
         if (shotTypeLabel != null && shotTypeLabel!.isNotEmpty) ...[
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
             decoration: BoxDecoration(
               color: Colors.black.withValues(alpha: 0.4),
               borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
             ),
             child: Text(
               shotTypeLabel!,
               style: const TextStyle(color: Colors.white70, fontSize: 12),
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
         ],
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -74,7 +75,7 @@ class BottomCameraControls extends StatelessWidget {
                     )
                     .toList(),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -100,9 +101,9 @@ class BottomCameraControls extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 14),
         ModeSwitcher(selected: shootingMode, onChanged: onModeChanged),
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
       ],
     );
   }

@@ -17,7 +17,6 @@ import 'package:pose_camera_app/screen/camera/shooting_mode.dart';
 import 'package:pose_camera_app/screen/camera/widgets/bottom_camera_controls.dart';
 import 'package:pose_camera_app/screen/camera/widgets/composition_grid_painter.dart';
 import 'package:pose_camera_app/screen/camera/widgets/composition_rule_selector.dart';
-import 'package:pose_camera_app/screen/camera/widgets/portrait_badge.dart';
 import 'package:pose_camera_app/screen/camera/widgets/portrait_intent_selector.dart';
 import 'package:pose_camera_app/screen/camera/widgets/roi_painter.dart';
 import 'package:pose_camera_app/screen/camera/widgets/top_camera_bar.dart';
@@ -73,6 +72,12 @@ class _CameraScreenState extends State<CameraScreen> {
   static const bool _debugUseImageAnalysisFace = true;
   static const int _portraitNativeFaceIntervalMs = 180;
   static const int _portraitNativeFaceIntervalFrames = 6;
+  static const double _topBarTop = 8;
+  static const double _overlayTop = 68;
+  static const double _portraitBubbleTopCollapsed = 148;
+  static const double _portraitBubbleTopExpanded = 210;
+  static const double _defaultBubbleTopCollapsed = 92;
+  static const double _defaultBubbleTopExpanded = 148;
 
   final _cameraController = YOLOViewController();
   final _landscapeController = FastScnnViewController();
@@ -104,7 +109,7 @@ class _CameraScreenState extends State<CameraScreen> {
   bool _isSaving = false;
   bool _showFlash = false;
   bool _torchOn = false;
-  bool _showPortraitDebugOverlay = true;
+  bool _showPortraitDebugOverlay = false;
   bool _isRuleSelectorExpanded = false;
 
   bool _isDrawingRoi = false;
@@ -1675,7 +1680,7 @@ class _CameraScreenState extends State<CameraScreen> {
                 painter: _isPortraitMode
                     ? PortraitOverlayPainter(
                         data: _portraitOverlayData.copyWithRule(_activeRule),
-                        showDebugGuides: _showPortraitDebugOverlay,
+                        showDebugGuides: false,
                       )
                     : _isLandscapeMode
                     ? LandscapeCompositionOverlayPainter(
@@ -1711,8 +1716,7 @@ class _CameraScreenState extends State<CameraScreen> {
                   );
                 },
               ),
-            if (!_isLandscapeMode &&
-                !(_isPortraitMode && _showPortraitDebugOverlay))
+            if (!_isLandscapeMode)
               GestureDetector(
                 behavior: HitTestBehavior.translucent,
                 onTapUp: _isObjectMode && _isDrawingRoi
@@ -1774,8 +1778,12 @@ class _CameraScreenState extends State<CameraScreen> {
               duration: const Duration(milliseconds: 250),
               curve: Curves.easeOutCubic,
               top: _isPortraitMode
-                  ? (_isRuleSelectorExpanded ? 256 : 194)
-                  : (_isRuleSelectorExpanded ? 164 : 108),
+                  ? (_isRuleSelectorExpanded
+                        ? _portraitBubbleTopExpanded
+                        : _portraitBubbleTopCollapsed)
+                  : (_isRuleSelectorExpanded
+                        ? _defaultBubbleTopExpanded
+                        : _defaultBubbleTopCollapsed),
               right: 12,
               child: IgnorePointer(
                 child: CoachingSpeechBubble(
@@ -1803,12 +1811,14 @@ class _CameraScreenState extends State<CameraScreen> {
               AnimatedPositioned(
                 duration: const Duration(milliseconds: 250),
                 curve: Curves.easeOutCubic,
-                top: _isRuleSelectorExpanded ? 256 : 194,
+                top: _isRuleSelectorExpanded
+                    ? _portraitBubbleTopExpanded
+                    : _portraitBubbleTopCollapsed,
                 left: 16,
                 child: IgnorePointer(child: _buildPortraitGroupCounter()),
               ),
             Positioned(
-              top: 8,
+              top: _topBarTop,
               left: 16,
               right: 16,
               child: TopCameraBar(
@@ -1822,130 +1832,24 @@ class _CameraScreenState extends State<CameraScreen> {
                 isDrawingRoi: _isDrawingRoi,
                 isRoiLocked: _lockedRoi != null,
                 onToggleRoiLock: _isObjectMode ? _toggleRoiLock : null,
-                portraitDebugOverlayOn: _showPortraitDebugOverlay,
-                onTogglePortraitDebugOverlay: _isPortraitMode
-                    ? () => setState(
-                        () => _showPortraitDebugOverlay =
-                            !_showPortraitDebugOverlay,
-                      )
-                    : null,
                 badge: _isPortraitMode
-                    ? PortraitBadge(
-                        isFrontCamera: _isFrontCamera,
-                        currentZoom: _currentZoom,
+                    ? PortraitIntentSelector(
+                        selected: _portraitIntent,
+                        compact: true,
+                        onChanged: (intent) {
+                          if (intent == _portraitIntent) return;
+                          setState(() => _portraitIntent = intent);
+                          _portraitHandler.setIntent(intent);
+                          _resetPortraitState();
+                        },
                       )
                     : null,
               ),
             ),
-            // Portrait debug toggles (visible when portrait debug overlay enabled)
-            if (_isPortraitMode && _showPortraitDebugOverlay)
-              Positioned(
-                top: 64,
-                right: 16,
-                child: Material(
-                  color: Colors.black.withOpacity(0.45),
-                  borderRadius: BorderRadius.circular(8),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 6,
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Text(
-                              'Face',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Switch.adaptive(
-                              value: _portraitHandler.isFaceAnalysisEnabled,
-                              activeColor: const Color(0xFF38BDF8),
-                              onChanged: (v) => setState(() {
-                                _portraitHandler.setFaceAnalysisEnabled(v);
-                              }),
-                            ),
-                          ],
-                        ),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Text(
-                              'Lighting',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Switch.adaptive(
-                              value: _portraitHandler.isLightingAnalysisEnabled,
-                              activeColor: const Color(0xFF38BDF8),
-                              onChanged: (v) => setState(() {
-                                _portraitHandler.setLightingAnalysisEnabled(v);
-                              }),
-                            ),
-                          ],
-                        ),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Text(
-                              'FQuality',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Switch.adaptive(
-                              value: _portraitHandler.isFaceQualityEnabled,
-                              activeColor: const Color(0xFF38BDF8),
-                              onChanged: (v) => setState(() {
-                                _portraitHandler.setFaceQualityEnabled(v);
-                              }),
-                            ),
-                          ],
-                        ),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Text(
-                              'Capture',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Switch.adaptive(
-                              value: _portraitHandler
-                                  .isBitmapCaptureForFaceEnabled,
-                              activeColor: const Color(0xFF38BDF8),
-                              onChanged: (v) => setState(() {
-                                _portraitHandler.setBitmapCaptureForFaceEnabled(
-                                  v,
-                                );
-                              }),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
             // 구도 규칙 selector — 인물/객체 모드만. 풍경은 자동 감지 사용.
             if (_isLandscapeMode)
               Positioned(
-                top: 60,
+                top: _overlayTop,
                 left: 16,
                 child: FilledButton.tonalIcon(
                   onPressed: () {
@@ -1967,27 +1871,9 @@ class _CameraScreenState extends State<CameraScreen> {
                   ),
                 ),
               ),
-            if (_isPortraitMode)
-              Positioned(
-                top: 60,
-                left: 0,
-                right: 0,
-                child: IgnorePointer(
-                  ignoring: _showPortraitDebugOverlay,
-                  child: PortraitIntentSelector(
-                    selected: _portraitIntent,
-                    onChanged: (intent) {
-                      if (intent == _portraitIntent) return;
-                      setState(() => _portraitIntent = intent);
-                      _portraitHandler.setIntent(intent);
-                      _resetPortraitState();
-                    },
-                  ),
-                ),
-              ),
             if (!_isLandscapeMode)
               Positioned(
-                top: _isPortraitMode ? 104 : 60,
+                top: _overlayTop,
                 left: 0,
                 right: 0,
                 child: CompositionRuleSelector(
