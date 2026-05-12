@@ -479,7 +479,7 @@ class _CoachingEngine {
       _shootReady = (_shootReady - 0.20).clamp(0.0, 1.0);
       return CoachingResult(
         guidance: '피사체를 화면 안에 담아보세요',
-        subGuidance: '인식되면 밝기, 수평, 구도를 기준으로 바로 코칭할게요',
+        subGuidance: '인식되면 밝기, 수평, 구도를 기준으로 코칭할게요',
         level: CoachingLevel.caution,
         score: null,
         lightDirection: lightDir,
@@ -773,7 +773,8 @@ class ObjectCoach {
   void setOrientation(int deg) => _deviceOrientationDeg = deg;
 
   CoachingResult _currentResult = const CoachingResult(
-    guidance: '구도를 잡는 중...',
+    guidance: '피사체를 화면 안에 담아보세요',
+    subGuidance: '인식되면 밝기, 수평, 구도를 기준으로 코칭할게요',
     level: CoachingLevel.caution,
   );
 
@@ -874,7 +875,7 @@ class ObjectCoach {
     // geometry 추출 이전에 확인해 다른 어떤 코칭도 이를 덮어쓰지 않는다.
     if (_subjectLocked && !_subjectInFrame) {
       _currentResult = const CoachingResult(
-        guidance: '피사체가 화면 밖으로 나갔어요',
+        guidance: '피사체를 다시 화면 안에 담아보세요',
         subGuidance: '고정한 피사체가 다시 프레임 안으로 들어오도록 카메라를 움직여보세요',
         level: CoachingLevel.warning,
       );
@@ -913,7 +914,7 @@ class ObjectCoach {
     _smoother.updateImageMetrics(m);
     if (_subjectLocked && !_subjectInFrame) {
       _currentResult = const CoachingResult(
-        guidance: '피사체가 화면 밖으로 나갔어요',
+        guidance: '피사체를 다시 화면 안에 담아보세요',
         subGuidance: '고정한 피사체가 다시 프레임 안으로 들어오도록 카메라를 움직여보세요',
         level: CoachingLevel.warning,
       );
@@ -981,7 +982,8 @@ class ObjectCoach {
     );
 
     _currentResult = const CoachingResult(
-      guidance: '구도를 잡는 중...',
+      guidance: '피사체를 화면 안에 담아보세요',
+      subGuidance: '인식되면 밝기, 수평, 구도를 기준으로 코칭할게요',
       level: CoachingLevel.caution,
     );
   }

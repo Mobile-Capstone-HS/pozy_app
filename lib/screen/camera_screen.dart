@@ -72,12 +72,17 @@ class _CameraScreenState extends State<CameraScreen> {
   static const bool _debugUseImageAnalysisFace = true;
   static const int _portraitNativeFaceIntervalMs = 180;
   static const int _portraitNativeFaceIntervalFrames = 6;
+  static const double _screenSideInset = 16;
   static const double _topBarTop = 8;
   static const double _overlayTop = 68;
-  static const double _portraitBubbleTopCollapsed = 148;
-  static const double _portraitBubbleTopExpanded = 210;
-  static const double _defaultBubbleTopCollapsed = 92;
-  static const double _defaultBubbleTopExpanded = 148;
+  static const double _objectSelectionHintTop = 110;
+  static const double _coachingBubbleTopCollapsed = 120;
+  static const double _coachingBubbleTopExpanded = 176;
+  static const double _portraitExpandedBubbleTopOffset = 28;
+  static const double _coachingBubbleRightInset = 12;
+  static const double _groupCounterLeftInset = 16;
+  static const double _sampleTestButtonLeftInset = 16;
+  static const double _bottomControlsHorizontalInset = 0;
 
   final _cameraController = YOLOViewController();
   final _landscapeController = FastScnnViewController();
@@ -91,8 +96,10 @@ class _CameraScreenState extends State<CameraScreen> {
   List<double> _zoomPresets = [1.0, 2.0];
   Size _previewSize = Size.zero;
 
-  String _guidance = '\uAD6C\uB3C4\uB97C \uC7A1\uB294 \uC911...';
-  String? _subGuidance;
+  String _guidance =
+      '\uD53C\uC0AC\uCCB4\uB97C \uD654\uBA74 \uC548\uC5D0 \uB2F4\uC544\uBCF4\uC138\uC694';
+  String? _subGuidance =
+      '\uC778\uC2DD\uB418\uBA74 \uBC1D\uAE30, \uC218\uD3C9, \uAD6C\uB3C4\uB97C \uAE30\uC900\uC73C\uB85C \uCF54\uCE6D\uD560\uAC8C\uC694';
   CoachingLevel _coachingLevel = CoachingLevel.caution;
   double? _coachingScore;
   DirectionHint _directionHint = DirectionHint.none;
@@ -137,9 +144,11 @@ class _CameraScreenState extends State<CameraScreen> {
 
   portrait.CoachingResult _portraitCoaching = const portrait.CoachingResult(
     message:
-        '\uCE74\uBA54\uB77C\uB97C \uC5EC\uC720\uB86D\uAC8C \uB9DE\uCDB0\uC8FC\uC138\uC694.',
+        '\uC778\uBB3C\uC744 \uD654\uBA74 \uC548\uC5D0 \uB2F4\uC544\uBCF4\uC138\uC694',
     priority: portrait.CoachingPriority.critical,
     confidence: 1.0,
+    reason:
+        '\uC5BC\uAD74\uACFC \uC790\uC138\uAC00 \uBCF4\uC774\uBA74 \uAD6C\uB3C4\uB97C \uC548\uB0B4\uD560\uAC8C\uC694',
   );
   OverlayData _portraitOverlayData = const OverlayData(
     coaching: portrait.CoachingResult(
@@ -174,6 +183,7 @@ class _CameraScreenState extends State<CameraScreen> {
   void initState() {
     super.initState();
     _shootingMode = widget.initialMode;
+    _applyIdleCoachingForMode(_shootingMode);
     if (DebugLogFlags.yoloDebug) {
       debugPrint('[YOLO_DEBUG][screen] initState mode=${_shootingMode.name}');
     }
@@ -281,9 +291,11 @@ class _CameraScreenState extends State<CameraScreen> {
     _portraitLostFrames = 0;
     _portraitCoaching = const portrait.CoachingResult(
       message:
-          '\uCE74\uBA54\uB77C\uB97C \uC5EC\uC720\uB86D\uAC8C \uB9DE\uCDB0\uC8FC\uC138\uC694.',
+          '\uC778\uBB3C\uC744 \uD654\uBA74 \uC548\uC5D0 \uB2F4\uC544\uBCF4\uC138\uC694',
       priority: portrait.CoachingPriority.critical,
       confidence: 1.0,
+      reason:
+          '\uC5BC\uAD74\uACFC \uC790\uC138\uAC00 \uBCF4\uC774\uBA74 \uAD6C\uB3C4\uB97C \uC548\uB0B4\uD560\uAC8C\uC694',
     );
     _portraitOverlayData = const OverlayData(
       coaching: portrait.CoachingResult(
@@ -318,6 +330,29 @@ class _CameraScreenState extends State<CameraScreen> {
         _directionHint = coaching.directionHint;
         _lightDirection = coaching.lightDirection;
       });
+    }
+  }
+
+  void _applyIdleCoachingForMode(ShootingMode mode) {
+    switch (mode) {
+      case ShootingMode.person:
+        _guidance =
+            '\uC778\uBB3C\uC744 \uD654\uBA74 \uC548\uC5D0 \uB2F4\uC544\uBCF4\uC138\uC694';
+        _subGuidance =
+            '\uC5BC\uAD74\uACFC \uC790\uC138\uAC00 \uBCF4\uC774\uBA74 \uAD6C\uB3C4\uB97C \uC548\uB0B4\uD560\uAC8C\uC694';
+        break;
+      case ShootingMode.object:
+        _guidance =
+            '\uD53C\uC0AC\uCCB4\uB97C \uD654\uBA74 \uC548\uC5D0 \uB2F4\uC544\uBCF4\uC138\uC694';
+        _subGuidance =
+            '\uC778\uC2DD\uB418\uBA74 \uBC1D\uAE30, \uC218\uD3C9, \uAD6C\uB3C4\uB97C \uAE30\uC900\uC73C\uB85C \uCF54\uCE6D\uD560\uAC8C\uC694';
+        break;
+      case ShootingMode.landscape:
+        _guidance =
+            '\uC7A5\uBA74\uC744 \uCC9C\uCC9C\uD788 \uB9DE\uCDB0\uBCF4\uC138\uC694';
+        _subGuidance =
+            '\uC218\uD3C9\uACFC \uAD6C\uB3C4\uB97C \uAE30\uC900\uC73C\uB85C \uCD2C\uC601\uD558\uAE30 \uC88B\uC740 \uC21C\uAC04\uC744 \uC54C\uB824\uB4DC\uB9B4\uAC8C\uC694';
+        break;
     }
   }
 
@@ -766,8 +801,7 @@ class _CameraScreenState extends State<CameraScreen> {
       _isDrawingRoi = false;
       _roiDragStart = null;
       _roiDragCurrent = null;
-      _guidance = '\uAD6C\uB3C4\uB97C \uC7A1\uB294 \uC911...';
-      _subGuidance = null;
+      _applyIdleCoachingForMode(_shootingMode);
       _coachingLevel = CoachingLevel.caution;
       _coachingScore = null;
       _directionHint = DirectionHint.none;
@@ -1007,8 +1041,7 @@ class _CameraScreenState extends State<CameraScreen> {
       _isFrontCamera = !_isFrontCamera;
       _selectedZoom = 1.0;
       _currentZoom = 1.0;
-      _guidance = '\uAD6C\uB3C4\uB97C \uC7A1\uB294 \uC911...';
-      _subGuidance = null;
+      _applyIdleCoachingForMode(_shootingMode);
       _coachingLevel = CoachingLevel.caution;
       _coachingScore = null;
       _directionHint = DirectionHint.none;
@@ -1044,8 +1077,7 @@ class _CameraScreenState extends State<CameraScreen> {
       if (mode == ShootingMode.person) {
         _portraitIntent = portrait.PortraitIntent.single;
       }
-      _guidance = '\uAD6C\uB3C4\uB97C \uC7A1\uB294 \uC911...';
-      _subGuidance = null;
+      _applyIdleCoachingForMode(mode);
       _coachingLevel = CoachingLevel.caution;
       _coachingScore = null;
       _directionHint = DirectionHint.none;
@@ -1124,8 +1156,7 @@ class _CameraScreenState extends State<CameraScreen> {
       _isDrawingRoi = false;
       _roiDragStart = null;
       _roiDragCurrent = null;
-      _guidance = '\uAD6C\uB3C4\uB97C \uC7A1\uB294 \uC911...';
-      _subGuidance = null;
+      _applyIdleCoachingForMode(_shootingMode);
       _coachingLevel = CoachingLevel.caution;
       _coachingScore = null;
       _directionHint = DirectionHint.none;
@@ -1639,9 +1670,15 @@ class _CameraScreenState extends State<CameraScreen> {
     if (!_loggedFirstBuild) {
       _loggedFirstBuild = true;
       if (DebugLogFlags.yoloDebug) {
-        debugPrint('[YOLO_DEBUG][screen] first build mode=${_shootingMode.name}');
+        debugPrint(
+          '[YOLO_DEBUG][screen] first build mode=${_shootingMode.name}',
+        );
       }
     }
+    final bubbleTop = _isRuleSelectorExpanded
+        ? _coachingBubbleTopExpanded +
+              (_isPortraitMode ? _portraitExpandedBubbleTopOffset : 0)
+        : _coachingBubbleTopCollapsed;
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
@@ -1751,9 +1788,9 @@ class _CameraScreenState extends State<CameraScreen> {
               ),
             if (_isObjectMode && _isDrawingRoi)
               Positioned(
-                top: 110,
-                left: 0,
-                right: 0,
+                top: _objectSelectionHintTop,
+                left: _bottomControlsHorizontalInset,
+                right: _bottomControlsHorizontalInset,
                 child: IgnorePointer(
                   child: Center(
                     child: Container(
@@ -1777,14 +1814,8 @@ class _CameraScreenState extends State<CameraScreen> {
             AnimatedPositioned(
               duration: const Duration(milliseconds: 250),
               curve: Curves.easeOutCubic,
-              top: _isPortraitMode
-                  ? (_isRuleSelectorExpanded
-                        ? _portraitBubbleTopExpanded
-                        : _portraitBubbleTopCollapsed)
-                  : (_isRuleSelectorExpanded
-                        ? _defaultBubbleTopExpanded
-                        : _defaultBubbleTopCollapsed),
-              right: 12,
+              top: bubbleTop,
+              right: _coachingBubbleRightInset,
               child: IgnorePointer(
                 child: CoachingSpeechBubble(
                   guidance: _isPortraitMode
@@ -1811,16 +1842,14 @@ class _CameraScreenState extends State<CameraScreen> {
               AnimatedPositioned(
                 duration: const Duration(milliseconds: 250),
                 curve: Curves.easeOutCubic,
-                top: _isRuleSelectorExpanded
-                    ? _portraitBubbleTopExpanded
-                    : _portraitBubbleTopCollapsed,
-                left: 16,
+                top: bubbleTop,
+                left: _groupCounterLeftInset,
                 child: IgnorePointer(child: _buildPortraitGroupCounter()),
               ),
             Positioned(
               top: _topBarTop,
-              left: 16,
-              right: 16,
+              left: _screenSideInset,
+              right: _screenSideInset,
               child: TopCameraBar(
                 onBack: widget.onBack,
                 torchOn: _torchOn,
@@ -1850,7 +1879,7 @@ class _CameraScreenState extends State<CameraScreen> {
             if (_isLandscapeMode)
               Positioned(
                 top: _overlayTop,
-                left: 16,
+                left: _sampleTestButtonLeftInset,
                 child: FilledButton.tonalIcon(
                   onPressed: () {
                     Navigator.of(context).push(
@@ -1874,8 +1903,8 @@ class _CameraScreenState extends State<CameraScreen> {
             if (!_isLandscapeMode)
               Positioned(
                 top: _overlayTop,
-                left: 0,
-                right: 0,
+                left: _bottomControlsHorizontalInset,
+                right: _bottomControlsHorizontalInset,
                 child: CompositionRuleSelector(
                   selected: _selectedRule,
                   onExpandedChanged: (expanded) =>
@@ -1896,8 +1925,8 @@ class _CameraScreenState extends State<CameraScreen> {
                 ),
               ),
             Positioned(
-              left: 0,
-              right: 0,
+              left: _bottomControlsHorizontalInset,
+              right: _bottomControlsHorizontalInset,
               bottom: MediaQuery.of(context).padding.bottom,
               child: BottomCameraControls(
                 zoomPresets: _zoomPresets,

@@ -22,9 +22,10 @@ class PortraitCoachEngine {
   CoachingResult evaluate(PortraitSceneState s) {
     if (s.personCount == 0) {
       return const CoachingResult(
-        message: '인물이 보이지 않아요.',
+        message: '인물을 화면 안에 담아보세요',
         priority: CoachingPriority.critical,
         confidence: 1.0,
+        reason: '얼굴과 자세가 보이면 구도를 안내할게요',
       );
     }
 
@@ -33,9 +34,10 @@ class PortraitCoachEngine {
     // 3명 이상도 인원 제한 없이 실질적인 피드백을 제공합니다.
     if (s.intent == PortraitIntent.group && !s.isGroupShot) {
       return const CoachingResult(
-        message: '두 명 이상을 화면에 함께 담아주세요.',
+        message: '두 명 이상을 화면 안에 함께 담아보세요',
         priority: CoachingPriority.composition,
         confidence: 0.65,
+        reason: '여러 명이 보이면 간격과 구도를 기준으로 안내할게요',
       );
     }
 
@@ -45,17 +47,19 @@ class PortraitCoachEngine {
 
     if (!s.hasNose && !s.hasEyes && !s.hasShoulders) {
       return const CoachingResult(
-        message: '인물이 조금 더 보이게 화면을 맞춰주세요.',
+        message: '인물이 더 잘 보이도록 화면을 맞춰보세요',
         priority: CoachingPriority.critical,
         confidence: 0.95,
+        reason: '얼굴과 자세가 보이면 구도 안내가 더 정확해져요',
       );
     }
 
     if (s.visibleKeypointCount < 3) {
       return const CoachingResult(
-        message: '상체가 더 보이게 화면을 맞춰주세요.',
+        message: '상체가 보이도록 화면을 맞춰보세요',
         priority: CoachingPriority.critical,
         confidence: 0.9,
+        reason: '핵심 자세가 보이면 구도 안내가 더 정확해져요',
       );
     }
 

@@ -259,13 +259,15 @@ class PortraitModeHandler {
 
   // ─── 메시지 안정화 ────────────────────────────────
   static const int _stabilityThreshold = 5;
-  String stableMessage = '카메라를 사람에게 향해주세요';
+  String stableMessage = '\uC778\uBB3C\uC744 \uD654\uBA74 \uC548\uC5D0 \uB2F4\uC544\uBCF4\uC138\uC694';
   String _pendingMessage = '';
   int _pendingCount = 0;
   CoachingResult _stableCoaching = const CoachingResult(
-    message: '카메라를 사람에게 향해주세요',
+    message: '\uC778\uBB3C\uC744 \uD654\uBA74 \uC548\uC5D0 \uB2F4\uC544\uBCF4\uC138\uC694',
     priority: CoachingPriority.critical,
     confidence: 1.0,
+    reason:
+        '\uC5BC\uAD74\uACFC \uC790\uC138\uAC00 \uBCF4\uC774\uBA74 \uAD6C\uB3C4\uB97C \uC548\uB0B4\uD560\uAC8C\uC694',
   );
 
   // ─── 사람 감지 안정화 ──────────────────────────────
@@ -465,13 +467,15 @@ class PortraitModeHandler {
     _prevShoulderAngle = null;
 
     _faceQualityScores = const [];
-    stableMessage = '카메라를 사람에게 향해주세요';
+    stableMessage = '\uC778\uBB3C\uC744 \uD654\uBA74 \uC548\uC5D0 \uB2F4\uC544\uBCF4\uC138\uC694';
     _pendingMessage = '';
     _pendingCount = 0;
     _stableCoaching = const CoachingResult(
-      message: '카메라를 사람에게 향해주세요',
+      message: '\uC778\uBB3C\uC744 \uD654\uBA74 \uC548\uC5D0 \uB2F4\uC544\uBCF4\uC138\uC694',
       priority: CoachingPriority.critical,
       confidence: 1.0,
+      reason:
+          '\uC5BC\uAD74\uACFC \uC790\uC138\uAC00 \uBCF4\uC774\uBA74 \uAD6C\uB3C4\uB97C \uC548\uB0B4\uD560\uAC8C\uC694',
     );
   }
 
