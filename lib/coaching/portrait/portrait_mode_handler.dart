@@ -2128,17 +2128,17 @@ class PortraitModeHandler {
   String lightingLabel(LightingCondition c) {
     switch (c) {
       case LightingCondition.normal:
-        return '순광';
+        return '정면 빛';
       case LightingCondition.short:
-        return '사광 (좋은 빛)';
+        return '좋은 빛';
       case LightingCondition.side:
-        return '측광';
+        return '옆쪽 빛';
       case LightingCondition.rim:
-        return '역사광';
+        return '뒤쪽 빛';
       case LightingCondition.back:
         return '역광';
       case LightingCondition.unknown:
-        return '판별 대기중';
+        return '확인 중';
     }
   }
 

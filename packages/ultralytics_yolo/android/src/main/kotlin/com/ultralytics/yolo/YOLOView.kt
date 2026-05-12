@@ -907,17 +907,18 @@ class YOLOView @JvmOverloads constructor(
                 // Set camera facing information in predictor
                 (p as? BasePredictor)?.isFrontCamera = isFrontCamera
 
-                val shouldNormalizePoseRotation = task == YOLOTask.POSE
+                val shouldNormalizeCameraRotation =
+                    task == YOLOTask.POSE || task == YOLOTask.DETECT
                 // 180° 거꾸로 들었을 때 추가 회전 적용
-                val additionalRotation = if (shouldNormalizePoseRotation && deviceOrientationDeg == 180) 180 else 0
-                val inferenceBitmap = if (shouldNormalizePoseRotation) {
+                val additionalRotation = if (shouldNormalizeCameraRotation && deviceOrientationDeg == 180) 180 else 0
+                val inferenceBitmap = if (shouldNormalizeCameraRotation) {
                     ImageUtils.rotateBitmap(bitmap, rotationDegrees + additionalRotation)
                 } else {
                     bitmap
                 }
                 val rotatedFrameSwapsAxes = rotationDegrees == 90 || rotationDegrees == 270
 
-                var result = if (shouldNormalizePoseRotation) {
+                var result = if (shouldNormalizeCameraRotation) {
                     p.predict(
                         inferenceBitmap,
                         inferenceBitmap.width,
@@ -938,7 +939,7 @@ class YOLOView @JvmOverloads constructor(
                 }
 
                 // 180° 추가 회전한 경우 좌표를 미러링하여 프리뷰와 일치시킴
-                if (!shouldNormalizePoseRotation && isLandscape && result.boxes.isEmpty()) {
+                if (!shouldNormalizeCameraRotation && isLandscape && result.boxes.isEmpty()) {
                     result = predictLandscapeFallback(
                         predictor = p,
                         sourceBitmap = bitmap,

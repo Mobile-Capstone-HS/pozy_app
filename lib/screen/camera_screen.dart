@@ -1457,12 +1457,14 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   String? _portraitSubGuidance() {
+    if (_portraitCoaching.reason != null) return _portraitCoaching.reason;
+
     final lighting = _portraitHandler.lastLighting;
     final lightConf = _portraitHandler.lastLightingConf;
     if (lighting != portrait.LightingCondition.unknown && lightConf > 0) {
       return '조명: ${_portraitHandler.lightingLabel(lighting)}';
     }
-    return _portraitCoaching.reason;
+    return null;
   }
 
   String _shotTypeLabel() {
