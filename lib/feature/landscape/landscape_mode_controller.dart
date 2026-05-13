@@ -39,16 +39,35 @@ class LandscapeModeController {
         (decision.primaryGuidance == summary.guideMessage
             ? null
             : decision.primaryGuidance);
+    final guidance = _visibleGuidanceFor(
+      primaryGuidance: analysis.advice.primaryGuidance,
+      summary: summary,
+    );
 
     return currentState.copyWith(
       decision: decision,
       overlayAdvice: analysis.advice,
       isFrontCamera: frame.isFrontCamera,
       currentZoom: frame.zoomLevel,
-      guidance: analysis.advice.primaryGuidance,
+      guidance: guidance,
       subGuidance: subGuidance,
       coachingLevel: _coachingLevelFor(summary.guideState),
     );
+  }
+
+  String _visibleGuidanceFor({
+    required String primaryGuidance,
+    required CompositionSummary summary,
+  }) {
+    if (_startsWithPositiveGuidance(primaryGuidance) &&
+        summary.guideState != CompositionGuideState.aligned) {
+      return summary.guideMessage;
+    }
+    return primaryGuidance;
+  }
+
+  bool _startsWithPositiveGuidance(String message) {
+    return message.startsWith('좋아요.') || message.startsWith('좋아요,');
   }
 
   CoachingLevel _coachingLevelFor(CompositionGuideState state) {

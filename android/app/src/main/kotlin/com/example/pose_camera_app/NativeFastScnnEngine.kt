@@ -101,7 +101,7 @@ class NativeFastScnnEngine(
             val output = runOutput(runtime, input)
             val t3 = SystemClock.elapsedRealtimeNanos()
 
-            val classMapFlat = argmaxToFlatClassMapIntArray(output)
+            val classMapBytes = argmaxToFlatClassMapByteArray(output)
             val t4 = SystemClock.elapsedRealtimeNanos()
 
             emitPerfEvent(t0, t2, t3, t4)
@@ -110,7 +110,7 @@ class NativeFastScnnEngine(
                 "ok" to true,
                 "width" to inputWidth,
                 "height" to inputHeight,
-                "classMapFlat" to classMapFlat.toList(),
+                "classMapBytes" to classMapBytes,
             )
         } catch (t: Throwable) {
             emitEvent(
@@ -162,7 +162,7 @@ class NativeFastScnnEngine(
             val output = runOutput(runtime, input)
             val t2 = SystemClock.elapsedRealtimeNanos()
 
-            val classMapFlat = argmaxToFlatClassMapIntArray(output)
+            val classMapBytes = argmaxToFlatClassMapByteArray(output)
             val t3 = SystemClock.elapsedRealtimeNanos()
 
             emitPerfEvent(t0, t1, t2, t3)
@@ -171,7 +171,7 @@ class NativeFastScnnEngine(
                 "ok" to true,
                 "width" to inputWidth,
                 "height" to inputHeight,
-                "classMapFlat" to classMapFlat.toList(),
+                "classMapBytes" to classMapBytes,
             )
         } catch (t: Throwable) {
             Log.e(TAG, "segmentYuv420 failed", t)
@@ -313,8 +313,8 @@ class NativeFastScnnEngine(
         )
     }
 
-    private fun argmaxToFlatClassMapIntArray(output: FloatArray): IntArray {
-        val flat = IntArray(inputHeight * inputWidth)
+    private fun argmaxToFlatClassMapByteArray(output: FloatArray): ByteArray {
+        val flat = ByteArray(inputHeight * inputWidth)
 
         var y = 0
         while (y < inputHeight) {
@@ -337,7 +337,7 @@ class NativeFastScnnEngine(
                     }
                     c++
                 }
-                flat[y * inputWidth + x] = bestClass
+                flat[y * inputWidth + x] = bestClass.toByte()
                 x++
             }
             y++
