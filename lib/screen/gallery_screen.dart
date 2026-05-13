@@ -229,7 +229,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
           children: [
             if (_granted && _albums.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.fromLTRB(18, 22, 18, 0),
+                padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
                 child: _AlbumChipRow(
                   albums: _albums,
                   selectedAlbum: _selectedAlbum,
@@ -261,32 +261,35 @@ class _GalleryScreenState extends State<GalleryScreen> {
                       slivers: [
                         SliverToBoxAdapter(
                           child: Padding(
-                            padding: const EdgeInsets.fromLTRB(18, 0, 10, 10),
+                            padding: const EdgeInsets.fromLTRB(18, 2, 12, 12),
                             child: Row(
                               children: [
                                 Expanded(
-                                  child: Text(
-                                    _albumLabel(_selectedAlbum!),
-                                    style: const TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w800,
-                                      color: AppColors.primaryText,
-                                      letterSpacing: 0.2,
-                                    ),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        _albumLabel(_selectedAlbum!),
+                                        style: const TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.w800,
+                                          color: AppColors.primaryText,
+                                          letterSpacing: 0.2,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 3),
+                                      Text(
+                                        '${_photos.length}장의 사진',
+                                        style: AppTextStyles.caption12.copyWith(
+                                          color: AppColors.secondaryText,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                GestureDetector(
-                                  onTap: _loadAlbumsAndPhotos,
-                                  child: Container(
-                                    width: 34,
-                                    height: 34,
-                                    decoration: const BoxDecoration(
-                                      color: AppColors.soft,
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: const Icon(Icons.refresh, size: 18, color: AppColors.primaryText),
-                                  ),
-                                ),
+                                _RefreshButton(onTap: _loadAlbumsAndPhotos),
                               ],
                             ),
                           ),
@@ -352,7 +355,7 @@ class _AlbumChipRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 40,
+      height: 44,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: albums.length,
@@ -365,27 +368,69 @@ class _AlbumChipRow extends StatelessWidget {
             onTap: () => onSelected(album),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 180),
-              padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 9),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
               decoration: BoxDecoration(
                 color: selected
-                    ? const Color(0xFF3A3A3A)
+                    ? AppColors.primaryText
                     : const Color(0xFFEFEFEF),
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Center(
-                child: Text(
-                  labelBuilder(album),
-                  style: TextStyle(
-                    color: selected ? Colors.white : const Color(0xFF5A5A5A),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    height: 1.1,
-                  ),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: selected
+                      ? AppColors.primaryText
+                      : const Color(0xFFEFEFEF),
                 ),
+                boxShadow: selected ? AppShadows.card : null,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    selected
+                        ? Icons.photo_library_rounded
+                        : Icons.photo_library_outlined,
+                    size: 16,
+                    color: selected ? Colors.white : AppColors.secondaryText,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    labelBuilder(album),
+                    style: TextStyle(
+                      color: selected ? Colors.white : const Color(0xFF5A6573),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      height: 1.1,
+                    ),
+                  ),
+                ],
               ),
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+class _RefreshButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _RefreshButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: '사진 다시 불러오기',
+      child: GestureDetector(
+        onTap: onTap,
+        child: SizedBox(
+          width: 38,
+          height: 38,
+          child: const Icon(
+            Icons.refresh_rounded,
+            size: 19,
+            color: AppColors.primaryText,
+          ),
+        ),
       ),
     );
   }
@@ -661,7 +706,7 @@ class _PhotoDetailPageState extends State<_PhotoDetailPage> {
   late int _currentIndex;
   late PageController _pageController;
 
-  // Cache futures so swiping re-uses already-started loads
+  // Cache futures so swiping re-uses already-started loads.
   final Map<int, Future<Uint8List?>> _imageCache = {};
 
   @override
@@ -679,7 +724,10 @@ class _PhotoDetailPageState extends State<_PhotoDetailPage> {
   }
 
   Future<Uint8List?> _getImage(int index) {
-    return _imageCache.putIfAbsent(index, () => widget.photos[index].originBytes);
+    return _imageCache.putIfAbsent(
+      index,
+      () => widget.photos[index].originBytes,
+    );
   }
 
   void _preloadPages(int index) {
@@ -690,7 +738,7 @@ class _PhotoDetailPageState extends State<_PhotoDetailPage> {
     }
   }
 
-Future<void> _deleteCurrentPhoto() async {
+  Future<void> _deleteCurrentPhoto() async {
     final asset = widget.photos[_currentIndex];
 
     final confirm = await showDialog<bool>(
@@ -720,9 +768,9 @@ Future<void> _deleteCurrentPhoto() async {
       widget.onPhotoDeleted?.call(asset.id);
       Navigator.pop(context);
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('사진 삭제에 실패했습니다.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('사진 삭제에 실패했습니다.')));
     }
   }
 
@@ -833,34 +881,46 @@ Future<void> _deleteCurrentPhoto() async {
             bottom: 0,
             child: SafeArea(
               child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 20,
-                ),
+                padding: const EdgeInsets.fromLTRB(18, 22, 18, 18),
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.bottomCenter,
                     end: Alignment.topCenter,
-                    colors: [Color(0xCC000000), Colors.transparent],
+                    colors: [
+                      Color(0xE6000000),
+                      Color(0x99000000),
+                      Colors.transparent,
+                    ],
                   ),
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    _ActionButton(
-                      icon: Icons.delete_outline_rounded,
-                      label: '삭제',
-                      onTap: _deleteCurrentPhoto,
-                    ),
-                    _ActionButton(
-                      icon: Icons.info_outline_rounded,
-                      label: '정보',
-                      onTap: _showPhotoInfo,
-                    ),
-_ActionButton(
+                    _PrimaryActionButton(
                       icon: Icons.edit_outlined,
-                      label: '편집',
+                      label: '편집하기',
                       onTap: _openInEditor,
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _SecondaryActionButton(
+                            icon: Icons.info_outline_rounded,
+                            label: '정보',
+                            onTap: _showPhotoInfo,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _SecondaryActionButton(
+                            icon: Icons.delete_outline_rounded,
+                            label: '삭제',
+                            onTap: _deleteCurrentPhoto,
+                            foregroundColor: const Color(0xFFFF8A8A),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -873,12 +933,12 @@ _ActionButton(
   }
 }
 
-class _ActionButton extends StatelessWidget {
+class _PrimaryActionButton extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
 
-  const _ActionButton({
+  const _PrimaryActionButton({
     required this.icon,
     required this.label,
     required this.onTap,
@@ -889,19 +949,68 @@ class _ActionButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+      child: Container(
+        height: 52,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, color: Colors.white, size: 28),
-            const SizedBox(height: 5),
+            Icon(icon, color: AppColors.primaryText, size: 21),
+            const SizedBox(width: 8),
             Text(
               label,
               style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
+                color: AppColors.primaryText,
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SecondaryActionButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final Color foregroundColor;
+
+  const _SecondaryActionButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.foregroundColor = Colors.white,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        height: 46,
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: foregroundColor, size: 19),
+            const SizedBox(width: 7),
+            Text(
+              label,
+              style: TextStyle(
+                color: foregroundColor,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ],
@@ -939,7 +1048,11 @@ class _PhotoInfoDialog extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       title: const Text(
         '사진 정보',
-        style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700),
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: 17,
+          fontWeight: FontWeight.w700,
+        ),
       ),
       content: Column(
         mainAxisSize: MainAxisSize.min,
