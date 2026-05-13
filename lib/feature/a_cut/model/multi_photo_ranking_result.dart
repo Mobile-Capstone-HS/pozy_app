@@ -67,7 +67,7 @@ class MultiPhotoRankingResult {
 
   bool get hasBestShot => bestShot != null;
 
-  String get displayTitle => rankingLabel ?? 'A컷 추천 결과';
+  String get displayTitle => rankingLabel ?? '베스트컷 추천 결과';
 
   String get displaySource => rankingSource ?? '온디바이스 정렬';
 

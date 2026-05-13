@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:photo_manager/photo_manager.dart';
 
+import '../feature/a_cut/model/photo_evaluation_result.dart';
 import '../firebase/history_service.dart';
 import 'main_shell.dart' show galleryIntentNotifier;
 
@@ -32,14 +33,10 @@ class HistoryDetailScreen extends StatelessWidget {
                 children: [
                   GestureDetector(
                     onTap: () => Navigator.of(context).pop(),
-                    child: Container(
+                    child: const SizedBox(
                       width: 36,
                       height: 36,
-                      decoration: BoxDecoration(
-                        color: _kGrey100,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.arrow_back_ios_new_rounded,
                         size: 18,
                         color: _kDark,
@@ -47,24 +44,16 @@ class HistoryDetailScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 14),
-                  Expanded(
-                    child: Text(
-                      entry.typeLabel,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        color: _kDark,
-                        letterSpacing: -0.3,
-                      ),
-                    ),
-                  ),
-                  // 날짜 뱃지
+                  const Spacer(),
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
-                      color: _kGrey100,
-                      borderRadius: BorderRadius.circular(10),
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: _kGrey100),
                     ),
                     child: Text(
                       _formatDate(entry.analyzedAt),
@@ -155,57 +144,60 @@ class _SingleDetail extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
       children: [
-        // 점수 카드
         _Card(
-          child: Column(
+          padding: const EdgeInsets.all(10),
+          child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: _PhotoLink(
-                      label: eval.fileName ?? entry.bestFileName ?? '사진',
-                      onTap: () => _openHistoryPhoto(
-                        context,
-                        assetId: entry.assetId ?? entry.bestAssetId,
-                        fileName:
-                            eval.fileName ?? entry.bestFileName ?? '사진',
-                      ),
+              _DetailThumbnail(assetId: entry.assetId ?? entry.bestAssetId),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: _PhotoLink(
+                            label: eval.fileName ?? entry.bestFileName ?? '사진',
+                            onTap: () => _openHistoryPhoto(
+                              context,
+                              assetId: entry.assetId ?? entry.bestAssetId,
+                              fileName:
+                                  eval.fileName ?? entry.bestFileName ?? '사진',
+                            ),
+                          ),
+                        ),
+                        _InfoPill(label: eval.verdict, strong: true),
+                      ],
                     ),
-                  ),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: _kGrey100,
-                      borderRadius: BorderRadius.circular(8),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: _evaluationFactPills(eval),
                     ),
-                    child: Text(
-                      eval.verdict,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: _kDark,
-                      ),
+                    const SizedBox(height: 12),
+                    const Row(
+                      children: [
+                        Text(
+                          '원본 사진 보기',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                            color: _kBlue,
+                          ),
+                        ),
+                        SizedBox(width: 2),
+                        Icon(
+                          Icons.chevron_right_rounded,
+                          size: 18,
+                          color: _kBlue,
+                        ),
+                      ],
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 18),
-              _ScoreBar(label: '종합 점수', pct: eval.finalPct),
-              const SizedBox(height: 10),
-              _ScoreBar(label: '기술 점수', pct: eval.technicalPct),
-              if (eval.hasAestheticScore) ...[
-                const SizedBox(height: 10),
-                _ScoreBar(label: '미적 점수', pct: eval.aestheticPct!),
-              ],
-              const SizedBox(height: 14),
-              Text(
-                eval.qualitySummary,
-                style: const TextStyle(
-                  fontSize: 13,
-                  height: 1.5,
-                  color: _kGrey600,
+                  ],
                 ),
               ),
             ],
@@ -246,29 +238,11 @@ class _SingleDetail extends StatelessWidget {
                   spacing: 8,
                   runSpacing: 8,
                   children: eval.warnings
-                      .map((c) => _Chip(
-                          label: c, color: const Color(0xFFF59E0B)))
+                      .map(
+                        (c) => _Chip(label: c, color: const Color(0xFFF59E0B)),
+                      )
                       .toList(),
                 ),
-              ],
-            ),
-          ),
-        ],
-
-        // 세부 점수
-        if (eval.scoreDetails.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          _Card(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const _CardTitle(title: '세부 점수'),
-                const SizedBox(height: 14),
-                ...eval.scoreDetails.map((d) => Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child:
-                          _ScoreBar(label: d.label, pct: d.normalizedPct),
-                    )),
               ],
             ),
           ),
@@ -290,7 +264,8 @@ class _ACutDetail extends StatelessWidget {
 
     if (items.isEmpty) return const _NoDataState();
 
-    final sorted = [...items]..sort((a, b) {
+    final sorted = [...items]
+      ..sort((a, b) {
         if (a.rank == null && b.rank == null) return 0;
         if (a.rank == null) return 1;
         if (b.rank == null) return -1;
@@ -300,44 +275,15 @@ class _ACutDetail extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
       children: [
-        // 요약 카드
         _Card(
-          child: Row(
-            children: [
-              _StatItem(label: '분석 사진', value: '${entry.photoCount}장'),
-              _vertDivider,
-              _StatItem(
-                label: 'Best',
-                value: entry.bestFileName != null
-                    ? entry.bestFileName!.length > 10
-                        ? '${entry.bestFileName!.substring(0, 10)}...'
-                        : entry.bestFileName!
-                    : '-',
-              ),
-              _vertDivider,
-              _StatItem(
-                label: '최고 점수',
-                value: entry.bestScore != null
-                    ? '${(entry.bestScore! * 100).round()}점'
-                    : '-',
-              ),
-              _vertDivider,
-              _StatItem(label: '모드', value: entry.mode ?? '자동'),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-
-        // 순위 카드 그룹
-        _Card(
+          padding: const EdgeInsets.fromLTRB(14, 16, 14, 6),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const _CardTitle(title: '순위별 결과'),
-              const SizedBox(height: 14),
+              const SizedBox(height: 12),
               for (int i = 0; i < sorted.length; i++) ...[
-                if (i > 0)
-                  const Divider(height: 24, color: _kGrey100),
+                if (i > 0) const SizedBox(height: 8),
                 _RankedTile(
                   item: sorted[i],
                   onOpenPhoto: () => _openHistoryPhoto(
@@ -351,46 +297,6 @@ class _ACutDetail extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-
-  Widget get _vertDivider => Container(
-        width: 1,
-        height: 32,
-        margin: const EdgeInsets.symmetric(horizontal: 8),
-        color: _kGrey100,
-      );
-}
-
-// ── 통계 아이템 ──
-class _StatItem extends StatelessWidget {
-  final String label;
-  final String value;
-
-  const _StatItem({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Column(
-        children: [
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w800,
-              color: _kDark,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: const TextStyle(fontSize: 11, color: _kGrey600),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -419,58 +325,100 @@ class _RankedTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final eval = item.evaluation;
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          decoration: BoxDecoration(
-            color: _rankColor,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Text(
-            _rankLabel,
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-              color: Colors.white,
-            ),
+    return GestureDetector(
+      onTap: onOpenPhoto,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: item.isBestShot
+              ? _kBlue.withValues(alpha: 0.06)
+              : _kGrey100.withValues(alpha: 0.55),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: item.isBestShot
+                ? _kBlue.withValues(alpha: 0.16)
+                : Colors.transparent,
           ),
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _PhotoLink(label: item.fileName, onTap: onOpenPhoto, compact: true),
-              if (eval != null) ...[
-                const SizedBox(height: 6),
-                Text(
-                  eval.primaryHint,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    height: 1.4,
-                    color: _kGrey600,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            _DetailThumbnail(assetId: item.assetId, size: 48),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      _RankBadge(label: _rankLabel, color: _rankColor),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          item.fileName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            color: _kDark,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [
-                    _Pill(label: '종합 ${eval.finalPct}점'),
-                    _Pill(label: eval.verdict),
-                    if (item.isACut && !item.isBestShot)
-                      const _Pill(label: 'A컷 후보'),
+                  if (eval != null) ...[
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 5,
+                      runSpacing: 5,
+                      children: [
+                        ..._compactScoreBadges(eval),
+                        if (item.isACut && !item.isBestShot)
+                          const _ScoreBadge(
+                            icon: Icons.check_rounded,
+                            label: 'A컷',
+                          ),
+                      ],
+                    ),
                   ],
-                ),
-              ],
-            ],
+                ],
+              ),
+            ),
+            const SizedBox(width: 6),
+            const Icon(Icons.chevron_right_rounded, size: 20, color: _kGrey400),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RankBadge extends StatelessWidget {
+  final String label;
+  final Color color;
+
+  const _RankBadge({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 24,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Center(
+        child: Text(
+          label,
+          style: const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            color: Colors.white,
           ),
         ),
-      ],
+      ),
     );
   }
 }
@@ -479,24 +427,70 @@ class _RankedTile extends StatelessWidget {
 // 공통 위젯
 // ─────────────────────────────────────────────────────────────
 
+List<Widget> _compactScoreBadges(PhotoEvaluationResult eval) {
+  return [
+    _ScoreBadge(icon: Icons.star_rounded, label: '종합 ${eval.finalPct}'),
+    _ScoreBadge(icon: Icons.tune_rounded, label: '기술 ${eval.technicalPct}'),
+    if (eval.aestheticPct != null)
+      _ScoreBadge(
+        icon: Icons.auto_awesome_rounded,
+        label: '미적 ${eval.aestheticPct}',
+      ),
+  ];
+}
+
+List<Widget> _evaluationFactPills(
+  PhotoEvaluationResult eval, {
+  bool compact = false,
+}) {
+  final pills = <Widget>[
+    _InfoPill(label: '종합 ${eval.finalPct}점', strong: true),
+    _InfoPill(label: '기술 ${eval.technicalPct}점'),
+  ];
+
+  final aestheticPct = eval.aestheticPct;
+  if (aestheticPct != null) {
+    pills.add(_InfoPill(label: '미적 $aestheticPct점'));
+  }
+
+  if (!compact) {
+    final nimaPct = eval.nimaPct;
+    final rgnetPct = eval.rgnetPct;
+    final alampPct = eval.alampPct;
+    if (nimaPct != null) pills.add(_InfoPill(label: 'NIMA $nimaPct점'));
+    if (rgnetPct != null) pills.add(_InfoPill(label: 'RGNet $rgnetPct점'));
+    if (alampPct != null) pills.add(_InfoPill(label: 'ALAMP $alampPct점'));
+  }
+
+  final details = eval.scoreDetails.take(compact ? 1 : 2);
+  for (final detail in details) {
+    pills.add(_InfoPill(label: '${detail.label} ${detail.normalizedPct}점'));
+  }
+
+  pills.add(_InfoPill(label: eval.verdict));
+  return pills;
+}
+
 class _Card extends StatelessWidget {
   final Widget child;
+  final EdgeInsetsGeometry padding;
 
-  const _Card({required this.child});
+  const _Card({required this.child, this.padding = const EdgeInsets.all(18)});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
+      padding: padding,
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 2),
+            color: Colors.black.withValues(alpha: 0.055),
+            blurRadius: 22,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
@@ -526,13 +520,8 @@ class _CardTitle extends StatelessWidget {
 class _PhotoLink extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
-  final bool compact;
 
-  const _PhotoLink({
-    required this.label,
-    required this.onTap,
-    this.compact = false,
-  });
+  const _PhotoLink({required this.label, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -547,19 +536,11 @@ class _PhotoLink extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: compact ? 14 : 16,
+                fontSize: 16,
                 fontWeight: FontWeight.w800,
-                color: _kBlue,
-                decoration: TextDecoration.underline,
-                decorationColor: _kBlue.withValues(alpha: 0.4),
+                color: _kDark,
               ),
             ),
-          ),
-          const SizedBox(width: 6),
-          Icon(
-            Icons.photo_library_outlined,
-            size: compact ? 15 : 16,
-            color: _kBlue,
           ),
         ],
       ),
@@ -567,62 +548,114 @@ class _PhotoLink extends StatelessWidget {
   }
 }
 
-class _ScoreBar extends StatelessWidget {
-  final String label;
-  final int pct;
+class _DetailThumbnail extends StatelessWidget {
+  final String? assetId;
+  final double size;
 
-  const _ScoreBar({required this.label, required this.pct});
+  const _DetailThumbnail({required this.assetId, this.size = 104});
 
-  Color get _barColor {
-    if (pct >= 70) return _kBlue;
-    if (pct >= 50) return const Color(0xFFF59E0B);
-    return const Color(0xFFEF4444);
+  Future<Uint8List?> _loadThumbnail() async {
+    final id = assetId;
+    if (id == null || id.isEmpty) return null;
+
+    final asset = await AssetEntity.fromId(id);
+    if (asset == null) return null;
+
+    return asset.thumbnailDataWithSize(const ThumbnailSize(240, 240));
   }
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        SizedBox(
-          width: 70,
-          child: Text(
-            label,
-            style: const TextStyle(fontSize: 13, color: _kGrey600),
-          ),
-        ),
-        Expanded(
-          child: Container(
-            height: 8,
-            decoration: BoxDecoration(
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(size <= 56 ? 12 : 20),
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: FutureBuilder<Uint8List?>(
+          future: _loadThumbnail(),
+          builder: (context, snapshot) {
+            final bytes = snapshot.data;
+            if (bytes != null) {
+              return Image.memory(bytes, fit: BoxFit.cover);
+            }
+
+            return Container(
               color: _kGrey100,
-              borderRadius: BorderRadius.circular(4),
-            ),
-            alignment: Alignment.centerLeft,
-            child: FractionallySizedBox(
-              widthFactor: pct / 100,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: _barColor,
-                  borderRadius: BorderRadius.circular(4),
-                ),
+              child: const Icon(
+                Icons.photo_outlined,
+                size: 24,
+                color: _kGrey400,
               ),
-            ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _InfoPill extends StatelessWidget {
+  final String label;
+  final bool strong;
+
+  const _InfoPill({required this.label, this.strong = false});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 28,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        color: strong ? _kBlue.withValues(alpha: 0.10) : _kGrey100,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Center(
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+            color: strong ? _kBlue : _kGrey600,
           ),
         ),
-        const SizedBox(width: 10),
-        SizedBox(
-          width: 36,
-          child: Text(
-            '$pct점',
-            textAlign: TextAlign.right,
+      ),
+    );
+  }
+}
+
+class _ScoreBadge extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _ScoreBadge({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 23,
+      padding: const EdgeInsets.symmetric(horizontal: 7),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: _kGrey100),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: _kGrey600),
+          const SizedBox(width: 3),
+          Text(
+            label,
             style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: _kDark,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              color: _kGrey600,
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -653,31 +686,6 @@ class _Chip extends StatelessWidget {
   }
 }
 
-class _Pill extends StatelessWidget {
-  final String label;
-
-  const _Pill({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: _kGrey100,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-          color: _kGrey600,
-        ),
-      ),
-    );
-  }
-}
-
 class _NoDataState extends StatelessWidget {
   const _NoDataState();
 
@@ -699,7 +707,11 @@ class _NoDataState extends StatelessWidget {
           const SizedBox(height: 14),
           const Text(
             '저장된 결과 데이터가 없어요',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: _kGrey600),
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: _kGrey600,
+            ),
           ),
         ],
       ),
@@ -712,10 +724,7 @@ class _AssetPreviewScreen extends StatefulWidget {
   final AssetEntity asset;
   final String title;
 
-  const _AssetPreviewScreen({
-    required this.asset,
-    required this.title,
-  });
+  const _AssetPreviewScreen({required this.asset, required this.title});
 
   @override
   State<_AssetPreviewScreen> createState() => _AssetPreviewScreenState();
@@ -821,15 +830,19 @@ class _AssetPreviewScreenState extends State<_AssetPreviewScreen> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.broken_image_outlined,
-                              color: Colors.white54, size: 42),
+                          Icon(
+                            Icons.broken_image_outlined,
+                            color: Colors.white54,
+                            size: 42,
+                          ),
                           SizedBox(height: 12),
                           Text(
                             '사진을 불러오지 못했어요.',
                             style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600),
+                              color: Colors.white70,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ],
                       ),
@@ -840,8 +853,7 @@ class _AssetPreviewScreenState extends State<_AssetPreviewScreen> {
                     minScale: 1,
                     maxScale: 4,
                     child: Center(
-                      child:
-                          Image.memory(snapshot.data!, fit: BoxFit.contain),
+                      child: Image.memory(snapshot.data!, fit: BoxFit.contain),
                     ),
                   );
                 },
@@ -886,8 +898,11 @@ class _AssetPreviewScreenState extends State<_AssetPreviewScreen> {
                       child: const Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.photo_library_outlined,
-                              color: Colors.white, size: 18),
+                          Icon(
+                            Icons.photo_library_outlined,
+                            color: Colors.white,
+                            size: 18,
+                          ),
                           SizedBox(width: 8),
                           Text(
                             '갤러리에서 보기',
