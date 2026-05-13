@@ -1350,6 +1350,10 @@ class _CameraScreenState extends State<CameraScreen> {
         (decision.primaryGuidance == summary.guideMessage
             ? null
             : decision.primaryGuidance);
+    final landscapeGuidance = _visibleLandscapeGuidance(
+      primaryGuidance: analysis.advice.primaryGuidance,
+      summary: summary,
+    );
     final landscapeLevel = _landscapeCoachingLevel(summary.guideState);
 
     setState(() {
@@ -1357,7 +1361,7 @@ class _CameraScreenState extends State<CameraScreen> {
       _landscapeOverlayAdvice = analysis.advice;
       _isFrontCamera = frame.isFrontCamera;
       _currentZoom = frame.zoomLevel;
-      _guidance = analysis.advice.primaryGuidance;
+      _guidance = landscapeGuidance;
       _subGuidance = landscapeSubGuidance;
       _coachingLevel = landscapeLevel;
     });
@@ -1369,6 +1373,21 @@ class _CameraScreenState extends State<CameraScreen> {
         'mode=${decision.compositionMode.name} overlay=${decision.overlayType}',
       );
     }
+  }
+
+  String _visibleLandscapeGuidance({
+    required String primaryGuidance,
+    required CompositionSummary summary,
+  }) {
+    if (_startsWithPositiveLandscapeGuidance(primaryGuidance) &&
+        summary.guideState != CompositionGuideState.aligned) {
+      return summary.guideMessage;
+    }
+    return primaryGuidance;
+  }
+
+  bool _startsWithPositiveLandscapeGuidance(String message) {
+    return message.startsWith('좋아요.') || message.startsWith('좋아요,');
   }
 
   CoachingLevel _landscapeCoachingLevel(CompositionGuideState state) {
