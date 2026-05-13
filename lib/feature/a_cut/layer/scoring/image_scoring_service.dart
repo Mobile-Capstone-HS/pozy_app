@@ -27,6 +27,8 @@ abstract class ImageScoreService {
 }
 
 class OnDeviceImageScoreService implements ImageScoreService {
+  static const _analysisImageSize = ThumbnailSize(960, 960);
+
   OnDeviceImageScoreService({
     PhotoEvaluationService? evaluationService,
     ACutRankingService? rankingService,
@@ -97,20 +99,20 @@ class OnDeviceImageScoreService implements ImageScoreService {
       );
 
       try {
-        final originBytes = await current.asset.originBytes;
-        if (originBytes == null || originBytes.isEmpty) {
-          throw Exception('Cannot read image bytes.');
+        final analysisBytes = await _readAnalysisBytes(current.asset);
+        if (analysisBytes == null || analysisBytes.isEmpty) {
+          throw Exception('Cannot read analysis image bytes.');
         }
         final vlmImagePath =
             ExperimentalFeatures.useOnDeviceGemmaVlmExplanation && !disableGemma
             ? await _prepareVlmImagePath(
                 asset: current.asset,
-                imageBytes: originBytes,
+                imageBytes: analysisBytes,
               )
             : null;
 
         final evaluation = await _evaluationService.evaluate(
-          originBytes,
+          analysisBytes,
           fileName: current.fileName,
           localImagePath: vlmImagePath,
           skipExplanation: disableExplanations,
@@ -157,6 +159,27 @@ class OnDeviceImageScoreService implements ImageScoreService {
         avgMs: avgMs.toDouble(),
       ),
     );
+  }
+
+  Future<Uint8List?> _readAnalysisBytes(AssetEntity asset) async {
+    try {
+      final resized = await asset.thumbnailDataWithSize(_analysisImageSize);
+      if (resized != null && resized.isNotEmpty) {
+        debugPrint(
+          '[AcutPerf] analysis_image_resized asset_id=${asset.id} '
+          'bytes=${resized.length}',
+        );
+        return resized;
+      }
+    } catch (error) {
+      debugPrint(
+        '[AcutPerf] analysis_image_resized_failed asset_id=${asset.id} '
+        'error=$error',
+      );
+    }
+
+    debugPrint('[AcutPerf] analysis_image_unavailable asset_id=${asset.id}');
+    return null;
   }
 
   Future<String> _resolveFilename(AssetEntity asset, int index) async {

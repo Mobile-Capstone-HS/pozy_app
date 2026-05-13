@@ -44,11 +44,11 @@ abstract final class ExperimentalFeatures {
   );
   static const bool disableRgnetDuringBatchScoring = bool.fromEnvironment(
     'POZY_DISABLE_RGNET_DURING_BATCH_SCORING',
-    defaultValue: false,
+    defaultValue: true,
   );
   static const bool disableAlampDuringBatchScoring = bool.fromEnvironment(
     'POZY_DISABLE_ALAMP_DURING_BATCH_SCORING',
-    defaultValue: false,
+    defaultValue: true,
   );
   static const bool acutVerboseModelLogs = bool.fromEnvironment(
     'POZY_ACUT_VERBOSE_MODEL_LOGS',
