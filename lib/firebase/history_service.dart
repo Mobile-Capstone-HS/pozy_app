@@ -26,13 +26,13 @@ class HistoryRankedItem {
   });
 
   Map<String, dynamic> toMap() => {
-        'fileName': fileName,
-        if (assetId != null) 'assetId': assetId,
-        'rank': rank,
-        'isACut': isACut,
-        'isBestShot': isBestShot,
-        'evaluation': evaluation?.toJson(),
-      };
+    'fileName': fileName,
+    if (assetId != null) 'assetId': assetId,
+    'rank': rank,
+    'isACut': isACut,
+    'isBestShot': isBestShot,
+    'evaluation': evaluation?.toJson(),
+  };
 
   factory HistoryRankedItem.fromMap(Map<String, dynamic> m) {
     final evalMap = m['evaluation'] as Map<String, dynamic>?;
@@ -42,7 +42,9 @@ class HistoryRankedItem {
       rank: m['rank'] as int?,
       isACut: m['isACut'] as bool? ?? false,
       isBestShot: m['isBestShot'] as bool? ?? false,
-      evaluation: evalMap != null ? PhotoEvaluationResult.fromJson(evalMap) : null,
+      evaluation: evalMap != null
+          ? PhotoEvaluationResult.fromJson(evalMap)
+          : null,
     );
   }
 }
@@ -54,8 +56,6 @@ class HistoryEntry {
   final int photoCount;
   final String? bestFileName;
   final String? bestAssetId;
-  final double? bestScore;
-  final String? mode;
   final bool pinned;
   final String? assetId;
   // 단일 평가 결과
@@ -70,8 +70,6 @@ class HistoryEntry {
     required this.photoCount,
     this.bestFileName,
     this.bestAssetId,
-    this.bestScore,
-    this.mode,
     this.pinned = false,
     this.assetId,
     this.evaluation,
@@ -82,7 +80,7 @@ class HistoryEntry {
 
   String get subtitle {
     if (type == HistoryType.acut) {
-      return '사진 $photoCount장 분석 · ${mode ?? '자동'} 모드';
+      return '사진 $photoCount장 분석';
     }
     return bestFileName ?? '사진 1장 평가';
   }
@@ -100,12 +98,13 @@ class HistoryEntry {
       photoCount: data['photoCount'] as int? ?? 1,
       bestFileName: data['bestFileName'] as String?,
       bestAssetId: data['bestAssetId'] as String?,
-      bestScore: (data['bestScore'] as num?)?.toDouble(),
-      mode: data['mode'] as String?,
       pinned: data['pinned'] as bool? ?? false,
       assetId: data['assetId'] as String?,
-      evaluation: evalMap != null ? PhotoEvaluationResult.fromJson(evalMap) : null,
-      rankedItems: rankedRaw
+      evaluation: evalMap != null
+          ? PhotoEvaluationResult.fromJson(evalMap)
+          : null,
+      rankedItems:
+          rankedRaw
               ?.map((e) => HistoryRankedItem.fromMap(e as Map<String, dynamic>))
               .toList() ??
           const [],
@@ -127,23 +126,22 @@ class HistoryService {
     return _db.collection('users').doc(uid).collection('history');
   }
 
-  Future<void> saveACut({
-    required MultiPhotoRankingResult ranking,
-    required String mode,
-  }) async {
+  Future<void> saveACut({required MultiPhotoRankingResult ranking}) async {
     final col = _col;
     if (col == null) return;
 
     final rankedItems = ranking.items
         .where((e) => e.status == ScoreStatus.success)
-        .map((e) => HistoryRankedItem(
-              fileName: e.fileName,
-              assetId: e.asset.id,
-              rank: e.rank,
-              isACut: e.isACut,
-              isBestShot: e.isBestShot,
-              evaluation: e.evaluation,
-            ).toMap())
+        .map(
+          (e) => HistoryRankedItem(
+            fileName: e.fileName,
+            assetId: e.asset.id,
+            rank: e.rank,
+            isACut: e.isACut,
+            isBestShot: e.isBestShot,
+            evaluation: e.evaluation,
+          ).toMap(),
+        )
         .toList();
 
     await col.add({
@@ -152,8 +150,6 @@ class HistoryService {
       'photoCount': ranking.items.length,
       'bestFileName': ranking.bestShot?.fileName,
       'bestAssetId': ranking.bestShot?.asset.id,
-      'bestScore': ranking.bestShot?.evaluation?.finalScore,
-      'mode': mode,
       'pinned': false,
       'rankedItems': rankedItems,
     });
@@ -171,7 +167,6 @@ class HistoryService {
       'photoCount': 1,
       'bestFileName': result.fileName,
       'bestAssetId': assetId,
-      'bestScore': result.finalScore,
       'pinned': false,
       'assetId': assetId,
       'evaluation': result.toJson(),
@@ -198,10 +193,10 @@ class HistoryService {
         .limit(50)
         .snapshots()
         .map((snap) {
-      final all = snap.docs.map(HistoryEntry.fromDoc).toList();
-      final pinned = all.where((e) => e.pinned).toList();
-      final rest = all.where((e) => !e.pinned).toList();
-      return [...pinned, ...rest];
-    });
+          final all = snap.docs.map(HistoryEntry.fromDoc).toList();
+          final pinned = all.where((e) => e.pinned).toList();
+          final rest = all.where((e) => !e.pinned).toList();
+          return [...pinned, ...rest];
+        });
   }
 }

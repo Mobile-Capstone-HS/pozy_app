@@ -33,7 +33,8 @@ class TourApiService {
     '8',
   ];
 
-  String? get _serviceKey => dotenv.env['TOUR_API_KEY'];
+  String? get _serviceKey =>
+      dotenv.isInitialized ? dotenv.env['TOUR_API_KEY'] : null;
   final Map<String, Future<String?>> _overviewCache = {};
 
   bool get hasApiKey => (_serviceKey ?? '').isNotEmpty;
@@ -109,6 +110,20 @@ class TourApiService {
       places: candidates,
       count: count,
       areaCode: weeklyAreaCode,
+    );
+  }
+
+  Future<List<TourPlace>> fetchAreaPhotoSpots({
+    required String areaCode,
+    int count = 60,
+  }) {
+    return _fetchAreaSpots(
+      areaCode: areaCode,
+      contentTypeId: '12',
+      numOfRows: 50,
+      count: count,
+      pages: 4,
+      arrange: 'P',
     );
   }
 

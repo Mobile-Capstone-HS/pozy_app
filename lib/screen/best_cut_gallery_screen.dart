@@ -224,9 +224,32 @@ class _BestCutGalleryScreenState extends State<BestCutGalleryScreen> {
       body: SafeArea(
         child: Column(
           children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 10, 18, 0),
+              child: Row(
+                children: [
+                  GestureDetector(
+                    onTap: () => Navigator.of(context).pop(),
+                    child: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF7F7F7),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.arrow_back_ios_new_rounded,
+                        size: 17,
+                        color: AppColors.primaryText,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
             if (_granted && _albums.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
+                padding: const EdgeInsets.fromLTRB(18, 10, 18, 0),
                 child: _BestCutAlbumChipRow(
                   albums: _albums,
                   selectedAlbum: _selectedAlbum,
@@ -499,7 +522,7 @@ class _BestCutSelectionActionBar extends StatelessWidget {
     };
     final subtitle = switch (selectedCount) {
       0 => '사진을 탭으로 선택해 주세요.',
-      1 => '1장 평가 또는 사진을 더 추가해 A컷 랭킹으로 비교하세요.',
+      1 => '1장 평가 또는 사진을 더 골라 다각도로 비교해보세요.',
       _ => '선택한 사진들로 베스트 컷 분석을 시작할 수 있어요.',
     };
     final buttonLabel = selectedCount == 1 ? '사진 평가하기' : '베스트 컷 분석하기';

@@ -45,7 +45,7 @@ class ScoredPhotoResult {
   String get highlightLabel {
     if (isBestShot) return 'BEST';
     if (isTopThree) return 'TOP ${rank!}';
-    if (isACut) return 'A컷 후보';
+    if (isACut) return '베스트컷 후보';
     if (status == ScoreStatus.failed) return '실패';
     if (status == ScoreStatus.pending) return '분석 중';
     return rankLabel;

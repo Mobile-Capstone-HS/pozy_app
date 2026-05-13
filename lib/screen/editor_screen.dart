@@ -502,7 +502,7 @@ class _EditorScreenState extends State<EditorScreen> {
           children: [
             // ── 상단 바 ──
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 16, 0),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
               child: Row(
                 children: [
                   // 뒤로가기 / 메뉴
@@ -524,14 +524,10 @@ class _EditorScreenState extends State<EditorScreen> {
                       ),
                     ),
                   if (widget.onBack != null) const SizedBox(width: 12),
-                  const Text(
-                    'Editor',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                      color: _kDark,
-                      letterSpacing: -0.5,
-                    ),
+                  Image.asset(
+                    'assets/images/pozy_logo2.png',
+                    height: 40,
+                    fit: BoxFit.contain,
                   ),
                   const Spacer(),
                   // Undo / Redo
@@ -574,7 +570,7 @@ class _EditorScreenState extends State<EditorScreen> {
               ),
             ),
 
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
 
             // ── 이미지 캔버스 ──
             Expanded(child: _buildCanvas()),

@@ -13,7 +13,6 @@ const _kBg = Color(0xFFF7F8FB);
 const _kBlue = Color(0xFF3182F6);
 const _kDark = Color(0xFF191F28);
 const _kGrey600 = Color(0xFF6B7684);
-const _kGrey100 = Color(0xFFF2F4F6);
 
 class BestCutScreen extends StatefulWidget {
   final ValueChanged<int> onMoveTab;
@@ -81,20 +80,15 @@ class _BestCutScreenState extends State<BestCutScreen> {
             // ── 헤더 ──
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
                 child: Row(
                   children: [
-                    const Expanded(
-                      child: Text(
-                        'Best Cut',
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w800,
-                          color: _kDark,
-                          letterSpacing: -0.5,
-                        ),
-                      ),
+                    Image.asset(
+                      'assets/images/pozy_logo2.png',
+                      height: 40,
+                      fit: BoxFit.contain,
                     ),
+                    const Spacer(),
                     GestureDetector(
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute<void>(
@@ -102,16 +96,37 @@ class _BestCutScreenState extends State<BestCutScreen> {
                         ),
                       ),
                       child: Container(
-                        width: 36,
                         height: 36,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
                         decoration: BoxDecoration(
-                          color: _kGrey100,
-                          borderRadius: BorderRadius.circular(12),
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(999),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.04),
+                              blurRadius: 12,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
                         ),
-                        child: const Icon(
-                          Icons.history_rounded,
-                          color: _kGrey600,
-                          size: 20,
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.history_rounded,
+                              color: _kGrey600,
+                              size: 18,
+                            ),
+                            SizedBox(width: 6),
+                            Text(
+                              '분석 기록',
+                              style: TextStyle(
+                                color: _kGrey600,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -120,7 +135,7 @@ class _BestCutScreenState extends State<BestCutScreen> {
               ),
             ),
 
-            const SliverToBoxAdapter(child: SizedBox(height: 20)),
+            const SliverToBoxAdapter(child: SizedBox(height: 4)),
 
             // ── 히어로 배너 (블루 그라데이션) ──
             SliverToBoxAdapter(
@@ -145,7 +160,6 @@ class _BestCutScreenState extends State<BestCutScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // 뱃지
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 10,
@@ -306,7 +320,7 @@ class _BestCutScreenState extends State<BestCutScreen> {
                               ),
                               const SizedBox(height: 14),
                               const Text(
-                                '촬영 후\n바로 평가',
+                                '촬영 후\n바로 평가받기',
                                 style: TextStyle(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w700,
@@ -363,21 +377,21 @@ class _BestCutScreenState extends State<BestCutScreen> {
                           child: _AnalysisItem(
                             icon: Icons.wb_sunny_rounded,
                             label: '노출',
-                            color: Color(0xFF4B95F7),
+                            color: Color(0xFF3182F6),
                           ),
                         ),
                         Expanded(
                           child: _AnalysisItem(
                             icon: Icons.palette_rounded,
-                            label: '색감',
-                            color: Color(0xFF6AABF8),
+                            label: '선명도',
+                            color: Color(0xFF3182F6),
                           ),
                         ),
                         Expanded(
                           child: _AnalysisItem(
-                            icon: Icons.center_focus_strong_rounded,
-                            label: '선명도',
-                            color: Color(0xFF89C0FA),
+                            icon: Icons.auto_awesome_rounded,
+                            label: '분위기',
+                            color: Color(0xFF3182F6),
                           ),
                         ),
                       ],

@@ -6,7 +6,9 @@ import 'package:http/http.dart' as http;
 
 class GeminiService {
   static String get _apiKey {
-    final runtimeKey = dotenv.env['GEMINI_API_KEY'] ?? '';
+    final runtimeKey = dotenv.isInitialized
+        ? dotenv.env['GEMINI_API_KEY'] ?? ''
+        : '';
     if (runtimeKey.isNotEmpty) return runtimeKey;
     return const String.fromEnvironment('GEMINI_API_KEY');
   }
