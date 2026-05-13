@@ -82,6 +82,7 @@ class TfliteAestheticService {
     Uint8List imageBytes,
     AestheticModelContract contract, {
     int? imageIndex,
+    AcutImagePreprocessBundle? bundle,
     AcutImagePreprocessBundle? preprocessBundle,
     Map<String, Future<Uint8List>>? inputCache,
   }) async {
@@ -97,7 +98,7 @@ class TfliteAestheticService {
       resolvedConfig,
       inputCache: inputCache ?? <String, Future<Uint8List>>{},
       imageIndex: imageIndex,
-      bundle: preprocessBundle,
+      bundle: bundle ?? preprocessBundle,
     );
 
     return TfliteSingleModelRun(model: resolvedConfig, detail: detail);
@@ -106,10 +107,12 @@ class TfliteAestheticService {
   Future<TflitePhotoScoreSummary> evaluate(
     Uint8List imageBytes, {
     int? imageIndex,
+    AcutImagePreprocessBundle? bundle,
     AcutImagePreprocessBundle? preprocessBundle,
     Map<String, Future<Uint8List>>? sharedInputCache,
   }) async {
     final inputCache = sharedInputCache ?? <String, Future<Uint8List>>{};
+    final effectiveBundle = bundle ?? preprocessBundle;
     final scoreDetails = <ModelScoreDetail>[];
     final warnings = <String>[];
     final resolvedConfigs = <ResolvedAestheticModelConfig>[];
@@ -128,7 +131,7 @@ class TfliteAestheticService {
           resolvedConfig,
           inputCache: inputCache,
           imageIndex: imageIndex,
-          bundle: preprocessBundle,
+          bundle: effectiveBundle,
         );
         scoreDetails.add(detail);
       } catch (error) {
@@ -283,6 +286,94 @@ class TfliteAestheticService {
     required Map<String, Future<Uint8List>> inputCache,
     AcutImagePreprocessBundle? bundle,
   }) async {
+    if (contract.id == 'nima_mobile') {
+      debugPrint('[AcutPerf] NIMA_ONLY_START file=...');
+      debugPrint('[AcutPerf] NIMA_ONLY_ASSET path=${contract.assetPath}');
+
+      const inputWidth = 224;
+      const inputHeight = 224;
+      const expectedBytes = 602112;
+      final cacheKey =
+          'nima:0:$inputWidth:$inputHeight:${contract.normalization.name}:'
+          '${contract.inputDtype}:${contract.colorFormat}:${contract.tensorLayout}';
+
+      final preSw = Stopwatch()..start();
+      final preprocessed = await inputCache.putIfAbsent(
+        cacheKey,
+        () =>
+            bundle?.rgbFloat32(
+              width: inputWidth,
+              height: inputHeight,
+              normalization: contract.normalization,
+            ) ??
+            _preprocessor.preprocessToRgbFloat32(
+              imageBytes,
+              width: inputWidth,
+              height: inputHeight,
+              normalization: contract.normalization,
+            ),
+      );
+      preSw.stop();
+      final int pMs = preSw.elapsedMilliseconds;
+      AcutPerfMetrics.totalPreprocessMs += pMs;
+      debugPrint(
+        '[AcutPerf] preprocess_${inputWidth}_ms=$pMs model=${contract.id}',
+      );
+
+      if (preprocessed.lengthInBytes != expectedBytes) {
+        debugPrint(
+          '[AcutPerf] NIMA_MATCH_ERROR error="Input buffer size mismatch. '
+          'Expected $expectedBytes, got ${preprocessed.lengthInBytes}"',
+        );
+        throw Exception('NIMA input buffer size mismatch');
+      }
+
+      if (ExperimentalFeatures.verboseModelLogs) {
+        debugPrint(
+          '[AcutPerf] NIMA_ONLY_INPUT_BUFFER '
+          'runtimeType=${preprocessed.runtimeType} '
+          'length=${preprocessed.length} bytes=${preprocessed.lengthInBytes}',
+        );
+      }
+
+      debugPrint('[AcutPerf] NIMA_ONLY_PATH tensor_plain');
+      final output = [List<double>.filled(10, 0.0)];
+      debugPrint(
+        '[AcutPerf] NIMA_OUTPUT_ALLOC type=${output.runtimeType} shape=[1,10]',
+      );
+
+      final inferSw = Stopwatch()..start();
+      interpreter.run(preprocessed, output);
+      inferSw.stop();
+      final int iMs = inferSw.elapsedMilliseconds;
+      AcutPerfMetrics.totalInferenceMs += iMs;
+
+      if (ExperimentalFeatures.verboseModelLogs) {
+        debugPrint(
+          '[AcutPerf] NIMA_OUTPUT_AFTER_RUN '
+          'type=${output.runtimeType} outer_len=${output.length} '
+          'inner_type=${output.isNotEmpty ? output[0].runtimeType : "none"} '
+          'inner_len=${output.isNotEmpty ? output[0].length : 0}',
+        );
+      }
+
+      final probs = _extractNimaProbabilities(output);
+      debugPrint(
+        '[AcutPerf] NIMA_ONLY_DONE elapsed_ms=${inferSw.elapsedMilliseconds}',
+      );
+      debugPrint(
+        '[AcutPerf] model_inference_only_ms=$iMs model=${contract.id}',
+      );
+
+      final int totalMs = pMs + iMs;
+      debugPrint(
+        '[AcutPerf] model_total_with_preprocess_ms=$totalMs model=${contract.id}',
+      );
+      AcutPerfMetrics.totalNimaMs += totalMs;
+
+      return _parseNimaDistribution10(contract, probs);
+    }
+
     final inputTensors = interpreter.getInputTensors();
     if (inputTensors.isEmpty) {
       throw Exception('No input tensors found for ${contract.id}.');
@@ -307,42 +398,6 @@ class TfliteAestheticService {
     }
     if (needsAllocation) {
       interpreter.allocateTensors();
-    }
-
-    final isNima = contract.id == 'nima_mobile';
-    if (isNima) {
-      debugPrint('[AcutPerf] NIMA_ONLY_START file=...');
-      debugPrint('[AcutPerf] NIMA_ONLY_ASSET path=${contract.assetPath}');
-      final inT = interpreter.getInputTensor(0);
-      final outT = interpreter.getOutputTensor(0);
-      debugPrint(
-        '[AcutPerf] NIMA_ONLY_DESCRIPTOR inputShapes=[${inT.shape}] outputShapes=[${outT.shape}] inputTypes=[${inT.type.name}] outputTypes=[${outT.type.name}]',
-      );
-      if (ExperimentalFeatures.acutVerboseModelLogs) {
-        debugPrint(
-          '[AcutPerf] NIMA_ONLY_DESCRIPTOR inputShapes=[${inT.shape}] outputShapes=[${outT.shape}] inputTypes=[${inT.type.name}] outputTypes=[${outT.type.name}]',
-        );
-      }
-
-      if (inT.shape.length != 4 ||
-          inT.shape[1] != 224 ||
-          inT.shape[2] != 224 ||
-          inT.shape[3] != 3) {
-        debugPrint(
-          '[AcutPerf] NIMA_MATCH_ERROR error="Invalid input shape: ${inT.shape}"',
-        );
-        throw Exception('NIMA input shape mismatch');
-      }
-      if (outT.shape.length != 2 || outT.shape[1] != 10) {
-        debugPrint(
-          '[AcutPerf] NIMA_MATCH_ERROR error="Invalid output shape: ${outT.shape}"',
-        );
-        throw Exception('NIMA output shape mismatch');
-      }
-      if (inT.type.name != 'float32' || outT.type.name != 'float32') {
-        debugPrint('[AcutPerf] NIMA_MATCH_ERROR error="Invalid tensor type"');
-        throw Exception('NIMA tensor type mismatch');
-      }
     }
 
     final preparedInputs = <Uint8List>[];
@@ -371,20 +426,21 @@ class TfliteAestheticService {
           '${contract.inputDtype}:${contract.colorFormat}:${contract.tensorLayout}';
 
       final preSw = Stopwatch()..start();
+
       final preprocessed = await inputCache.putIfAbsent(
         cacheKey,
-        () => bundle != null
-            ? bundle.rgbFloat32(
-                width: runtimeWidth,
-                height: runtimeHeight,
-                normalization: contract.normalization,
-              )
-            : _preprocessor.preprocessToRgbFloat32(
-                imageBytes,
-                width: runtimeWidth,
-                height: runtimeHeight,
-                normalization: contract.normalization,
-              ),
+        () =>
+            bundle?.rgbFloat32(
+              width: runtimeWidth,
+              height: runtimeHeight,
+              normalization: contract.normalization,
+            ) ??
+            _preprocessor.preprocessToRgbFloat32(
+              imageBytes,
+              width: runtimeWidth,
+              height: runtimeHeight,
+              normalization: contract.normalization,
+            ),
       );
       preSw.stop();
       final pMs = preSw.elapsedMilliseconds;
@@ -397,11 +453,6 @@ class TfliteAestheticService {
       if (preprocessed.lengthInBytes != expectedBytes) {
         throw Exception(
           'Input buffer size mismatch. Expected $expectedBytes, got ${preprocessed.lengthInBytes}',
-        );
-      }
-      if (isNima && ExperimentalFeatures.acutVerboseModelLogs) {
-        debugPrint(
-          '[AcutPerf] NIMA_ONLY_INPUT_BUFFER runtimeType=${preprocessed.runtimeType} length=${preprocessed.length} bytes=${preprocessed.lengthInBytes}',
         );
       }
 
@@ -419,57 +470,6 @@ class TfliteAestheticService {
     final liveOutputTensors = interpreter.getOutputTensors();
     if (liveOutputTensors.isEmpty) {
       throw Exception('No output tensors found for ${contract.id}.');
-    }
-
-    if (isNima) {
-      debugPrint('[AcutPerf] NIMA_ONLY_PATH tensor_plain');
-      final output = [List<double>.filled(10, 0.0)];
-      debugPrint(
-        '[AcutPerf] NIMA_OUTPUT_ALLOC type=${output.runtimeType} shape=[1,10]',
-      );
-      if (ExperimentalFeatures.acutVerboseModelLogs) {
-        debugPrint('[AcutPerf] NIMA_ONLY_PATH tensor_plain');
-        debugPrint(
-          '[AcutPerf] NIMA_OUTPUT_ALLOC type=${output.runtimeType} shape=[1,10]',
-        );
-      }
-
-      final inferSw = Stopwatch()..start();
-      interpreter.run(preparedInputs[0], output);
-      inferSw.stop();
-      final iMs = inferSw.elapsedMilliseconds;
-      AcutPerfMetrics.totalInferenceMs += iMs;
-
-      debugPrint(
-        '[AcutPerf] NIMA_OUTPUT_AFTER_RUN '
-        'type=${output.runtimeType} outer_len=${output.length} '
-        'inner_type=${output.isNotEmpty ? output[0].runtimeType : "none"} '
-        'inner_len=${output.isNotEmpty ? (output[0] as List).length : 0}',
-      );
-      if (ExperimentalFeatures.acutVerboseModelLogs) {
-        debugPrint(
-          '[AcutPerf] NIMA_OUTPUT_AFTER_RUN '
-          'type=${output.runtimeType} outer_len=${output.length} '
-          'inner_type=${output.isNotEmpty ? output[0].runtimeType : "none"} '
-          'inner_len=${output.isNotEmpty ? (output[0] as List).length : 0}',
-        );
-      }
-
-      final probs = _extractNimaProbabilities(output);
-      debugPrint(
-        '[AcutPerf] NIMA_ONLY_DONE elapsed_ms=${inferSw.elapsedMilliseconds}',
-      );
-      debugPrint(
-        '[AcutPerf] model_inference_only_ms=$iMs model=${contract.id}',
-      );
-
-      final totalMs = preprocessMs + iMs;
-      debugPrint(
-        '[AcutPerf] model_total_with_preprocess_ms=$totalMs model=${contract.id}',
-      );
-      AcutPerfMetrics.totalNimaMs += totalMs;
-
-      return _parseNimaDistribution10(contract, probs);
     }
 
     final outputBuffers = <int, ByteBuffer>{};
@@ -493,7 +493,7 @@ class TfliteAestheticService {
     AcutPerfMetrics.totalInferenceMs += iMs;
     debugPrint('[AcutPerf] model_inference_only_ms=$iMs model=${contract.id}');
 
-    final totalMs = preprocessMs + iMs;
+    final int totalMs = preprocessMs + iMs;
     debugPrint(
       '[AcutPerf] model_total_with_preprocess_ms=$totalMs model=${contract.id}',
     );
@@ -643,7 +643,7 @@ class TfliteAestheticService {
     debugPrint(
       '[AcutPerf] nima_summary ok=true path=${contract.assetPath} outputMode=distribution_10 normalized=$normalized error=null',
     );
-    if (ExperimentalFeatures.acutVerboseModelLogs) {
+    if (ExperimentalFeatures.verboseModelLogs) {
       debugPrint('[AcutPerf] NIMA_ONLY_OUTPUT probs=[$probs]');
       debugPrint(
         '[AcutPerf] NIMA_ONLY_SCORE rawScore=$rawScore normalized=$normalized',
@@ -853,18 +853,18 @@ class TfliteAestheticService {
     final preSw = Stopwatch()..start();
     final buffer = await inputCache.putIfAbsent(
       cacheKey,
-      () => bundle != null
-          ? bundle.rgbFloat32(
-              width: inputSide,
-              height: inputSide,
-              normalization: contract.normalization,
-            )
-          : _preprocessor.preprocessToRgbFloat32(
-              imageBytes,
-              width: inputSide,
-              height: inputSide,
-              normalization: contract.normalization,
-            ),
+      () =>
+          bundle?.rgbFloat32(
+            width: inputSide,
+            height: inputSide,
+            normalization: contract.normalization,
+          ) ??
+          _preprocessor.preprocessToRgbFloat32(
+            imageBytes,
+            width: inputSide,
+            height: inputSide,
+            normalization: contract.normalization,
+          ),
     );
     preSw.stop();
     final pMs = preSw.elapsedMilliseconds;
@@ -917,49 +917,55 @@ class TfliteAestheticService {
     );
 
     final globalCacheKey =
-        'signature:$globalInputName:$globalSide:$globalSide:${contract.normalization.name}';
+        'signature:alamp_global:$globalInputName:$globalSide:$globalSide:${contract.normalization.name}';
     final patchesCacheKey =
-        'signature:$patchInputName:${patchSpec.patchWidth}:${patchSpec.patchHeight}:'
+        'signature:alamp_adaptive:$patchInputName:${patchSpec.patchWidth}:${patchSpec.patchHeight}:'
         '${patchSpec.patchCount}:${contract.normalization.name}';
 
     final preSw = Stopwatch()..start();
     final globalBuffer = await inputCache.putIfAbsent(
       globalCacheKey,
-      () => bundle != null
-          ? bundle.rgbFloat32(
-              width: globalSide,
-              height: globalSide,
-              normalization: contract.normalization,
-            )
-          : _preprocessor.preprocessToRgbFloat32(
-              imageBytes,
-              width: globalSide,
-              height: globalSide,
-              normalization: contract.normalization,
-            ),
+      () =>
+          bundle?.alampGlobalViewFloat32(
+            width: globalSide,
+            height: globalSide,
+            normalization: contract.normalization,
+          ) ??
+          _preprocessor.preprocessAlampGlobalViewFloat32(
+            imageBytes,
+            width: globalSide,
+            height: globalSide,
+            normalization: contract.normalization,
+          ),
     );
     final patchBuffer = await inputCache.putIfAbsent(
       patchesCacheKey,
-      () => bundle != null
-          ? bundle.alampPatchesFloat32(
-              patchWidth: patchSpec.patchWidth,
-              patchHeight: patchSpec.patchHeight,
-              patchCount: patchSpec.patchCount,
-              normalization: contract.normalization,
-            )
-          : _preprocessor.preprocessPatchBatchToRgbFloat32(
-              imageBytes,
-              patchWidth: patchSpec.patchWidth,
-              patchHeight: patchSpec.patchHeight,
-              patchCount: patchSpec.patchCount,
-              normalization: contract.normalization,
-            ),
+      () =>
+          bundle?.alampAdaptivePatchesFloat32(
+            patchWidth: patchSpec.patchWidth,
+            patchHeight: patchSpec.patchHeight,
+            patchCount: patchSpec.patchCount,
+            normalization: contract.normalization,
+          ) ??
+          _preprocessor.preprocessAlampAdaptivePatchesFloat32(
+            imageBytes,
+            patchWidth: patchSpec.patchWidth,
+            patchHeight: patchSpec.patchHeight,
+            patchCount: patchSpec.patchCount,
+            normalization: contract.normalization,
+          ),
     );
     preSw.stop();
     final pMs = preSw.elapsedMilliseconds;
     AcutPerfMetrics.totalPreprocessMs += pMs;
     debugPrint(
-      '[AcutPerf] preprocess_alamp_patches_ms=$pMs model=${contract.id}',
+      '[AcutPerf] preprocess_alamp_signature_ms=$pMs model=${contract.id} '
+      'global=${globalSide}x$globalSide patches=${patchSpec.patchCount}x'
+      '${patchSpec.patchWidth}x${patchSpec.patchHeight}',
+    );
+    debugPrint(
+      '[AcutPerf] alamp_input_bytes global=${globalBuffer.lengthInBytes} '
+      'patches=${patchBuffer.lengthInBytes}',
     );
 
     return _SignatureInputBundle(
