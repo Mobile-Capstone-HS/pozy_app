@@ -522,6 +522,11 @@ class _EditorScreenState extends State<EditorScreen> {
                       ),
                     ),
                   if (widget.onBack != null) const SizedBox(width: 12),
+                  Image.asset(
+                    'assets/images/pozy_logo2.png',
+                    height: 40,
+                    fit: BoxFit.contain,
+                  ),
                   const Spacer(),
                   // Undo / Redo
                   _HeaderIconBtn(
