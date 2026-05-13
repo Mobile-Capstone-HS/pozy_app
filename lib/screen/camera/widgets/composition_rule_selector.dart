@@ -107,10 +107,14 @@ class _CompositionRuleSelectorState extends State<CompositionRuleSelector> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.tune_rounded, size: 12, color: Color(0xFF1D4ED8)),
+              const Icon(
+                Icons.tune_rounded,
+                size: 12,
+                color: Color(0xFF1D4ED8),
+              ),
               const SizedBox(width: 4),
               ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 128),
+                constraints: const BoxConstraints(maxWidth: 132),
                 child: Text(
                   summary,
                   maxLines: 1,
@@ -143,12 +147,12 @@ class _CompositionRuleSelectorState extends State<CompositionRuleSelector> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 140),
         curve: Curves.easeOut,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-          decoration: BoxDecoration(
-            color: isSelected
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected
               ? const Color(0xFFBFDBFE).withValues(alpha: 0.72)
               : const Color(0xFFF8FBFF),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: isSelected
                 ? const Color(0xFF93C5FD)
@@ -158,11 +162,10 @@ class _CompositionRuleSelectorState extends State<CompositionRuleSelector> {
         child: Text(
           _tabTitle(tab),
           style: TextStyle(
-            color: isSelected
-                ? const Color(0xFF1D4ED8)
-                : const Color(0xFF6B7280),
+            color:
+                isSelected ? const Color(0xFF1D4ED8) : const Color(0xFF6B7280),
             fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-            fontSize: 10,
+            fontSize: 11,
           ),
         ),
       ),
@@ -170,18 +173,23 @@ class _CompositionRuleSelectorState extends State<CompositionRuleSelector> {
   }
 
   Widget _buildRuleOptions() {
-    return Wrap(
-      spacing: 6,
-      runSpacing: 6,
-      children: CompositionRuleRegistry.ordered.map((type) {
-        final rule = CompositionRuleRegistry.of(type);
-        return _RuleChip(
-          label: rule.label,
-          icon: rule.icon,
-          selected: type == widget.selected,
-          onTap: () => widget.onChanged(type),
-        );
-      }).toList(),
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final type in CompositionRuleRegistry.ordered) ...[
+            if (type != CompositionRuleRegistry.ordered.first)
+              const SizedBox(width: 6),
+            _RuleChip(
+              label: CompositionRuleRegistry.of(type).label,
+              icon: CompositionRuleRegistry.of(type).icon,
+              selected: type == widget.selected,
+              onTap: () => widget.onChanged(type),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -203,8 +211,8 @@ class _CompositionRuleSelectorState extends State<CompositionRuleSelector> {
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
           child: Container(
-            constraints: const BoxConstraints(maxWidth: 220),
-            padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
+            constraints: const BoxConstraints(maxWidth: 340),
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
             decoration: BoxDecoration(
               color: const Color(0xFFF8FBFF).withValues(alpha: 0.92),
               borderRadius: BorderRadius.circular(18),
@@ -223,37 +231,63 @@ class _CompositionRuleSelectorState extends State<CompositionRuleSelector> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: GestureDetector(
-                    onTap: _collapse,
-                    behavior: HitTestBehavior.opaque,
-                    child: Container(
-                      padding: const EdgeInsets.all(2),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF1F5F9),
-                        borderRadius: BorderRadius.circular(10),
+                if (widget.showSilhouetteTab) ...[
+                  Row(
+                    children: [
+                      Expanded(
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _buildTabButton(_Tab.rule),
+                              const SizedBox(width: 6),
+                              _buildTabButton(_Tab.silhouette),
+                            ],
+                          ),
+                        ),
                       ),
-                      child: const Icon(
-                        Icons.close_rounded,
-                        color: Color(0xFF6B7280),
-                        size: 16,
+                      const SizedBox(width: 6),
+                      GestureDetector(
+                        onTap: _collapse,
+                        behavior: HitTestBehavior.opaque,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.close_rounded,
+                            color: Color(0xFF6B7280),
+                            size: 14,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                ] else
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: GestureDetector(
+                      onTap: _collapse,
+                      behavior: HitTestBehavior.opaque,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.close_rounded,
+                          color: Color(0xFF6B7280),
+                          size: 14,
+                        ),
                       ),
                     ),
                   ),
-                ),
-                if (widget.showSilhouetteTab) ...[
-                  const SizedBox(height: 2),
-                  Wrap(
-                    spacing: 4,
-                    runSpacing: 4,
-                    children: [
-                      _buildTabButton(_Tab.rule),
-                      _buildTabButton(_Tab.silhouette),
-                    ],
-                  ),
-                  const SizedBox(height: 5),
-                ],
+                if (!widget.showSilhouetteTab) const SizedBox(height: 4),
                 if (activeTab == _Tab.rule)
                   _buildRuleOptions()
                 else
@@ -294,10 +328,11 @@ class _RuleChip extends StatelessWidget {
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+        height: 38,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
           color: bg,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(17),
           border: Border.all(
             color: selected
                 ? const Color(0xFF93C5FD)
@@ -308,7 +343,7 @@ class _RuleChip extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon, size: 14, color: fg),
-            const SizedBox(width: 4),
+            const SizedBox(width: 5),
             Text(
               label,
               style: TextStyle(

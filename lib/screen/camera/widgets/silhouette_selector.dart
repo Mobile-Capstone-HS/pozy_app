@@ -25,26 +25,22 @@ class SilhouetteSelector extends StatelessWidget {
       ),
     ];
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final chipWidth = (constraints.maxWidth - 6) / 2;
-
-        return Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: items.map((item) {
-            return SizedBox(
-              width: chipWidth,
-              child: _SilhouetteChip(
-                icon: item.$2,
-                label: item.$3,
-                selected: item.$1 == selected,
-                onTap: () => onChanged(item.$1),
-              ),
-            );
-          }).toList(),
-        );
-      },
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = 0; i < items.length; i++) ...[
+            if (i > 0) const SizedBox(width: 6),
+            _SilhouetteChip(
+              icon: items[i].$2,
+              label: items[i].$3,
+              selected: items[i].$1 == selected,
+              onTap: () => onChanged(items[i].$1),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -73,10 +69,11 @@ class _SilhouetteChip extends StatelessWidget {
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+        height: 38,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
           color: bg,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(17),
           border: Border.all(
             color: selected
                 ? const Color(0xFF93C5FD)
@@ -84,21 +81,18 @@ class _SilhouetteChip extends StatelessWidget {
           ),
         ),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon, size: 14, color: fg),
-            const SizedBox(width: 4),
-            Flexible(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: fg,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                ),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: fg,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ],

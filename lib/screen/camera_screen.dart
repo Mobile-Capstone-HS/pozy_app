@@ -33,7 +33,6 @@ import 'package:pose_camera_app/screen/camera/widgets/silhouette_painter.dart';
 import 'package:pose_camera_app/coaching/subject/subject_detection.dart'
     show detectModelPath, detectionConfidenceThreshold;
 import 'package:pose_camera_app/feature/landscape/landscape_overlay_painter.dart';
-import 'package:pose_camera_app/screen/landscape_asset_test_screen.dart';
 import 'package:pose_camera_app/segmentation/composition_engine.dart';
 import 'package:pose_camera_app/segmentation/composition_resolver.dart';
 import 'package:pose_camera_app/segmentation/composition_summary.dart';
@@ -82,7 +81,6 @@ class _CameraScreenState extends State<CameraScreen> {
   static const double _portraitExpandedBubbleTopOffset = 10;
   static const double _coachingBubbleRightInset = 12;
   static const double _groupCounterLeftInset = 16;
-  static const double _sampleTestButtonLeftInset = 16;
   static const double _bottomControlsHorizontalInset = 0;
 
   final _cameraController = YOLOViewController();
@@ -1623,19 +1621,6 @@ class _CameraScreenState extends State<CameraScreen> {
   List<CameraSideToolAction> _buildSideToolActions() {
     final actions = <CameraSideToolAction>[];
 
-    if (_isPortraitMode) {
-      final meta = _portraitIntentButtonMeta();
-      actions.add(
-        CameraSideToolAction(
-          icon: meta.$1,
-          label: meta.$2,
-          onTap: _togglePortraitIntentSelector,
-          active: _showPortraitIntentSelector,
-          activeColor: const Color(0xFFE5E7EB),
-        ),
-      );
-    }
-
     if (!_isFrontCamera) {
       actions.add(
         CameraSideToolAction(
@@ -1654,8 +1639,22 @@ class _CameraScreenState extends State<CameraScreen> {
         label: '타이머',
         onTap: _cycleTimer,
         active: _timerSeconds > 0,
+        secondaryLabel: _timerSeconds > 0 ? '${_timerSeconds}s' : null,
       ),
     );
+
+    if (_isPortraitMode) {
+      final meta = _portraitIntentButtonMeta();
+      actions.add(
+        CameraSideToolAction(
+          icon: meta.$1,
+          label: meta.$2,
+          onTap: _togglePortraitIntentSelector,
+          active: _showPortraitIntentSelector,
+          activeColor: const Color(0xFFE5E7EB),
+        ),
+      );
+    }
 
     if (_isObjectMode) {
       actions.add(
@@ -1672,89 +1671,19 @@ class _CameraScreenState extends State<CameraScreen> {
       );
     }
 
-    if (_isLandscapeMode) {
-      actions.add(
-        CameraSideToolAction(
-          icon: Icons.science_outlined,
-          label: '테스트',
-          onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => const LandscapeAssetTestScreen(),
-              ),
-            );
-          },
-        ),
-      );
-    }
-
     return actions;
   }
 
-  Widget _buildCompositionTrigger(bool isNarrowScreen) {
-    final active = _showSideToolSelector;
-    final label = _isPortraitMode ? '구도·포즈' : '구도';
-
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(13),
-      clipBehavior: Clip.hardEdge,
-      child: InkWell(
+  Widget _buildCompositionTrigger() {
+    return CameraToolButton(
+      action: CameraSideToolAction(
+        icon: _showSideToolSelector
+            ? Icons.grid_3x3_rounded
+            : Icons.grid_view_rounded,
+        label: '구도',
         onTap: _toggleSideToolSelector,
-        borderRadius: BorderRadius.circular(13),
-        child: Container(
-          padding: EdgeInsets.symmetric(
-            horizontal: isNarrowScreen ? 8 : 9,
-            vertical: 5.5,
-          ),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF8FBFF).withValues(
-              alpha: active ? 0.96 : 0.92,
-            ),
-            borderRadius: BorderRadius.circular(13),
-            border: Border.all(
-              color: active
-                  ? const Color(0xFF38BDF8).withValues(alpha: 0.34)
-                  : const Color(0xFF38BDF8).withValues(alpha: 0.18),
-            ),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x120F172A),
-                blurRadius: 12,
-                offset: Offset(0, 6),
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                _isPortraitMode
-                    ? Icons.accessibility_new_rounded
-                    : Icons.grid_view_rounded,
-                size: 13,
-                color: Color(0xFF1D4ED8),
-              ),
-              const SizedBox(width: 4),
-              const Text(
-                '구도',
-                style: TextStyle(
-                  color: Color(0xFF111827),
-                  fontSize: 9.5,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(width: 2),
-              Icon(
-                active
-                    ? Icons.keyboard_arrow_up_rounded
-                    : Icons.keyboard_arrow_down_rounded,
-                size: 14,
-                color: Color(0xFF6B7280),
-              ),
-            ],
-          ),
-        ),
+        active: _showSideToolSelector,
+        activeColor: const Color(0xFF38BDF8),
       ),
     );
   }
@@ -1897,13 +1826,11 @@ class _CameraScreenState extends State<CameraScreen> {
     }
     final screenWidth = MediaQuery.sizeOf(context).width;
     final isNarrowScreen = screenWidth <= 360;
-    final sideToolLeftInset = isNarrowScreen ? 14.0 : 16.0;
-    final sideToolTopInset = isNarrowScreen ? 138.0 : 148.0;
     final selectorTopInset = isNarrowScreen ? 50.0 : 54.0;
-    final portraitSelectorTopInset = sideToolTopInset;
     final selectorRightInset = isNarrowScreen ? 18.0 : 22.0;
-    final portraitSelectorLeftInset = sideToolLeftInset + 56.0;
-    final selectorPanelWidth = math.min(screenWidth * 0.58, 248.0);
+    final portraitSelectorTopInset = selectorTopInset;
+    final portraitSelectorRightInset = isNarrowScreen ? 62.0 : 66.0;
+    final selectorPanelWidth = math.min(screenWidth * 0.78, 340.0);
     final bubbleTop = _isRuleSelectorExpanded
         ? _coachingBubbleTopExpanded +
               (_isPortraitMode ? _portraitExpandedBubbleTopOffset : 0) +
@@ -1912,7 +1839,9 @@ class _CameraScreenState extends State<CameraScreen> {
     final bubbleRightInset = isNarrowScreen ? 18.0 : 22.0;
     final bubbleMaxWidth = math.min(screenWidth * 0.58, 280.0);
     final showCoachingBubble =
-        !_showSideToolSelector && !(_isObjectMode && _isDrawingRoi);
+        !_showSideToolSelector &&
+        !_showPortraitIntentSelector &&
+        !(_isObjectMode && _isDrawingRoi);
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
@@ -2023,7 +1952,7 @@ class _CameraScreenState extends State<CameraScreen> {
             if (_isObjectMode && _isDrawingRoi)
               Positioned(
                 top: _objectSelectionHintTop,
-                left: sideToolLeftInset,
+                left: isNarrowScreen ? 14.0 : 16.0,
                 child: IgnorePointer(
                   child: Container(
                     padding: const EdgeInsets.symmetric(
@@ -2079,7 +2008,8 @@ class _CameraScreenState extends State<CameraScreen> {
               ),
             if (_isPortraitMode &&
                 _portraitIntent == portrait.PortraitIntent.group &&
-                !_showSideToolSelector)
+                !_showSideToolSelector &&
+                !_showPortraitIntentSelector)
               AnimatedPositioned(
                 duration: const Duration(milliseconds: 250),
                 curve: Curves.easeOutCubic,
@@ -2093,24 +2023,20 @@ class _CameraScreenState extends State<CameraScreen> {
               right: _screenSideInset,
               child: TopCameraBar(
                 onBack: widget.onBack,
-                torchOn: _torchOn,
-                onToggleTorch: _isFrontCamera ? null : _toggleTorch,
-                timerSeconds: _timerSeconds,
-                onCycleTimer: _cycleTimer,
-                isDrawingRoi: _isDrawingRoi,
-                isRoiLocked: _lockedRoi != null,
-                onToggleRoiLock: _isObjectMode ? _toggleRoiLock : null,
-                badge: null,
-                trailing: _buildCompositionTrigger(isNarrowScreen),
+                toolBar: CameraSideToolBar(actions: _buildSideToolActions()),
+                trailing: _buildCompositionTrigger(),
               ),
             ),
             if (_isPortraitMode && _showPortraitIntentSelector)
               Positioned(
                 top: portraitSelectorTopInset,
-                left: portraitSelectorLeftInset,
+                right: portraitSelectorRightInset,
                 child: ConstrainedBox(
                   constraints: BoxConstraints(
-                    maxWidth: math.min(screenWidth * 0.46, 184.0),
+                    maxWidth: math.min(
+                      screenWidth * 0.72,
+                      260.0,
+                    ),
                   ),
                   child: PortraitIntentSelector(
                     selected: _portraitIntent,
@@ -2151,15 +2077,6 @@ class _CameraScreenState extends State<CameraScreen> {
                   ),
                 ),
               ),
-            Positioned(
-              left: 0,
-              child: CameraSideToolBar(
-                actions: _buildSideToolActions(),
-                topInset: sideToolTopInset,
-                horizontalInset: sideToolLeftInset,
-                alignLeft: true,
-              ),
-            ),
             Positioned(
               left: _bottomControlsHorizontalInset,
               right: _bottomControlsHorizontalInset,

@@ -51,15 +51,17 @@ class PortraitIntentSelector extends StatelessWidget {
             ),
           ],
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            for (var i = 0; i < entries.length; i++) ...[
-              if (i > 0) const SizedBox(height: 6),
-              entries[i],
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var i = 0; i < entries.length; i++) ...[
+                if (i > 0) const SizedBox(width: 6),
+                entries[i],
+              ],
             ],
-          ],
+          ),
         ),
       );
     }
@@ -94,22 +96,21 @@ class _IntentChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bg = selected
-        ? const Color(0xFFBFDBFE)
-        : const Color(0xFFFDFEFF);
+    final bg = selected ? const Color(0xFFBFDBFE) : const Color(0xFFFDFEFF);
     final fg = selected ? const Color(0xFF10367D) : const Color(0xFF1F2937);
 
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
+        height: compact ? 34 : null,
         padding: EdgeInsets.symmetric(
           horizontal: compact ? 12 : 12,
-          vertical: compact ? 10 : 8,
+          vertical: compact ? 7 : 8,
         ),
         decoration: BoxDecoration(
           color: bg,
-          borderRadius: BorderRadius.circular(compact ? 10 : 20),
+          borderRadius: BorderRadius.circular(compact ? 17 : 20),
           border: Border.all(
             color: selected
                 ? const Color(0xFF93C5FD)
@@ -119,24 +120,16 @@ class _IntentChip extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: compact ? 17 : 16, color: fg),
-            SizedBox(width: compact ? 8 : 6),
+            Icon(icon, size: compact ? 15 : 16, color: fg),
+            SizedBox(width: compact ? 6 : 6),
             Text(
               label,
               style: TextStyle(
                 color: fg,
-                fontSize: compact ? 11 : 12,
+                fontSize: compact ? 10.5 : 12,
                 fontWeight: FontWeight.w700,
               ),
             ),
-            if (compact && selected) ...[
-              const SizedBox(width: 10),
-              const Icon(
-                Icons.check_rounded,
-                size: 17,
-                color: Color(0xFF10367D),
-              ),
-            ],
           ],
         ),
       ),
