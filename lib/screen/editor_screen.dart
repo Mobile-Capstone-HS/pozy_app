@@ -13,12 +13,12 @@ import 'editor/editor_presets.dart';
 import 'editor/editor_history.dart';
 import 'editor/editor_comparison.dart';
 
-const _kBg = Color(0xFFF7F8FB);
-const _kBlue = Color(0xFF3182F6);
-const _kDark = Color(0xFF191F28);
+const _kBg = Color(0xFFF6F7FB);
+const _kBlue = Color(0xFF5BB8D4);
+const _kDark = Color(0xFF2F2F2F);
 const _kGrey600 = Color(0xFF6B7684);
 const _kGrey400 = Color(0xFFB0B8C1);
-const _kGrey100 = Color(0xFFF2F4F6);
+const _kGrey100 = Color(0xFFF1F5F9);
 
 class EditorScreen extends StatefulWidget {
   final ValueChanged<int> onMoveTab;
@@ -381,8 +381,7 @@ class _EditorScreenState extends State<EditorScreen> {
     if (_sourceBytes == null) return;
     setState(() => _isPreparingImage = true);
     try {
-      final rotated = await compute(rotateImage90, _sourceBytes!);
-      final prepared = await compute(prepareEditorBuffers, rotated);
+      final prepared = await compute(rotateImage90AndPrepare, _sourceBytes!);
       if (!mounted) return;
       setState(() {
         _sourceBytes = prepared['source'];
@@ -407,8 +406,7 @@ class _EditorScreenState extends State<EditorScreen> {
     if (_sourceBytes == null) return;
     setState(() => _isPreparingImage = true);
     try {
-      final flipped = await compute(flipImageHorizontal, _sourceBytes!);
-      final prepared = await compute(prepareEditorBuffers, flipped);
+      final prepared = await compute(flipImageHorizontalAndPrepare, _sourceBytes!);
       if (!mounted) return;
       setState(() {
         _sourceBytes = prepared['source'];
@@ -502,7 +500,7 @@ class _EditorScreenState extends State<EditorScreen> {
           children: [
             // ── 상단 바 ──
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              padding: const EdgeInsets.fromLTRB(20, 12, 16, 0),
               child: Row(
                 children: [
                   // 뒤로가기 / 메뉴
@@ -546,23 +544,45 @@ class _EditorScreenState extends State<EditorScreen> {
                   // 저장
                   GestureDetector(
                     onTap: _hasImage && !_isSaving ? _saveImage : null,
-                    child: Container(
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 8),
+                          horizontal: 18, vertical: 9),
                       decoration: BoxDecoration(
-                        color:
-                            _hasImage && !_isSaving ? _kBlue : _kGrey100,
-                        borderRadius: BorderRadius.circular(10),
+                        color: _hasImage && !_isSaving ? _kBlue : _kGrey100,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: _hasImage && !_isSaving
+                            ? [
+                                BoxShadow(
+                                  color: _kBlue.withValues(alpha: 0.35),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ]
+                            : [],
                       ),
-                      child: Text(
-                        '저장',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: _hasImage && !_isSaving
-                              ? Colors.white
-                              : _kGrey400,
-                        ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.save_alt_rounded,
+                            size: 14,
+                            color: _hasImage && !_isSaving
+                                ? Colors.white
+                                : _kGrey400,
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            '저장',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: _hasImage && !_isSaving
+                                  ? Colors.white
+                                  : _kGrey400,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -570,10 +590,12 @@ class _EditorScreenState extends State<EditorScreen> {
               ),
             ),
 
-            const SizedBox(height: 4),
+            const SizedBox(height: 12),
 
             // ── 이미지 캔버스 ──
             Expanded(child: _buildCanvas()),
+
+            const SizedBox(height: 4),
 
             // ── 하단 패널 ──
             _buildBottomPanel(bottomPadding),
@@ -802,9 +824,10 @@ class _EditorScreenState extends State<EditorScreen> {
     final activeValue = _valueOf(_activeAdjustment);
 
     return Container(
-      padding: EdgeInsets.fromLTRB(16, 10, 16, bottomPadding > 0 ? 4 : 10),
+      padding: EdgeInsets.fromLTRB(16, 14, 16, bottomPadding > 0 ? 4 : 14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: const Color(0xFFF6F7FB),
+        border: const Border(top: BorderSide(color: Color(0xFFF7F8FB))),
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         boxShadow: [
           BoxShadow(
@@ -856,13 +879,24 @@ class _EditorScreenState extends State<EditorScreen> {
                 icon: Icons.flip_rounded,
                 label: '뒤집기',
                 onTap: _flipImage),
-            const SizedBox(width: 8),
+            // 구분선
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              child: VerticalDivider(width: 1, color: Color(0xFFDDE1E7)),
+            ),
+            // AI 버튼 — 포인트 강조
             _ActionChip(
-                icon: Icons.auto_awesome_rounded,
-                label: 'AI',
-                onTap: _showAiEditSheet),
+              icon: Icons.auto_awesome_rounded,
+              label: 'AI 편집',
+              onTap: _showAiEditSheet,
+              highlight: true,
+            ),
             if (_hasAnyEdit) ...[
-              const SizedBox(width: 8),
+              // 구분선
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                child: VerticalDivider(width: 1, color: Color(0xFFDDE1E7)),
+              ),
               _ActionChip(
                 icon: _comparisonMode
                     ? Icons.compare_rounded
@@ -886,62 +920,67 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   Widget _buildSlider(double activeValue) {
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(_activeAdjustment.icon, size: 16, color: _kDark),
-        const SizedBox(width: 6),
-        SizedBox(
-          width: 28,
-          child: Text(
-            _activeAdjustment.shortLabel,
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: _kDark,
-            ),
+        // 현재 조절 항목명 + 값
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Row(
+            children: [
+              Icon(_activeAdjustment.icon, size: 15, color: _kBlue),
+              const SizedBox(width: 6),
+              Text(
+                _activeAdjustment.label,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: _kDark,
+                ),
+              ),
+              const Spacer(),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 150),
+                child: Text(
+                  activeValue.round().toString(),
+                  key: ValueKey(activeValue.round()),
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: activeValue != 0 ? _kBlue : _kGrey400,
+                  ),
+                ),
+              ),
+              if (activeValue != 0) ...[
+                const SizedBox(width: 6),
+                GestureDetector(
+                  onTap: _resetActiveAdjustment,
+                  child: const Icon(Icons.refresh_rounded,
+                      size: 15, color: _kGrey400),
+                ),
+              ],
+            ],
           ),
         ),
-        Expanded(
-          child: SliderTheme(
-            data: SliderTheme.of(context).copyWith(
-              activeTrackColor: _kBlue,
-              inactiveTrackColor: _kGrey100,
-              thumbColor: Colors.white,
-              overlayColor: _kBlue.withValues(alpha: 0.08),
-              trackHeight: 3,
-              thumbShape:
-                  const RoundSliderThumbShape(enabledThumbRadius: 7),
-            ),
-            child: Slider(
-              min: -100,
-              max: 100,
-              divisions: 200,
-              value: activeValue,
-              onChanged: _hasImage ? _updateAdjustment : null,
-              onChangeEnd: _hasImage ? (_) => _pushHistory() : null,
-            ),
+        const SizedBox(height: 4),
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            activeTrackColor: _kBlue,
+            inactiveTrackColor: _kGrey100,
+            thumbColor: Colors.white,
+            overlayColor: _kBlue.withValues(alpha: 0.08),
+            trackHeight: 3,
+            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+          ),
+          child: Slider(
+            min: -100,
+            max: 100,
+            divisions: 200,
+            value: activeValue,
+            onChanged: _hasImage ? _updateAdjustment : null,
+            onChangeEnd: _hasImage ? (_) => _pushHistory() : null,
           ),
         ),
-        SizedBox(
-          width: 30,
-          child: Text(
-            activeValue.round().toString(),
-            textAlign: TextAlign.right,
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: _kDark,
-            ),
-          ),
-        ),
-        if (activeValue != 0) ...[
-          const SizedBox(width: 4),
-          GestureDetector(
-            onTap: _resetActiveAdjustment,
-            child:
-                const Icon(Icons.refresh_rounded, size: 16, color: _kGrey400),
-          ),
-        ],
       ],
     );
   }
@@ -990,7 +1029,7 @@ class _EditorScreenState extends State<EditorScreen> {
               padding:
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: selected ? _kDark : _kGrey100,
+                color: selected ? _kBlue : _kGrey100,
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Row(
@@ -1026,44 +1065,102 @@ class _EmptyPlaceholder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 64,
-            height: 64,
-            decoration: BoxDecoration(
-              color: _kGrey100,
-              borderRadius: BorderRadius.circular(20),
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            const Color(0xFFEEF6FB),
+            const Color(0xFFF6F7FB),
+          ],
+        ),
+      ),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            DashedBorderIcon(),
+            const SizedBox(height: 20),
+            const Text(
+              '사진을 추가해 보정을 시작하세요',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: _kDark,
+              ),
             ),
-            child: const Icon(
-              Icons.add_photo_alternate_outlined,
-              size: 30,
-              color: _kGrey400,
+            const SizedBox(height: 6),
+            const Text(
+              '탭해서 갤러리에서 선택',
+              style: TextStyle(
+                fontSize: 13,
+                color: _kGrey600,
+              ),
             ),
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            '사진을 추가해 보정을 시작하세요',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: _kDark,
-            ),
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            '탭해서 갤러리에서 선택',
-            style: TextStyle(
-              fontSize: 13,
-              color: _kGrey600,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
+}
+
+class DashedBorderIcon extends StatelessWidget {
+  const DashedBorderIcon({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      size: const Size(80, 80),
+      painter: _DashedRectPainter(),
+      child: const SizedBox(
+        width: 80,
+        height: 80,
+        child: Center(
+          child: Icon(
+            Icons.add_photo_alternate_outlined,
+            size: 34,
+            color: _kBlue,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DashedRectPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = _kBlue.withValues(alpha: 0.5)
+      ..strokeWidth = 1.5
+      ..style = PaintingStyle.stroke;
+
+    const dashWidth = 6.0;
+    const dashSpace = 4.0;
+    const radius = 20.0;
+    final rect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(0, 0, size.width, size.height),
+      const Radius.circular(radius),
+    );
+    final path = Path()..addRRect(rect);
+    final dashPath = Path();
+    final metrics = path.computeMetrics();
+    for (final metric in metrics) {
+      double distance = 0;
+      while (distance < metric.length) {
+        dashPath.addPath(
+          metric.extractPath(distance, distance + dashWidth),
+          Offset.zero,
+        );
+        distance += dashWidth + dashSpace;
+      }
+    }
+    canvas.drawPath(dashPath, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 // ── 헤더 아이콘 버튼 ──
@@ -1105,35 +1202,53 @@ class _ActionChip extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
   final bool active;
+  final bool highlight;
 
   const _ActionChip({
     required this.icon,
     required this.label,
     required this.onTap,
     this.active = false,
+    this.highlight = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    final bg = active
+        ? _kDark
+        : highlight
+            ? _kBlue.withValues(alpha: 0.12)
+            : _kGrey100;
+    final iconColor = active
+        ? Colors.white
+        : highlight
+            ? _kBlue
+            : _kDark;
+    final textColor = active
+        ? Colors.white
+        : highlight
+            ? _kBlue
+            : _kDark;
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: active ? _kDark : _kGrey100,
+          color: bg,
           borderRadius: BorderRadius.circular(10),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 16, color: active ? Colors.white : _kDark),
+            Icon(icon, size: 16, color: iconColor),
             const SizedBox(width: 5),
             Text(
               label,
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: active ? Colors.white : _kDark,
+                color: textColor,
               ),
             ),
           ],
@@ -1162,7 +1277,7 @@ class _TabChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         decoration: BoxDecoration(
-          color: selected ? _kDark : Colors.transparent,
+          color: selected ? _kBlue : Colors.transparent,
           borderRadius: BorderRadius.circular(10),
         ),
         child: Text(
