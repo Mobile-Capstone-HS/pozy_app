@@ -47,33 +47,21 @@ class AcutCommentPromptBuilder {
         : 'null';
 
     return '''
-당신은 사진 A-cut 추천 앱의 설명 작성기입니다.
-아래에는 이미 계산된 점수가 제공됩니다.
-당신의 역할은 점수를 다시 계산하는 것이 아니라, 주어진 점수와${includeImageContext ? ' 사진 내용' : ' 입력 맥락'}에 일관된 설명을 작성하는 것입니다.
-점수를 새로 계산, 수정, 보정하거나 과장하지 마세요.
-답변은 반드시 한국어 JSON 한 개만 출력하세요. 마크다운, 코드펜스, 부가 설명은 금지합니다.
+사진 분석 결과를 한국어 JSON 한 개로만 출력하세요. 마크다운 금지.
+점수는 이미 계산된 값이므로 수정하거나 다시 계산하지 마세요.
+${includeImageContext ? '이미지에서 보이는 피사체/빛/구도/아쉬운 점을 짧게 반영하세요.' : '입력 점수와 맥락만 반영하세요.'}
 
-[입력 점수 - 수정 불가]
+점수:
 ${scoreLines.join('\n')}
 
-[출력 규칙]
-- comment_type:
-  - final_score >= 80 이면 "selected_explanation"
-  - 60 <= final_score < 80 이면 "near_miss_feedback"
-  - final_score < 60 이면 "rejection_reason"
-- short_reason: 한 문장
-- detailed_reason: 2~4문장, 기술/미적 점수와 일관되게
-- comparison_reason: 순위 정보가 있을 때만 작성, 없으면 null
-- 사진에 보이지 않는 내용은 단정하지 마세요.
-- 점수와 모순되는 칭찬이나 비판은 금지합니다.
+규칙:
+- comment_type은 final_score 기준: 80 이상 selected_explanation, 60 이상 near_miss_feedback, 그 외 rejection_reason
+- short_reason: 핵심 한 문장
+- detailed_reason: 정확히 3문장. 1문장=사진에 담긴 내용, 2문장=좋은 점, 3문장=아쉬운 점/보완점
+- comparison_reason: 순위 정보가 없으면 null
+- 보이지 않는 내용 단정 금지, 점수와 모순 금지
 
-출력 JSON 스키마:
-{
-  "comment_type": "<selected_explanation|near_miss_feedback|rejection_reason>",
-  "short_reason": "<핵심 한 문장>",
-  "detailed_reason": "<세부 설명 2~4문장>",
-  "comparison_reason": $comparisonRule
-}''';
+{"comment_type":"selected_explanation|near_miss_feedback|rejection_reason","short_reason":"...","detailed_reason":"...","comparison_reason":$comparisonRule}''';
   }
 
   static OnDeviceGemmaPromptPayload buildCompactOnDeviceGemmaPrompt(
