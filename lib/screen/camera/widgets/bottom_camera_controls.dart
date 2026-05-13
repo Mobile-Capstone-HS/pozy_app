@@ -36,74 +36,111 @@ class BottomCameraControls extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (shotTypeLabel != null && shotTypeLabel!.isNotEmpty) ...[
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.4),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              shotTypeLabel!,
-              style: const TextStyle(color: Colors.white70, fontSize: 12),
-            ),
-          ),
-          const SizedBox(height: 12),
-        ],
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: zoomPresets
-                    .map(
-                      (zoom) => Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        child: ZoomPill(
-                          label:
-                              '${zoom.toStringAsFixed(zoom == zoom.truncateToDouble() ? 0 : 1)}x',
-                          selected: (selectedZoom - zoom).abs() < 0.05,
-                          onTap: () => onSelectZoom(zoom),
-                        ),
-                      ),
-                    )
-                    .toList(),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final availableWidth = constraints.maxWidth;
+        final isNarrow = availableWidth <= 360;
+        final sideActionGap = ((availableWidth - 80 - 48 - 48) / 4)
+            .clamp(isNarrow ? 14.0 : 18.0, 40.0)
+            .toDouble();
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (shotTypeLabel != null && shotTypeLabel!.isNotEmpty) ...[
+              ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: availableWidth * 0.44),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    shotTypeLabel!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white38,
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
               ),
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+              const SizedBox(height: 8),
+            ],
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  GlassIconButton(
-                    icon: Icons.photo_library_outlined,
-                    onTap: onGallery,
-                    diameter: 48,
+                  Opacity(
+                    opacity: 0.84,
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: zoomPresets
+                            .map(
+                              (zoom) => Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 3,
+                                ),
+                                child: ZoomPill(
+                                  label:
+                                      '${zoom.toStringAsFixed(zoom == zoom.truncateToDouble() ? 0 : 1)}x',
+                                  selected: (selectedZoom - zoom).abs() < 0.05,
+                                  onTap: () => onSelectZoom(zoom),
+                                ),
+                              ),
+                            )
+                            .toList(),
+                      ),
+                    ),
                   ),
-                  const SizedBox(width: 48),
-                  CaptureButton(
-                    isSaving: isSaving,
-                    isShootReady: isShootReady,
-                    onCapture: onCapture,
-                  ),
-                  const SizedBox(width: 48),
-                  GlassIconButton(
-                    icon: Icons.flip_camera_ios_outlined,
-                    onTap: onFlipCamera,
-                    diameter: 48,
+                  SizedBox(height: isNarrow ? 14 : 18),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      GlassIconButton(
+                        icon: Icons.photo_library_outlined,
+                        onTap: onGallery,
+                        diameter: 48,
+                      ),
+                      SizedBox(width: sideActionGap),
+                      CaptureButton(
+                        isSaving: isSaving,
+                        isShootReady: isShootReady,
+                        onCapture: onCapture,
+                      ),
+                      SizedBox(width: sideActionGap),
+                      GlassIconButton(
+                        icon: Icons.flip_camera_ios_outlined,
+                        onTap: onFlipCamera,
+                        diameter: 48,
+                      ),
+                    ],
                   ),
                 ],
               ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        ModeSwitcher(selected: shootingMode, onChanged: onModeChanged),
-        const SizedBox(height: 8),
-      ],
+            ),
+            SizedBox(height: isNarrow ? 12 : 14),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: isNarrow ? 20 : 30),
+              child: ModeSwitcher(
+                selected: shootingMode,
+                onChanged: onModeChanged,
+              ),
+            ),
+            SizedBox(height: isNarrow ? 10 : 8),
+          ],
+        );
+      },
     );
   }
 }

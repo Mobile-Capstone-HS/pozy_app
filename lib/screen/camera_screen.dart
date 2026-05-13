@@ -15,9 +15,9 @@ import 'package:pose_camera_app/composition/composition_rule.dart';
 import 'package:pose_camera_app/composition/composition_rule_registry.dart';
 import 'package:pose_camera_app/screen/camera/shooting_mode.dart';
 import 'package:pose_camera_app/screen/camera/widgets/bottom_camera_controls.dart';
+import 'package:pose_camera_app/screen/camera/widgets/camera_side_tool_bar.dart';
 import 'package:pose_camera_app/screen/camera/widgets/composition_grid_painter.dart';
 import 'package:pose_camera_app/screen/camera/widgets/composition_rule_selector.dart';
-import 'package:pose_camera_app/screen/camera/widgets/portrait_badge.dart';
 import 'package:pose_camera_app/screen/camera/widgets/portrait_intent_selector.dart';
 import 'package:pose_camera_app/screen/camera/widgets/roi_painter.dart';
 import 'package:pose_camera_app/screen/camera/widgets/top_camera_bar.dart';
@@ -33,7 +33,6 @@ import 'package:pose_camera_app/screen/camera/widgets/silhouette_painter.dart';
 import 'package:pose_camera_app/coaching/subject/subject_detection.dart'
     show detectModelPath, detectionConfidenceThreshold;
 import 'package:pose_camera_app/feature/landscape/landscape_overlay_painter.dart';
-import 'package:pose_camera_app/screen/landscape_asset_test_screen.dart';
 import 'package:pose_camera_app/segmentation/composition_engine.dart';
 import 'package:pose_camera_app/segmentation/composition_resolver.dart';
 import 'package:pose_camera_app/segmentation/composition_summary.dart';
@@ -73,6 +72,16 @@ class _CameraScreenState extends State<CameraScreen> {
   static const bool _debugUseImageAnalysisFace = true;
   static const int _portraitNativeFaceIntervalMs = 180;
   static const int _portraitNativeFaceIntervalFrames = 6;
+  static const double _screenSideInset = 16;
+  static const double _topBarTop = 8;
+  static const double _overlayTop = 76;
+  static const double _objectSelectionHintTop = 110;
+  static const double _coachingBubbleTopCollapsed = 72;
+  static const double _coachingBubbleTopExpanded = 124;
+  static const double _portraitExpandedBubbleTopOffset = 10;
+  static const double _coachingBubbleRightInset = 12;
+  static const double _groupCounterLeftInset = 16;
+  static const double _bottomControlsHorizontalInset = 0;
 
   final _cameraController = YOLOViewController();
   final _landscapeController = FastScnnViewController();
@@ -86,8 +95,10 @@ class _CameraScreenState extends State<CameraScreen> {
   List<double> _zoomPresets = [1.0, 2.0];
   Size _previewSize = Size.zero;
 
-  String _guidance = '\uAD6C\uB3C4\uB97C \uC7A1\uB294 \uC911...';
-  String? _subGuidance;
+  String _guidance =
+      '\uD53C\uC0AC\uCCB4\uB97C \uD654\uBA74 \uC548\uC5D0 \uB2F4\uC544\uBCF4\uC138\uC694';
+  String? _subGuidance =
+      '\uC778\uC2DD\uB418\uBA74 \uBC1D\uAE30, \uC218\uD3C9, \uAD6C\uB3C4\uB97C \uAE30\uC900\uC73C\uB85C \uCF54\uCE6D\uD560\uAC8C\uC694';
   CoachingLevel _coachingLevel = CoachingLevel.caution;
   double? _coachingScore;
   DirectionHint _directionHint = DirectionHint.none;
@@ -104,8 +115,10 @@ class _CameraScreenState extends State<CameraScreen> {
   bool _isSaving = false;
   bool _showFlash = false;
   bool _torchOn = false;
-  bool _showPortraitDebugOverlay = true;
+  bool _showPortraitDebugOverlay = false;
   bool _isRuleSelectorExpanded = false;
+  bool _showSideToolSelector = false;
+  bool _showPortraitIntentSelector = false;
 
   bool _isDrawingRoi = false;
   Offset? _roiDragStart;
@@ -132,9 +145,11 @@ class _CameraScreenState extends State<CameraScreen> {
 
   portrait.CoachingResult _portraitCoaching = const portrait.CoachingResult(
     message:
-        '\uCE74\uBA54\uB77C\uB97C \uC5EC\uC720\uB86D\uAC8C \uB9DE\uCDB0\uC8FC\uC138\uC694.',
+        '\uC778\uBB3C\uC744 \uD654\uBA74 \uC548\uC5D0 \uB2F4\uC544\uBCF4\uC138\uC694',
     priority: portrait.CoachingPriority.critical,
     confidence: 1.0,
+    reason:
+        '\uC5BC\uAD74\uACFC \uC790\uC138\uAC00 \uBCF4\uC774\uBA74 \uAD6C\uB3C4\uB97C \uC548\uB0B4\uD560\uAC8C\uC694',
   );
   OverlayData _portraitOverlayData = const OverlayData(
     coaching: portrait.CoachingResult(
@@ -169,6 +184,7 @@ class _CameraScreenState extends State<CameraScreen> {
   void initState() {
     super.initState();
     _shootingMode = widget.initialMode;
+    _applyIdleCoachingForMode(_shootingMode);
     if (DebugLogFlags.yoloDebug) {
       debugPrint('[YOLO_DEBUG][screen] initState mode=${_shootingMode.name}');
     }
@@ -276,9 +292,11 @@ class _CameraScreenState extends State<CameraScreen> {
     _portraitLostFrames = 0;
     _portraitCoaching = const portrait.CoachingResult(
       message:
-          '\uCE74\uBA54\uB77C\uB97C \uC5EC\uC720\uB86D\uAC8C \uB9DE\uCDB0\uC8FC\uC138\uC694.',
+          '\uC778\uBB3C\uC744 \uD654\uBA74 \uC548\uC5D0 \uB2F4\uC544\uBCF4\uC138\uC694',
       priority: portrait.CoachingPriority.critical,
       confidence: 1.0,
+      reason:
+          '\uC5BC\uAD74\uACFC \uC790\uC138\uAC00 \uBCF4\uC774\uBA74 \uAD6C\uB3C4\uB97C \uC548\uB0B4\uD560\uAC8C\uC694',
     );
     _portraitOverlayData = const OverlayData(
       coaching: portrait.CoachingResult(
@@ -313,6 +331,29 @@ class _CameraScreenState extends State<CameraScreen> {
         _directionHint = coaching.directionHint;
         _lightDirection = coaching.lightDirection;
       });
+    }
+  }
+
+  void _applyIdleCoachingForMode(ShootingMode mode) {
+    switch (mode) {
+      case ShootingMode.person:
+        _guidance =
+            '\uC778\uBB3C\uC744 \uD654\uBA74 \uC548\uC5D0 \uB2F4\uC544\uBCF4\uC138\uC694';
+        _subGuidance =
+            '\uC5BC\uAD74\uACFC \uC790\uC138\uAC00 \uBCF4\uC774\uBA74 \uAD6C\uB3C4\uB97C \uC548\uB0B4\uD560\uAC8C\uC694';
+        break;
+      case ShootingMode.object:
+        _guidance =
+            '\uD53C\uC0AC\uCCB4\uB97C \uD654\uBA74 \uC548\uC5D0 \uB2F4\uC544\uBCF4\uC138\uC694';
+        _subGuidance =
+            '\uC778\uC2DD\uB418\uBA74 \uBC1D\uAE30, \uC218\uD3C9, \uAD6C\uB3C4\uB97C \uAE30\uC900\uC73C\uB85C \uCF54\uCE6D\uD560\uAC8C\uC694';
+        break;
+      case ShootingMode.landscape:
+        _guidance =
+            '\uC7A5\uBA74\uC744 \uCC9C\uCC9C\uD788 \uB9DE\uCDB0\uBCF4\uC138\uC694';
+        _subGuidance =
+            '\uC218\uD3C9\uACFC \uAD6C\uB3C4\uB97C \uAE30\uC900\uC73C\uB85C \uCD2C\uC601\uD558\uAE30 \uC88B\uC740 \uC21C\uAC04\uC744 \uC54C\uB824\uB4DC\uB9B4\uAC8C\uC694';
+        break;
     }
   }
 
@@ -761,8 +802,7 @@ class _CameraScreenState extends State<CameraScreen> {
       _isDrawingRoi = false;
       _roiDragStart = null;
       _roiDragCurrent = null;
-      _guidance = '\uAD6C\uB3C4\uB97C \uC7A1\uB294 \uC911...';
-      _subGuidance = null;
+      _applyIdleCoachingForMode(_shootingMode);
       _coachingLevel = CoachingLevel.caution;
       _coachingScore = null;
       _directionHint = DirectionHint.none;
@@ -1002,14 +1042,16 @@ class _CameraScreenState extends State<CameraScreen> {
       _isFrontCamera = !_isFrontCamera;
       _selectedZoom = 1.0;
       _currentZoom = 1.0;
-      _guidance = '\uAD6C\uB3C4\uB97C \uC7A1\uB294 \uC911...';
-      _subGuidance = null;
+      _applyIdleCoachingForMode(_shootingMode);
       _coachingLevel = CoachingLevel.caution;
       _coachingScore = null;
       _directionHint = DirectionHint.none;
       _lightDirection = LightDirection.unknown;
       _focusPoint = null;
       _showFocusIndicator = false;
+      _showSideToolSelector = false;
+      _isRuleSelectorExpanded = false;
+      _showPortraitIntentSelector = false;
       _tiltX = 0.0;
       _gravX = 0.0;
       _gravY = 9.8;
@@ -1039,8 +1081,7 @@ class _CameraScreenState extends State<CameraScreen> {
       if (mode == ShootingMode.person) {
         _portraitIntent = portrait.PortraitIntent.single;
       }
-      _guidance = '\uAD6C\uB3C4\uB97C \uC7A1\uB294 \uC911...';
-      _subGuidance = null;
+      _applyIdleCoachingForMode(mode);
       _coachingLevel = CoachingLevel.caution;
       _coachingScore = null;
       _directionHint = DirectionHint.none;
@@ -1062,6 +1103,9 @@ class _CameraScreenState extends State<CameraScreen> {
       _landscapeDecision = null;
       _landscapeOverlayAdvice = const LandscapeOverlayAdvice.none();
       _selectedSilhouette = SilhouetteType.none;
+      _showSideToolSelector = false;
+      _isRuleSelectorExpanded = false;
+      _showPortraitIntentSelector = false;
     });
   }
 
@@ -1119,8 +1163,7 @@ class _CameraScreenState extends State<CameraScreen> {
       _isDrawingRoi = false;
       _roiDragStart = null;
       _roiDragCurrent = null;
-      _guidance = '\uAD6C\uB3C4\uB97C \uC7A1\uB294 \uC911...';
-      _subGuidance = null;
+      _applyIdleCoachingForMode(_shootingMode);
       _coachingLevel = CoachingLevel.caution;
       _coachingScore = null;
       _directionHint = DirectionHint.none;
@@ -1476,12 +1519,14 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   String? _portraitSubGuidance() {
+    if (_portraitCoaching.reason != null) return _portraitCoaching.reason;
+
     final lighting = _portraitHandler.lastLighting;
     final lightConf = _portraitHandler.lastLightingConf;
     if (lighting != portrait.LightingCondition.unknown && lightConf > 0) {
       return '조명: ${_portraitHandler.lightingLabel(lighting)}';
     }
-    return _portraitCoaching.reason;
+    return null;
   }
 
   String _shotTypeLabel() {
@@ -1518,6 +1563,148 @@ class _CameraScreenState extends State<CameraScreen> {
       case portrait.ShotType.unknown:
         return '\uC778\uBB3C \uCF54\uCE6D \uD65C\uC131';
     }
+  }
+
+  String? _bottomShotTypeLabel() {
+    if (!_isPortraitMode) return null;
+
+    final label = _shotTypeLabel();
+    if (label.isEmpty || label == '\uC778\uBB3C \uCF54\uCE6D \uD65C\uC131') {
+      return null;
+    }
+
+    if (_portraitIntent == portrait.PortraitIntent.environmental ||
+        _portraitIntent == portrait.PortraitIntent.group) {
+      return label;
+    }
+
+    switch (_portraitOverlayData.shotType) {
+      case portrait.ShotType.upperBody:
+      case portrait.ShotType.waistShot:
+      case portrait.ShotType.kneeShot:
+      case portrait.ShotType.fullBody:
+      case portrait.ShotType.environmental:
+      case portrait.ShotType.groupShot:
+        return label;
+      case portrait.ShotType.extremeCloseUp:
+      case portrait.ShotType.closeUp:
+      case portrait.ShotType.headShot:
+      case portrait.ShotType.unknown:
+        return null;
+    }
+  }
+
+  void _toggleSideToolSelector() {
+    setState(() {
+      _showPortraitIntentSelector = false;
+      _showSideToolSelector = !_showSideToolSelector;
+      _isRuleSelectorExpanded = _showSideToolSelector;
+    });
+  }
+
+  void _togglePortraitIntentSelector() {
+    if (!_isPortraitMode) return;
+
+    setState(() {
+      _showSideToolSelector = false;
+      _isRuleSelectorExpanded = false;
+      _showPortraitIntentSelector = !_showPortraitIntentSelector;
+    });
+  }
+
+  void _setPortraitIntent(portrait.PortraitIntent intent) {
+    if (intent == _portraitIntent) {
+      setState(() => _showPortraitIntentSelector = false);
+      return;
+    }
+
+    setState(() {
+      _portraitIntent = intent;
+      _showPortraitIntentSelector = false;
+    });
+    _portraitHandler.setIntent(intent);
+    _resetPortraitState();
+  }
+
+  (IconData, String) _portraitIntentButtonMeta() {
+    switch (_portraitIntent) {
+      case portrait.PortraitIntent.single:
+        return (Icons.person_outline_rounded, '사람');
+      case portrait.PortraitIntent.environmental:
+        return (Icons.landscape_outlined, '환경');
+      case portrait.PortraitIntent.group:
+        return (Icons.groups_outlined, '다중');
+    }
+  }
+
+  List<CameraSideToolAction> _buildSideToolActions() {
+    final actions = <CameraSideToolAction>[];
+
+    if (!_isFrontCamera) {
+      actions.add(
+        CameraSideToolAction(
+          icon: _torchOn ? Icons.flash_on_rounded : Icons.flash_off_rounded,
+          label: '플래시',
+          onTap: _toggleTorch,
+          active: _torchOn,
+          activeColor: const Color(0xFFFBBF24),
+        ),
+      );
+    }
+
+    actions.add(
+      CameraSideToolAction(
+        icon: Icons.timer_outlined,
+        label: '타이머',
+        onTap: _cycleTimer,
+        active: _timerSeconds > 0,
+        secondaryLabel: _timerSeconds > 0 ? '${_timerSeconds}s' : null,
+      ),
+    );
+
+    if (_isPortraitMode) {
+      final meta = _portraitIntentButtonMeta();
+      actions.add(
+        CameraSideToolAction(
+          icon: meta.$1,
+          label: meta.$2,
+          onTap: _togglePortraitIntentSelector,
+          active: _showPortraitIntentSelector,
+          activeColor: const Color(0xFFE5E7EB),
+        ),
+      );
+    }
+
+    if (_isObjectMode) {
+      actions.add(
+        CameraSideToolAction(
+          icon: _lockedRoi != null
+              ? Icons.lock_rounded
+              : _isDrawingRoi
+              ? Icons.close_rounded
+              : Icons.center_focus_weak_rounded,
+          label: '고정',
+          onTap: _toggleRoiLock,
+          active: _lockedRoi != null,
+        ),
+      );
+    }
+
+    return actions;
+  }
+
+  Widget _buildCompositionTrigger() {
+    return CameraToolButton(
+      action: CameraSideToolAction(
+        icon: _showSideToolSelector
+            ? Icons.grid_3x3_rounded
+            : Icons.grid_view_rounded,
+        label: '구도',
+        onTap: _toggleSideToolSelector,
+        active: _showSideToolSelector,
+        activeColor: const Color(0xFF38BDF8),
+      ),
+    );
   }
 
   Widget _buildPortraitGroupCounter() {
@@ -1651,9 +1838,29 @@ class _CameraScreenState extends State<CameraScreen> {
     if (!_loggedFirstBuild) {
       _loggedFirstBuild = true;
       if (DebugLogFlags.yoloDebug) {
-        debugPrint('[YOLO_DEBUG][screen] first build mode=${_shootingMode.name}');
+        debugPrint(
+          '[YOLO_DEBUG][screen] first build mode=${_shootingMode.name}',
+        );
       }
     }
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final isNarrowScreen = screenWidth <= 360;
+    final selectorTopInset = isNarrowScreen ? 50.0 : 54.0;
+    final selectorRightInset = isNarrowScreen ? 18.0 : 22.0;
+    final portraitSelectorTopInset = selectorTopInset;
+    final portraitSelectorRightInset = isNarrowScreen ? 62.0 : 66.0;
+    final selectorPanelWidth = math.min(screenWidth * 0.78, 340.0);
+    final bubbleTop = _isRuleSelectorExpanded
+        ? _coachingBubbleTopExpanded +
+              (_isPortraitMode ? _portraitExpandedBubbleTopOffset : 0) +
+              (!_isPortraitMode ? 8 : 0)
+        : _coachingBubbleTopCollapsed;
+    final bubbleRightInset = isNarrowScreen ? 18.0 : 22.0;
+    final bubbleMaxWidth = math.min(screenWidth * 0.58, 280.0);
+    final showCoachingBubble =
+        !_showSideToolSelector &&
+        !_showPortraitIntentSelector &&
+        !(_isObjectMode && _isDrawingRoi);
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
@@ -1692,7 +1899,7 @@ class _CameraScreenState extends State<CameraScreen> {
                 painter: _isPortraitMode
                     ? PortraitOverlayPainter(
                         data: _portraitOverlayData.copyWithRule(_activeRule),
-                        showDebugGuides: _showPortraitDebugOverlay,
+                        showDebugGuides: false,
                       )
                     : _isLandscapeMode
                     ? LandscapeCompositionOverlayPainter(
@@ -1728,8 +1935,7 @@ class _CameraScreenState extends State<CameraScreen> {
                   );
                 },
               ),
-            if (!_isLandscapeMode &&
-                !(_isPortraitMode && _showPortraitDebugOverlay))
+            if (!_isLandscapeMode)
               GestureDetector(
                 behavior: HitTestBehavior.translucent,
                 onTapUp: _isObjectMode && _isDrawingRoi
@@ -1764,272 +1970,136 @@ class _CameraScreenState extends State<CameraScreen> {
               ),
             if (_isObjectMode && _isDrawingRoi)
               Positioned(
-                top: 110,
-                left: 0,
-                right: 0,
+                top: _objectSelectionHintTop,
+                left: isNarrowScreen ? 14.0 : 16.0,
                 child: IgnorePointer(
-                  child: Center(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.56),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.16),
                       ),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.65),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: const Text(
-                        '\uD53C\uC0AC\uCCB4\uB97C \uD0ED\uD558\uAC70\uB098 \uB4DC\uB798\uADF8\uD574 \uC120\uD0DD\uD558\uC138\uC694',
-                        style: TextStyle(color: Colors.white, fontSize: 13),
+                    ),
+                    child: const Text(
+                      '\uD53C\uC0AC\uCCB4\uB97C \uD0ED\uD558\uAC70\uB098 \uB4DC\uB798\uADF8\uD574 \uC120\uD0DD\uD558\uC138\uC694',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
                 ),
               ),
             if (!_isLandscapeMode) _buildFocusIndicator(),
-            AnimatedPositioned(
-              duration: const Duration(milliseconds: 250),
-              curve: Curves.easeOutCubic,
-              top: _isPortraitMode
-                  ? (_isRuleSelectorExpanded ? 256 : 194)
-                  : (_isRuleSelectorExpanded ? 164 : 108),
-              right: 12,
-              child: IgnorePointer(
-                child: CoachingSpeechBubble(
-                  guidance: _isPortraitMode
-                      ? _portraitCoaching.message
-                      : _guidance,
-                  subGuidance: _isPortraitMode
-                      ? _portraitSubGuidance()
-                      : _subGuidance,
-                  level: _isPortraitMode
-                      ? _portraitCoachingLevel()
-                      : _coachingLevel,
-                  score: _isPortraitMode ? null : _coachingScore,
-                  directionHint: _isPortraitMode
-                      ? DirectionHint.none
-                      : _directionHint,
-                  lightDirection: _isPortraitMode
-                      ? LightDirection.unknown
-                      : _lightDirection,
-                ),
-              ),
-            ),
-            if (_isPortraitMode &&
-                _portraitIntent == portrait.PortraitIntent.group)
+            if (showCoachingBubble)
               AnimatedPositioned(
                 duration: const Duration(milliseconds: 250),
                 curve: Curves.easeOutCubic,
-                top: _isRuleSelectorExpanded ? 256 : 194,
-                left: 16,
+                top: bubbleTop,
+                right: bubbleRightInset,
+                child: IgnorePointer(
+                  child: CoachingSpeechBubble(
+                    guidance: _isPortraitMode
+                        ? _portraitCoaching.message
+                        : _guidance,
+                    subGuidance: _isPortraitMode
+                        ? _portraitSubGuidance()
+                        : _subGuidance,
+                    level: _isPortraitMode
+                        ? _portraitCoachingLevel()
+                        : _coachingLevel,
+                    score: null,
+                    directionHint: _isPortraitMode
+                        ? DirectionHint.none
+                        : _directionHint,
+                    lightDirection: _isPortraitMode
+                        ? LightDirection.unknown
+                        : _lightDirection,
+                    maxWidth: bubbleMaxWidth,
+                  ),
+                ),
+              ),
+            if (_isPortraitMode &&
+                _portraitIntent == portrait.PortraitIntent.group &&
+                !_showSideToolSelector &&
+                !_showPortraitIntentSelector)
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeOutCubic,
+                top: bubbleTop,
+                left: _groupCounterLeftInset,
                 child: IgnorePointer(child: _buildPortraitGroupCounter()),
               ),
             Positioned(
-              top: 8,
-              left: 16,
-              right: 16,
+              top: _topBarTop,
+              left: _screenSideInset,
+              right: _screenSideInset,
               child: TopCameraBar(
                 onBack: widget.onBack,
-                torchOn: _torchOn,
-                onToggleTorch: (_isFrontCamera || _isLandscapeMode)
-                    ? null
-                    : _toggleTorch,
-                timerSeconds: _timerSeconds,
-                onCycleTimer: _cycleTimer,
-                isDrawingRoi: _isDrawingRoi,
-                isRoiLocked: _lockedRoi != null,
-                onToggleRoiLock: _isObjectMode ? _toggleRoiLock : null,
-                portraitDebugOverlayOn: _showPortraitDebugOverlay,
-                onTogglePortraitDebugOverlay: _isPortraitMode
-                    ? () => setState(
-                        () => _showPortraitDebugOverlay =
-                            !_showPortraitDebugOverlay,
-                      )
-                    : null,
-                badge: _isPortraitMode
-                    ? PortraitBadge(
-                        isFrontCamera: _isFrontCamera,
-                        currentZoom: _currentZoom,
-                      )
-                    : null,
+                toolBar: CameraSideToolBar(actions: _buildSideToolActions()),
+                trailing: _buildCompositionTrigger(),
               ),
             ),
-            // Portrait debug toggles (visible when portrait debug overlay enabled)
-            if (_isPortraitMode && _showPortraitDebugOverlay)
+            if (_isPortraitMode && _showPortraitIntentSelector)
               Positioned(
-                top: 64,
-                right: 16,
-                child: Material(
-                  color: Colors.black.withOpacity(0.45),
-                  borderRadius: BorderRadius.circular(8),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 6,
+                top: portraitSelectorTopInset,
+                right: portraitSelectorRightInset,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: math.min(
+                      screenWidth * 0.72,
+                      260.0,
                     ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Text(
-                              'Face',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Switch.adaptive(
-                              value: _portraitHandler.isFaceAnalysisEnabled,
-                              activeColor: const Color(0xFF38BDF8),
-                              onChanged: (v) => setState(() {
-                                _portraitHandler.setFaceAnalysisEnabled(v);
-                              }),
-                            ),
-                          ],
-                        ),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Text(
-                              'Lighting',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Switch.adaptive(
-                              value: _portraitHandler.isLightingAnalysisEnabled,
-                              activeColor: const Color(0xFF38BDF8),
-                              onChanged: (v) => setState(() {
-                                _portraitHandler.setLightingAnalysisEnabled(v);
-                              }),
-                            ),
-                          ],
-                        ),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Text(
-                              'FQuality',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Switch.adaptive(
-                              value: _portraitHandler.isFaceQualityEnabled,
-                              activeColor: const Color(0xFF38BDF8),
-                              onChanged: (v) => setState(() {
-                                _portraitHandler.setFaceQualityEnabled(v);
-                              }),
-                            ),
-                          ],
-                        ),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Text(
-                              'Capture',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Switch.adaptive(
-                              value: _portraitHandler
-                                  .isBitmapCaptureForFaceEnabled,
-                              activeColor: const Color(0xFF38BDF8),
-                              onChanged: (v) => setState(() {
-                                _portraitHandler.setBitmapCaptureForFaceEnabled(
-                                  v,
-                                );
-                              }),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
+                  ),
+                  child: PortraitIntentSelector(
+                    selected: _portraitIntent,
+                    compact: true,
+                    onChanged: _setPortraitIntent,
                   ),
                 ),
               ),
             // 구도 규칙 selector — 인물/객체 모드만. 풍경은 자동 감지 사용.
-            if (_isLandscapeMode)
+            if (_showSideToolSelector)
               Positioned(
-                top: 60,
-                left: 16,
-                child: FilledButton.tonalIcon(
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const LandscapeAssetTestScreen(),
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.science_outlined, size: 18),
-                  label: const Text('샘플 테스트'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Colors.black.withValues(alpha: 0.55),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 10,
-                    ),
-                  ),
-                ),
-              ),
-            if (_isPortraitMode)
-              Positioned(
-                top: 60,
-                left: 0,
-                right: 0,
-                child: IgnorePointer(
-                  ignoring: _showPortraitDebugOverlay,
-                  child: PortraitIntentSelector(
-                    selected: _portraitIntent,
-                    onChanged: (intent) {
-                      if (intent == _portraitIntent) return;
-                      setState(() => _portraitIntent = intent);
-                      _portraitHandler.setIntent(intent);
-                      _resetPortraitState();
+                top: selectorTopInset,
+                right: selectorRightInset,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: selectorPanelWidth),
+                  child: CompositionRuleSelector(
+                    selected: _selectedRule,
+                    initiallyExpanded: true,
+                    onExpandedChanged: (expanded) => setState(() {
+                      _isRuleSelectorExpanded = expanded;
+                      if (!expanded) {
+                        _showSideToolSelector = false;
+                      }
+                    }),
+                    onChanged: (type) {
+                      if (type == _selectedRule) return;
+                      setState(() => _selectedRule = type);
+                      // Phase 4에서 코칭 엔진에도 전달.
+                      _sceneCoach.setRule(_activeRule);
+                      _portraitHandler.setRule(_activeRule);
+                    },
+                    showSilhouetteTab: _isPortraitMode,
+                    selectedSilhouette: _selectedSilhouette,
+                    onSilhouetteChanged: (type) {
+                      if (type == _selectedSilhouette) return;
+                      setState(() => _selectedSilhouette = type);
                     },
                   ),
                 ),
               ),
-            if (!_isLandscapeMode)
-              Positioned(
-                top: _isPortraitMode ? 104 : 60,
-                left: 0,
-                right: 0,
-                child: CompositionRuleSelector(
-                  selected: _selectedRule,
-                  onExpandedChanged: (expanded) =>
-                      setState(() => _isRuleSelectorExpanded = expanded),
-                  onChanged: (type) {
-                    if (type == _selectedRule) return;
-                    setState(() => _selectedRule = type);
-                    // Phase 4에서 코칭 엔진에도 전달.
-                    _sceneCoach.setRule(_activeRule);
-                    _portraitHandler.setRule(_activeRule);
-                  },
-                  showSilhouetteTab: _isPortraitMode,
-                  selectedSilhouette: _selectedSilhouette,
-                  onSilhouetteChanged: (type) {
-                    if (type == _selectedSilhouette) return;
-                    setState(() => _selectedSilhouette = type);
-                  },
-                ),
-              ),
             Positioned(
-              left: 0,
-              right: 0,
-              bottom: MediaQuery.of(context).padding.bottom,
+              left: _bottomControlsHorizontalInset,
+              right: _bottomControlsHorizontalInset,
+              bottom: MediaQuery.of(context).padding.bottom + 6,
               child: BottomCameraControls(
                 zoomPresets: _zoomPresets,
                 selectedZoom: _selectedZoom,
@@ -2039,7 +2109,7 @@ class _CameraScreenState extends State<CameraScreen> {
                     ? _portraitCoaching.priority ==
                           portrait.CoachingPriority.perfect
                     : _coachingLevel == CoachingLevel.good,
-                shotTypeLabel: _isPortraitMode ? _shotTypeLabel() : null,
+                shotTypeLabel: _bottomShotTypeLabel(),
                 onSelectZoom: _setZoom,
                 onGallery: () => widget.onMoveTab(1),
                 onCapture: _captureAndSavePhoto,
