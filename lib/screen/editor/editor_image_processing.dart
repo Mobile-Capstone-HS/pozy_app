@@ -186,20 +186,37 @@ img.Image resizeImageToMaxDimension(img.Image source, int maxDimension) {
   return img.copyResize(source, height: maxDimension);
 }
 
-Uint8List rotateImage90(Uint8List bytes) {
+/// 회전 + prepareEditorBuffers를 한 번의 compute로 처리해 JPEG 재인코딩 열화 방지
+Map<String, dynamic> rotateImage90AndPrepare(Uint8List bytes) {
   final decoded = img.decodeImage(bytes);
   if (decoded == null) {
     throw Exception('이미지를 해석할 수 없습니다.');
   }
   final rotated = img.copyRotate(decoded, angle: 90);
-  return Uint8List.fromList(img.encodeJpg(rotated, quality: 92));
+  return _prepareFromDecoded(rotated);
 }
 
-Uint8List flipImageHorizontal(Uint8List bytes) {
+/// 뒤집기 + prepareEditorBuffers를 한 번의 compute로 처리해 JPEG 재인코딩 열화 방지
+Map<String, dynamic> flipImageHorizontalAndPrepare(Uint8List bytes) {
   final decoded = img.decodeImage(bytes);
   if (decoded == null) {
     throw Exception('이미지를 해석할 수 없습니다.');
   }
   final flipped = img.flipHorizontal(decoded);
-  return Uint8List.fromList(img.encodeJpg(flipped, quality: 92));
+  return _prepareFromDecoded(flipped);
+}
+
+/// 이미 디코딩된 img.Image로부터 source/preview 버퍼를 만드는 내부 헬퍼
+Map<String, dynamic> _prepareFromDecoded(img.Image decoded) {
+  final exportBase = resizeImageToMaxDimension(decoded, editorExportMaxDimension);
+  final sourceBytes = Uint8List.fromList(img.encodeJpg(exportBase, quality: 92));
+
+  final previewBase = resizeImageToMaxDimension(exportBase, editorPreviewMaxDimension);
+  final previewBytes = Uint8List.fromList(img.encodeJpg(previewBase, quality: 92));
+
+  return {
+    'source': sourceBytes,
+    'preview': previewBytes,
+    'aspectRatio': decoded.width / decoded.height,
+  };
 }

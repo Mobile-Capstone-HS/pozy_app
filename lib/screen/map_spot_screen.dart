@@ -13,8 +13,17 @@ import '../models/tour_place.dart';
 class MapSpotScreen extends StatefulWidget {
   /// 홈 화면에서 특정 장소를 포커스해서 열 때 사용
   final TourPlace? focusPlace;
+  final String? initialAreaCode;
+  final String? initialAreaName;
+  final List<TourPlace> initialAreaPlaces;
 
-  const MapSpotScreen({super.key, this.focusPlace});
+  const MapSpotScreen({
+    super.key,
+    this.focusPlace,
+    this.initialAreaCode,
+    this.initialAreaName,
+    this.initialAreaPlaces = const [],
+  });
 
   @override
   State<MapSpotScreen> createState() => _MapSpotScreenState();
@@ -35,6 +44,7 @@ class _MapSpotScreenState extends State<MapSpotScreen>
   List<TourPlace> _nearbyPlaces = [];
   List<TourPlace> _keywordPlaces = [];
   _ActiveDrivingRoute? _activeRoute;
+  bool _isAreaMode = false;
   bool _isLoadingNearbyPlaces = false;
   bool _isLoadingKeywords = false;
   bool _isLoadingRoute = false;
@@ -61,13 +71,34 @@ class _MapSpotScreenState extends State<MapSpotScreen>
     '\uD39C\uC158',
     '\uB9AC\uC870\uD2B8',
     '\uCE74\uD398',
+    '\uCE74\uD398\uAC70\uB9AC',
     '\uC2DD\uB2F9',
+    '\uC2DD\uB2F9\uAC00',
     '\uC74C\uC2DD\uC810',
+    '\uC74C\uC2DD\uAC70\uB9AC',
     '\uB9DB\uC9D1',
+    '\uB9DB\uC9D1\uAC70\uB9AC',
+    '\uBA39\uAC70\uB9AC',
+    '\uBA39\uC790\uACE8\uBAA9',
+    '\uC804 \uACE8\uBAA9',
+    '\uC804\uACE8\uBAA9',
+    '\uC871\uBC1C',
+    '\uB2ED\uAC08\uBE44',
+    '\uB9C9\uAD6D\uC218',
+    '\uC21C\uB300',
+    '\uAD6D\uBC25',
+    '\uD574\uC7A5\uAD6D',
+    '\uACF1\uCC3D',
+    '\uC870\uAC1C',
+    '\uCE58\uD0A8',
+    '\uD68C\uC13C\uD130',
+    '\uD69F\uC9D1',
+    '\uD3EC\uCC28',
     '\uBC31\uD654\uC810',
     '\uC1FC\uD551\uBAB0',
   ];
 
+  static const _nearbySpotListLimit = 20;
   late final AnimationController _cardAnimController;
   late final Animation<Offset> _cardSlide;
 
@@ -87,6 +118,7 @@ class _MapSpotScreenState extends State<MapSpotScreen>
       _sortedByDistance(_keywordPlaces).take(_categoryListLimit).toList();
 
   String get _searchBarText {
+    if (_isAreaMode) return '${widget.initialAreaName} 추천 스팟';
     if (_isKeywordMode) return '"$_activeSearchKeyword" 검색 결과';
     if (_selectedCategory != SpotCategory.all) {
       return '${_selectedCategory.emoji} ${_selectedCategory.label} 스팟';
@@ -95,6 +127,7 @@ class _MapSpotScreenState extends State<MapSpotScreen>
   }
 
   String get _resultPanelTitle {
+    if (_isAreaMode) return '${widget.initialAreaName} 추천 촬영 스팟';
     if (_isKeywordMode) return '"$_activeSearchKeyword" 검색 스팟';
     if (_selectedCategory == SpotCategory.all) return '내 주변 촬영 스팟';
     return '${_selectedCategory.emoji} ${_selectedCategory.label} 추천 스팟';
@@ -117,6 +150,12 @@ class _MapSpotScreenState extends State<MapSpotScreen>
 
     if (widget.focusPlace != null) {
       _focusedPlace = widget.focusPlace;
+    } else if (widget.initialAreaPlaces.isNotEmpty) {
+      _isAreaMode = true;
+      _activeSearchKeyword = widget.initialAreaName ?? '추천 지역';
+      _keywordPlaces = widget.initialAreaPlaces
+          .where((place) => place.latitude != null && place.longitude != null)
+          .toList();
     }
 
     _requestLocation();
@@ -180,7 +219,10 @@ class _MapSpotScreenState extends State<MapSpotScreen>
       if (shouldReload) await _loadNearbyPlaces();
       await _updateLocationOverlay();
 
-      if (widget.focusPlace == null && _selectedCategory == SpotCategory.all) {
+      if (widget.focusPlace == null &&
+          _selectedCategory == SpotCategory.all &&
+          !_isKeywordMode &&
+          !_isAreaMode) {
         _mapController?.updateCamera(
           NCameraUpdate.scrollAndZoomTo(
             target: NLatLng(pos.latitude, pos.longitude),
@@ -196,6 +238,41 @@ class _MapSpotScreenState extends State<MapSpotScreen>
         );
       }
     } catch (_) {}
+  }
+
+  Future<void> _loadInitialAreaPlaces() async {
+    final areaCode = widget.initialAreaCode;
+    if (areaCode == null || areaCode.isEmpty) return;
+
+    if (mounted) {
+      setState(() => _isLoadingKeywords = true);
+    }
+
+    try {
+      final places = await _tourApiService.fetchAreaPhotoSpots(
+        areaCode: areaCode,
+        count: 60,
+      );
+      if (!mounted || !_isAreaMode) return;
+
+      final filtered = places
+          .where((place) => place.latitude != null && place.longitude != null)
+          .toList();
+      if (filtered.isEmpty) {
+        setState(() => _isLoadingKeywords = false);
+        return;
+      }
+
+      setState(() {
+        _keywordPlaces = filtered;
+        _isLoadingKeywords = false;
+      });
+      await _buildMarkers();
+      await _fitPlacesToScreen(filtered);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isLoadingKeywords = false);
+    }
   }
 
   Future<void> _updateLocationOverlay() async {
@@ -219,20 +296,22 @@ class _MapSpotScreenState extends State<MapSpotScreen>
         latitude: _currentPosition!.latitude,
         longitude: _currentPosition!.longitude,
         radius: _nearbySpotRadiusMeters,
-        count: 10,
+        count: _nearbySpotListLimit,
       );
       if (places.length < 3) {
         final fallbackPlaces = await _tourApiService.fetchNearbySpots(
           latitude: _currentPosition!.latitude,
           longitude: _currentPosition!.longitude,
           radius: _nearbySpotFallbackRadiusMeters,
-          count: 10,
+          count: _nearbySpotListLimit,
         );
         places = _mergePlacesByDistance([...places, ...fallbackPlaces]);
       }
       if (!mounted) return;
       setState(() {
-        _nearbyPlaces = _sortedByDistance(places).take(10).toList();
+        _nearbyPlaces = _sortedByDistance(
+          places,
+        ).take(_nearbySpotListLimit).toList();
       });
       if (_selectedCategory == SpotCategory.all && !_isKeywordMode) {
         await _buildMarkers();
@@ -391,6 +470,7 @@ class _MapSpotScreenState extends State<MapSpotScreen>
       _focusedPlace = null;
       _recentPlace = null;
       _activeSearchKeyword = null;
+      _isAreaMode = false;
       _selectedCategory = category;
       _keywordPlaces = [];
     });
@@ -498,6 +578,7 @@ class _MapSpotScreenState extends State<MapSpotScreen>
       _focusedPlace = null;
       _recentPlace = null;
       _activeSearchKeyword = keyword;
+      _isAreaMode = false;
       _selectedCategory = SpotCategory.all;
       _keywordPlaces = [];
       _isLoadingKeywords = true;
@@ -849,6 +930,10 @@ class _MapSpotScreenState extends State<MapSpotScreen>
               await _buildMarkers();
               await _updateLocationOverlay();
               await _focusOnTourPlace();
+              if (_isAreaMode) {
+                await _fitPlacesToScreen(_keywordPlaces);
+                unawaited(_loadInitialAreaPlaces());
+              }
             },
             onMapTapped: (_, _) {
               if (_activeRoute != null) _clearRoute();
