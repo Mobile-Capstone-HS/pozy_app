@@ -83,6 +83,18 @@ class _HomeScreenState extends State<HomeScreen> {
     ).push(MaterialPageRoute(builder: (_) => MapSpotScreen(focusPlace: place)));
   }
 
+  void _openWeeklyAreaMap(List<TourPlace> places) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => MapSpotScreen(
+          initialAreaCode: TourApiService.weeklyAreaCode,
+          initialAreaName: TourApiService.weeklyAreaName,
+          initialAreaPlaces: places,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -120,6 +132,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   return _Body(
                     data: snapshot.data!,
                     onMap: () => _openMap(),
+                    onWeeklyAreaMap: _openWeeklyAreaMap,
                     onPlaceTap: _openMap,
                   );
                 },
@@ -152,7 +165,7 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       color: const Color(0xFFF6F7FB),
-      padding: const EdgeInsets.fromLTRB(16, 8, 12, 8),
+      padding: const EdgeInsets.fromLTRB(16, 8, 12, 4),
       child: Row(
         children: [
           Image.asset(
@@ -185,7 +198,7 @@ class _LoadingBody extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(height: 14),
+          const SizedBox(height: 4),
           Container(
             margin: const EdgeInsets.symmetric(horizontal: 16),
             height: 188,
@@ -357,11 +370,13 @@ class _ActionButton extends StatelessWidget {
 class _Body extends StatelessWidget {
   final _HomeData data;
   final VoidCallback onMap;
+  final ValueChanged<List<TourPlace>> onWeeklyAreaMap;
   final ValueChanged<TourPlace> onPlaceTap;
 
   const _Body({
     required this.data,
     required this.onMap,
+    required this.onWeeklyAreaMap,
     required this.onPlaceTap,
   });
 
@@ -374,7 +389,7 @@ class _Body extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(height: 10),
+          const SizedBox(height: 4),
           if (weekly.isNotEmpty)
             _FeaturedBanner(place: weekly.first, onTap: onPlaceTap),
           if (weekly.isNotEmpty) const SizedBox(height: 14),
@@ -383,7 +398,7 @@ class _Body extends StatelessWidget {
               title:
                   '이번 주 사진 찍으러 가기 좋은\n${TourApiService.weeklyAreaName} 추천 스팟 📸',
               places: weekly.skip(1).toList(),
-              onMoreTap: onMap,
+              onMoreTap: () => onWeeklyAreaMap(weekly),
               onPlaceTap: onPlaceTap,
             ),
           if (weekly.length > 1) const SizedBox(height: 14),
@@ -571,21 +586,7 @@ class _PlaceSection extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-              GestureDetector(
-                onTap: onMoreTap,
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: Text(
-                    '더보기',
-                    style: TextStyle(
-                      fontFamily: 'Pretendard',
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey.shade400,
-                    ),
-                  ),
-                ),
-              ),
+              _MapSectionTab(onTap: onMoreTap),
             ],
           ),
         ),
@@ -610,6 +611,57 @@ class _PlaceSection extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _MapSectionTab extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _MapSectionTab({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(top: 2),
+        padding: const EdgeInsets.fromLTRB(10, 7, 8, 7),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: const Color(0xFFE1E7EF)),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF17324D).withValues(alpha: 0.06),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.near_me_rounded, size: 14, color: Color(0xFF4A9FE8)),
+            SizedBox(width: 6),
+            Text(
+              '지도에서 보기',
+              style: TextStyle(
+                fontFamily: 'Pretendard',
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF27364A),
+              ),
+            ),
+            SizedBox(width: 2),
+            Icon(
+              Icons.chevron_right_rounded,
+              size: 16,
+              color: Color(0xFF9AA6B5),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -815,60 +867,239 @@ class _CTABanner extends StatelessWidget {
       onTap: onTap,
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 16),
-        padding: const EdgeInsets.fromLTRB(18, 14, 14, 14),
+        padding: const EdgeInsets.fromLTRB(16, 16, 14, 16),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF29B6F6), Color(0xFF0288D1)],
-          ),
+          color: Colors.white,
           borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFE2EBF3)),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF17324D).withValues(alpha: 0.07),
+              blurRadius: 18,
+              offset: const Offset(0, 6),
+            ),
+          ],
         ),
         child: Row(
           children: [
-            const Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '추천 촬영지를 지도에서 바로 보고',
-                  style: TextStyle(
-                    fontFamily: 'Pretendard',
-                    fontSize: 12,
-                    color: Colors.white70,
-                  ),
-                ),
-                SizedBox(height: 2),
-                Text(
-                  '위치와 길찾기 정보를 확인해 보세요',
-                  style: TextStyle(
-                    fontFamily: 'Pretendard',
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
-                ),
-              ],
-            ),
-            const Spacer(),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: const Text(
-                '스팟 지도 >',
-                style: TextStyle(
-                  fontFamily: 'Pretendard',
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
-                ),
-              ),
-            ),
+            const _SpotMapPreview(),
+            const SizedBox(width: 14),
+            const Expanded(child: _SpotMapCopy()),
+            const SizedBox(width: 10),
+            const _SpotMapArrow(),
           ],
         ),
       ),
     );
   }
+}
+
+class _SpotMapPreview extends StatelessWidget {
+  const _SpotMapPreview();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 62,
+      height: 62,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: const Color(0xFFEAF6F1),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: CustomPaint(painter: _MiniMapPainter()),
+            ),
+          ),
+          const Positioned(
+            left: 19,
+            top: 13,
+            child: Icon(Icons.location_on, color: Color(0xFFFF6B5C), size: 28),
+          ),
+          Positioned(
+            right: -3,
+            bottom: -3,
+            child: Container(
+              width: 27,
+              height: 27,
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFC857),
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 3),
+              ),
+              child: const Icon(
+                Icons.photo_camera_outlined,
+                color: Color(0xFF17324D),
+                size: 14,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SpotMapCopy extends StatelessWidget {
+  const _SpotMapCopy();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '촬영 스팟 지도',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontFamily: 'Pretendard',
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+            color: Color(0xFF17324D),
+            height: 1.2,
+          ),
+        ),
+        SizedBox(height: 5),
+        Text(
+          '내 주변 촬영 스팟과 길찾기를 한 번에',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontFamily: 'Pretendard',
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF6A7684),
+            height: 1.3,
+          ),
+        ),
+        SizedBox(height: 9),
+        _SpotKeywordRow(),
+      ],
+    );
+  }
+}
+
+class _SpotKeywordRow extends StatelessWidget {
+  const _SpotKeywordRow();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: [
+        _SpotKeywordChip(label: '내 주변', color: Color(0xFF167A5B)),
+        _SpotKeywordChip(label: '명소', color: Color(0xFFE17C22)),
+        _SpotKeywordChip(label: '분위기', color: Color(0xFF5967C9)),
+      ],
+    );
+  }
+}
+
+class _SpotKeywordChip extends StatelessWidget {
+  final String label;
+  final Color color;
+
+  const _SpotKeywordChip({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.11),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontFamily: 'Pretendard',
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+          color: color,
+          height: 1,
+        ),
+      ),
+    );
+  }
+}
+
+class _SpotMapArrow extends StatelessWidget {
+  const _SpotMapArrow();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 36,
+      height: 36,
+      decoration: const BoxDecoration(
+        color: Color(0xFF17324D),
+        shape: BoxShape.circle,
+      ),
+      child: const Icon(
+        Icons.arrow_forward_rounded,
+        color: Colors.white,
+        size: 19,
+      ),
+    );
+  }
+}
+
+class _MiniMapPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final linePaint = Paint()
+      ..color = const Color(0xFFB9DED0)
+      ..strokeWidth = 1.2
+      ..style = PaintingStyle.stroke;
+    final routePaint = Paint()
+      ..color = const Color(0xFF167A5B)
+      ..strokeWidth = 2.2
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+
+    canvas.drawLine(
+      Offset(size.width * 0.34, 0),
+      Offset(size.width * 0.26, size.height),
+      linePaint,
+    );
+    canvas.drawLine(
+      Offset(size.width * 0.72, 0),
+      Offset(size.width * 0.64, size.height),
+      linePaint,
+    );
+    canvas.drawLine(
+      Offset(0, size.height * 0.35),
+      Offset(size.width, size.height * 0.25),
+      linePaint,
+    );
+    canvas.drawLine(
+      Offset(0, size.height * 0.72),
+      Offset(size.width, size.height * 0.64),
+      linePaint,
+    );
+
+    final route = Path()
+      ..moveTo(size.width * 0.18, size.height * 0.68)
+      ..quadraticBezierTo(
+        size.width * 0.38,
+        size.height * 0.46,
+        size.width * 0.52,
+        size.height * 0.58,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.70,
+        size.height * 0.72,
+        size.width * 0.84,
+        size.height * 0.44,
+      );
+    canvas.drawPath(route, routePaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

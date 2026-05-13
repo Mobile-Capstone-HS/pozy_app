@@ -9,7 +9,9 @@ import 'package:http/http.dart' as http;
 // ---------------------------------------------------------------------------
 
 String _resolveApiKey() {
-  final runtimeKey = dotenv.env['GEMINI_API_KEY'] ?? '';
+  final runtimeKey = dotenv.isInitialized
+      ? dotenv.env['GEMINI_API_KEY'] ?? ''
+      : '';
   if (runtimeKey.isNotEmpty) return runtimeKey;
   return const String.fromEnvironment('GEMINI_API_KEY');
 }
@@ -187,8 +189,8 @@ ${scoreLines.join('\n')}
 
 마크다운 없이 JSON만 출력하세요:
 {
-  "short_reason": "<이 사진의 핵심 특성 한 문장>",
-  "detailed_reason": "<위 점수와 일관된 조명·구도·색감·피사체 분석 3~4문장>",
+  "short_reason": "<이 사진의 핵심 특성 짧게 한 문장>",
+  "detailed_reason": "<위 점수와 일관된 조명·구도·색감·피사체 분석 3문장 이내>",
   "comparison_reason": ${rank != null ? '"<다른 컷 대비 강점·약점 한 문장>"' : 'null'}
 }''';
   }

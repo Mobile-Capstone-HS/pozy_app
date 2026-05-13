@@ -72,6 +72,7 @@ class TourPlace {
     if (contentTypeId == '15' || contentTypeId == '28' || cat1 == 'A03') {
       return false;
     }
+    if (_looksLikeFoodSpot(title)) return false;
     return photoSpotScore >= 6;
   }
 
@@ -145,6 +146,7 @@ class TourPlace {
 
     if (_matchesAny(title, _kPhotoPositiveTitleTokens)) score += 4;
     if (_matchesAny(title, _kPhotoNegativeTitleTokens)) score -= 8;
+    if (_looksLikeFoodSpot(title)) score -= 12;
     if (_looksLikeLocalBusiness(title)) score -= 4;
 
     return score;
@@ -161,6 +163,12 @@ class TourPlace {
         title.contains('식당') ||
         title.contains('강남점') ||
         title.contains('역점');
+  }
+
+  static bool _looksLikeFoodSpot(String title) {
+    return _matchesAny(title, _kFoodSpotTitleTokens) ||
+        title.contains('전 골목') ||
+        title.contains('전골목');
   }
 
   static const _kNature = [
@@ -294,6 +302,28 @@ class TourPlace {
     '호텔',
     '모텔',
     '리조트',
+  ];
+
+  static const _kFoodSpotTitleTokens = [
+    '음식거리',
+    '먹거리',
+    '먹자골목',
+    '맛집거리',
+    '식당가',
+    '카페거리',
+    '주점거리',
+    '족발',
+    '닭갈비',
+    '막국수',
+    '순대',
+    '국밥',
+    '해장국',
+    '곱창',
+    '조개',
+    '치킨',
+    '회센터',
+    '횟집',
+    '포차',
   ];
 
   static String? _nonEmpty(String? s) =>
