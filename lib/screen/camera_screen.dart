@@ -10,6 +10,7 @@ import 'package:ultralytics_yolo/yolo.dart';
 import 'package:ultralytics_yolo/yolo_streaming_config.dart';
 import 'package:ultralytics_yolo/yolo_view.dart';
 
+import 'package:pose_camera_app/app.dart' show isCameraScreenActive;
 import 'package:pose_camera_app/coaching/coaching_result.dart';
 import 'package:pose_camera_app/composition/composition_rule.dart';
 import 'package:pose_camera_app/composition/composition_rule_registry.dart';
@@ -183,6 +184,7 @@ class _CameraScreenState extends State<CameraScreen> {
   @override
   void initState() {
     super.initState();
+    isCameraScreenActive = true;
     _shootingMode = widget.initialMode;
     _applyIdleCoachingForMode(_shootingMode);
     if (DebugLogFlags.yoloDebug) {
@@ -1824,6 +1826,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
   @override
   void dispose() {
+    isCameraScreenActive = false;
     _accelerometerSub?.cancel();
     _countdownTimer?.cancel();
     _focusIndicatorTimer?.cancel();
