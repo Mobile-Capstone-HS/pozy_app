@@ -59,10 +59,6 @@ class _CompositionRuleSelectorState extends State<CompositionRuleSelector> {
         return '없음';
       case SilhouetteType.standing:
         return '전신';
-      case SilhouetteType.halfBody:
-        return '상반신';
-      case SilhouetteType.sitting:
-        return '앉은 자세';
     }
   }
 
