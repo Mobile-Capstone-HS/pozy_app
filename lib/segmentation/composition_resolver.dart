@@ -117,7 +117,7 @@ class CompositionResolver {
         compositionMode: CompositionMode.none,
         secondaryComposition: null,
         overlayType: 'none',
-        primaryGuidance: '풍경이 더 잘 보이도록 프레임에 배경을 조금 더 담아보세요.',
+        primaryGuidance: '풍경이 더 잘 보이도록 배경을 조금 더 담아보세요.',
         secondaryGuidance: null,
         confidence: 1.0 - f.landscapeConfidence,
       );
@@ -145,7 +145,7 @@ class CompositionResolver {
       final overlayType =
           preferredTarget <= 0.5 ? 'horizon_upper_third' : 'horizon_lower_third';
       final guidance = horizonDistance <= _horizonGoodDistance
-          ? '좋아요. 수평선이 3분할 구도에 안정적으로 맞고 있어요.'
+          ? '현재 수평선이 3분할선 근처에 안정적으로 있어요.'
           : preferredTarget <= 0.5
               ? '수평선을 위쪽 3분할선에 맞춰보세요.'
               : '수평선을 아래쪽 3분할선에 맞춰보세요.';
@@ -185,7 +185,7 @@ class CompositionResolver {
         secondaryComposition: null,
         overlayType: 'leading_center',
         primaryGuidance: guidance,
-        secondaryGuidance: '수평선이 잘 안 보일 때는 길이나 경계선 방향부터 먼저 맞추면 좋아요.',
+        secondaryGuidance: '수평선이 잘 안 보이면 길이나 경계선 방향부터 먼저 맞춰보세요.',
         confidence: (0.55 * f.leadingConfidence + 0.45 * f.leadingLineStrength)
             .clamp(0.0, 1.0),
         leadingCenterScore: 1.0 - offset.abs().clamp(0.0, 1.0),
@@ -210,8 +210,8 @@ class CompositionResolver {
       secondaryComposition: null,
       overlayType: 'thirds_grid',
       primaryGuidance: applySkyRatioLogic
-          ? '풍경을 조금 더 담은 뒤 3분할선을 기준으로 구도를 맞춰보세요.'
-          : '풍경이 충분히 보이면 3분할선을 기준으로 구도를 안내해드릴게요.',
+          ? '풍경을 조금 더 담고 3분할선을 기준으로 맞춰보세요.'
+          : '풍경이 더 잘 보이면 3분할선을 기준으로 구도를 안내할게요.',
       secondaryGuidance: null,
       confidence: ruleConfidence,
     );

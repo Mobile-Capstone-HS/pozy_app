@@ -4,22 +4,6 @@ import 'package:flutter/material.dart';
 
 import 'package:pose_camera_app/coaching/coaching_result.dart';
 
-/// 각 카메라 모드에서 공통으로 사용하는 코칭 말풍선 위젯.
-///
-/// 사용 예시:
-/// ```dart
-/// Positioned(
-///   top: 64,
-///   right: 12,
-///   child: IgnorePointer(
-///     child: CoachingSpeechBubble(
-///       guidance: '좋아요!',
-///       subGuidance: '구도가 안정적입니다',
-///       level: CoachingLevel.good,
-///     ),
-///   ),
-/// )
-/// ```
 class CoachingSpeechBubble extends StatelessWidget {
   final String guidance;
   final String? subGuidance;
@@ -27,6 +11,7 @@ class CoachingSpeechBubble extends StatelessWidget {
   final double? score;
   final DirectionHint directionHint;
   final LightDirection lightDirection;
+  final double? maxWidth;
 
   const CoachingSpeechBubble({
     super.key,
@@ -36,9 +21,9 @@ class CoachingSpeechBubble extends StatelessWidget {
     this.score,
     this.directionHint = DirectionHint.none,
     this.lightDirection = LightDirection.unknown,
+    this.maxWidth,
   });
 
-  /// [CoachingResult]로부터 생성하는 팩토리 생성자.
   factory CoachingSpeechBubble.fromResult(
     CoachingResult result, {
     Key? key,
@@ -56,144 +41,173 @@ class CoachingSpeechBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = switch (level) {
-      CoachingLevel.good => const Color(0xFF4ADE80),
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final accent = switch (level) {
+      CoachingLevel.good => const Color(0xFF22C55E),
       CoachingLevel.warning => const Color(0xFFFBBF24),
-      CoachingLevel.caution => Colors.white,
+      CoachingLevel.caution => const Color(0xFFBFDBFE),
     };
+    final borderColor = switch (level) {
+      CoachingLevel.good => accent.withValues(alpha: 0.78),
+      CoachingLevel.warning => accent.withValues(alpha: 0.82),
+      CoachingLevel.caution => accent.withValues(alpha: 0.42),
+    };
+    final resolvedMaxWidth = maxWidth ?? math.min(screenWidth * 0.58, 280.0);
 
     return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 280),
-      child: IntrinsicWidth(
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.15),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: level == CoachingLevel.good
-                  ? color
-                  : color.withValues(alpha: 0.35),
-              width: level == CoachingLevel.good ? 2.0 : 1.5,
+      constraints: BoxConstraints(maxWidth: resolvedMaxWidth),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.50),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: borderColor, width: 1),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x33000000),
+              blurRadius: 14,
+              offset: Offset(0, 6),
             ),
-            boxShadow: level == CoachingLevel.good
-                ? [
-                    BoxShadow(
-                      color: color.withValues(alpha: 0.4),
-                      blurRadius: 8,
-                      spreadRadius: 1,
-                    ),
-                  ]
-                : null,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // 점수 게이지 바
-              if (score != null) ...[
-                _ScoreGauge(score: score!, level: level),
-                const SizedBox(height: 8),
-              ],
-              // 메인 코칭 텍스트 (방향 힌트 포함)
-              Row(
+          ],
+        ),
+        child: Stack(
+          children: [
+            Positioned(
+              left: 0,
+              top: 2,
+              bottom: 2,
+              child: Container(
+                width: 3,
+                decoration: BoxDecoration(
+                  color: borderColor,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(left: 10),
+              child: Column(
                 mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.end,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (directionHint != DirectionHint.none) ...[
-                    _DirectionArrow(hint: directionHint, color: color),
-                    const SizedBox(width: 6),
+                  if (score != null) ...[
+                    _ScoreGauge(score: score!, accent: accent),
+                    const SizedBox(height: 6),
                   ],
-                  Flexible(
-                    child: Text(
-                      guidance,
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 6,
+                        height: 6,
+                        margin: const EdgeInsets.only(top: 5),
+                        decoration: BoxDecoration(
+                          color: accent,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: accent.withValues(alpha: 0.28),
+                              blurRadius: 6,
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (directionHint != DirectionHint.none) ...[
+                        const SizedBox(width: 6),
+                        _DirectionArrow(hint: directionHint, color: accent),
+                      ],
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          guidance,
+                          textAlign: TextAlign.right,
+                          softWrap: true,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.98),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            height: 1.3,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (subGuidance != null && subGuidance!.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      subGuidance!,
                       textAlign: TextAlign.right,
+                      softWrap: true,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: color,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
+                        color: Colors.white.withValues(alpha: 0.70),
+                        fontSize: 10,
                         height: 1.3,
                       ),
                     ),
-                  ),
+                  ],
+                  if (lightDirection != LightDirection.unknown) ...[
+                    const SizedBox(height: 6),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: _LightIndicator(
+                        direction: lightDirection,
+                        accent: accent,
+                      ),
+                    ),
+                  ],
                 ],
               ),
-              // 서브 코칭 텍스트
-              if (subGuidance != null) ...[
-                const SizedBox(height: 4),
-                Text(
-                  subGuidance!,
-                  textAlign: TextAlign.right,
-                  style: TextStyle(
-                    color: color.withValues(alpha: 0.7),
-                    fontSize: 11,
-                    height: 1.3,
-                  ),
-                ),
-              ],
-              // 광원 방향 표시
-              if (lightDirection != LightDirection.unknown) ...[
-                const SizedBox(height: 6),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: _LightIndicator(direction: lightDirection, color: color),
-                ),
-              ],
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-/// 점수 게이지 바 — 0~100 점을 시각적으로 표시
 class _ScoreGauge extends StatelessWidget {
   final double score;
-  final CoachingLevel level;
+  final Color accent;
 
-  const _ScoreGauge({required this.score, required this.level});
+  const _ScoreGauge({required this.score, required this.accent});
 
   @override
   Widget build(BuildContext context) {
     final clamped = score.clamp(0.0, 100.0);
     final ratio = clamped / 100.0;
 
-    // 점수에 따른 게이지 색상
-    final gaugeColor = clamped >= 70
-        ? const Color(0xFF4ADE80) // 녹색
-        : clamped >= 40
-            ? const Color(0xFFFBBF24) // 노란색
-            : const Color(0xFFEF4444); // 빨간색
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        // 점수 텍스트
         Text(
           '${clamped.toInt()}점',
           style: TextStyle(
-            color: gaugeColor,
-            fontSize: 11,
+            color: accent,
+            fontSize: 9.5,
             fontWeight: FontWeight.w800,
           ),
         ),
         const SizedBox(height: 3),
-        // 게이지 바
         Container(
-          height: 4,
+          height: 3,
           width: double.infinity,
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.15),
-            borderRadius: BorderRadius.circular(2),
+            color: Colors.white.withValues(alpha: 0.14),
+            borderRadius: BorderRadius.circular(999),
           ),
           child: FractionallySizedBox(
             alignment: Alignment.centerLeft,
             widthFactor: ratio,
             child: Container(
               decoration: BoxDecoration(
-                color: gaugeColor,
-                borderRadius: BorderRadius.circular(2),
+                color: accent,
+                borderRadius: BorderRadius.circular(999),
               ),
             ),
           ),
@@ -203,7 +217,6 @@ class _ScoreGauge extends StatelessWidget {
   }
 }
 
-/// 방향 힌트 화살표 아이콘
 class _DirectionArrow extends StatelessWidget {
   final DirectionHint hint;
   final Color color;
@@ -212,62 +225,58 @@ class _DirectionArrow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (IconData icon, double angle) = switch (hint) {
-      DirectionHint.left => (Icons.arrow_back_rounded, 0.0),
-      DirectionHint.right => (Icons.arrow_forward_rounded, 0.0),
-      DirectionHint.up => (Icons.arrow_upward_rounded, 0.0),
-      DirectionHint.down => (Icons.arrow_downward_rounded, 0.0),
-      DirectionHint.back => (Icons.zoom_out_rounded, 0.0),
-      DirectionHint.closer => (Icons.zoom_in_rounded, 0.0),
-      DirectionHint.none => (Icons.circle, 0.0),
+    final icon = switch (hint) {
+      DirectionHint.left => Icons.arrow_back_rounded,
+      DirectionHint.right => Icons.arrow_forward_rounded,
+      DirectionHint.up => Icons.arrow_upward_rounded,
+      DirectionHint.down => Icons.arrow_downward_rounded,
+      DirectionHint.back => Icons.zoom_out_rounded,
+      DirectionHint.closer => Icons.zoom_in_rounded,
+      DirectionHint.none => Icons.circle,
     };
 
     return Container(
-      width: 24,
-      height: 24,
+      width: 20,
+      height: 20,
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.2),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(6),
       ),
-      child: Transform.rotate(
-        angle: angle * math.pi / 180,
-        child: Icon(icon, color: color, size: 16),
-      ),
+      child: Icon(icon, color: color, size: 13),
     );
   }
 }
 
-/// 광원 방향 표시 — 작은 아이콘 + 텍스트
 class _LightIndicator extends StatelessWidget {
   final LightDirection direction;
-  final Color color;
+  final Color accent;
 
-  const _LightIndicator({required this.direction, required this.color});
+  const _LightIndicator({required this.direction, required this.accent});
 
   @override
   Widget build(BuildContext context) {
     final label = switch (direction) {
-      LightDirection.left => '☀ 왼쪽 광원',
-      LightDirection.right => '☀ 오른쪽 광원',
-      LightDirection.top => '☀ 상단 광원',
-      LightDirection.bottom => '☀ 하단 광원',
-      LightDirection.behind => '☀ 역광',
+      LightDirection.left => '왼쪽 빛',
+      LightDirection.right => '오른쪽 빛',
+      LightDirection.top => '위쪽 빛',
+      LightDirection.bottom => '아래쪽 빛',
+      LightDirection.behind => '역광',
       LightDirection.unknown => '',
     };
 
     if (label.isEmpty) return const SizedBox.shrink();
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(4),
+        color: accent.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
         label,
         style: TextStyle(
-          color: color.withValues(alpha: 0.7),
-          fontSize: 10,
+          color: Colors.white.withValues(alpha: 0.76),
+          fontSize: 9.5,
           fontWeight: FontWeight.w600,
         ),
       ),

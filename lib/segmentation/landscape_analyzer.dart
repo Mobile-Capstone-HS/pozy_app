@@ -151,7 +151,7 @@ class LandscapeOverlayAdvice {
       targetHorizonY = null,
       recommendedAdjustmentY = null,
       tiltDirection = TiltDirection.unknown,
-      primaryGuidance = '구도를 분석 중입니다.',
+      primaryGuidance = '장면을 천천히 맞춰보세요.',
       secondaryGuidance = null,
       showHorizonGuide = false;
 }
@@ -1447,7 +1447,7 @@ class LandscapeCompositionAdvisor {
         targetHorizonY: null,
         recommendedAdjustmentY: null,
         tiltDirection: TiltDirection.unknown,
-        primaryGuidance: '풍경이 더 잘 보이도록 프레임에 배경을 조금 더 담아보세요.',
+        primaryGuidance: '풍경이 더 잘 보이도록 배경을 조금 더 담아보세요.',
         secondaryGuidance: null,
         showHorizonGuide: false,
       );
@@ -1468,11 +1468,11 @@ class LandscapeCompositionAdvisor {
         recommendedAdjustmentY: null,
         tiltDirection: features.tiltDirection,
         primaryGuidance: offset.abs() <= 0.10
-            ? '좋아요. 장면의 중심축이 잘 맞아 원근감이 살아 있어요.'
+            ? '좋아요. 장면의 중심축이 안정적으로 맞고 있어요.'
             : offset < 0
             ? '장면의 중심축이 왼쪽에 있어요. 화면 중앙으로 조금 맞춰보세요.'
             : '장면의 중심축이 오른쪽에 있어요. 화면 중앙으로 조금 맞춰보세요.',
-        secondaryGuidance: '이 장면은 수평선보다 길이나 경계선 방향을 먼저 맞추는 편이 좋아요.',
+        secondaryGuidance: '이 장면은 수평선보다 길이나 경계선 방향을 먼저 맞춰보세요.',
         showHorizonGuide: false,
       );
     }
@@ -1493,11 +1493,11 @@ class LandscapeCompositionAdvisor {
         recommendedAdjustmentY: delta == null ? null : -delta,
         tiltDirection: features.tiltDirection,
         primaryGuidance: aligned
-            ? '좋아요. 노을 풍경의 수평선이 안정적으로 맞고 있어요.'
+            ? '좋아요. 노을 풍경의 수평선이 안정적으로 있어요.'
             : delta > 0
             ? '카메라를 조금 내려 노을 수평선을 맞춰보세요.'
             : '카메라를 조금 올려 노을 수평선을 맞춰보세요.',
-        secondaryGuidance: '하늘 색이 강한 장면이라 수평선 위치를 먼저 보는 편이 좋아요.',
+        secondaryGuidance: '하늘 색이 강한 장면이라 수평선 위치를 먼저 맞춰보세요.',
         showHorizonGuide: targetY != null,
       );
     }
@@ -1508,7 +1508,7 @@ class LandscapeCompositionAdvisor {
         targetHorizonY: null,
         recommendedAdjustmentY: null,
         tiltDirection: TiltDirection.unknown,
-        primaryGuidance: '수평선이 안정적으로 보이도록 프레임을 단순하게 잡아보세요.',
+        primaryGuidance: '수평선이 더 잘 보이도록 프레임을 단순하게 맞춰보세요.',
         secondaryGuidance: null,
         showHorizonGuide: false,
       );

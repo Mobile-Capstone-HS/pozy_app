@@ -18,7 +18,7 @@ class CompositionEngine {
       ListQueue<CompositionGuideState>();
 
   CompositionGuideState? _stableState;
-  String _stableMessage = '좋아요, 지금 구도로 촬영해보세요';
+  String _stableMessage = '좋아요. 지금 찍기 좋아요.';
   DateTime _lastStateChangedAt = DateTime.fromMillisecondsSinceEpoch(0);
   int _stateHoldFrames = 0;
 
@@ -29,7 +29,7 @@ class CompositionEngine {
   void reset() {
     _guideHistory.clear();
     _stableState = null;
-    _stableMessage = '좋아요, 지금 구도로 촬영해보세요';
+    _stableMessage = '좋아요. 지금 찍기 좋아요.';
     _lastStateChangedAt = DateTime.fromMillisecondsSinceEpoch(0);
     _stateHoldFrames = 0;
   }
