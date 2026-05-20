@@ -87,6 +87,8 @@ class _BestCutScreenState extends State<BestCutScreen> {
                       'assets/images/pozy_logo2.png',
                       height: 40,
                       fit: BoxFit.contain,
+                      filterQuality: FilterQuality.high,
+                      isAntiAlias: true,
                     ),
                     const Spacer(),
                     GestureDetector(
