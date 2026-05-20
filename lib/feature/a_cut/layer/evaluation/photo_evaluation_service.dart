@@ -148,9 +148,11 @@ class OnDevicePhotoEvaluationService implements PhotoEvaluationService {
       nimaScore: aestheticSummary?.nimaScore,
       rgnetScore: aestheticSummary?.rgnetScore,
       alampScore: aestheticSummary?.alampScore,
+      icaaScore: aestheticSummary?.icaaScore,
       nimaWeight: aestheticSummary?.weights.nimaWeight,
       rgnetWeight: aestheticSummary?.weights.rgnetWeight,
       alampWeight: aestheticSummary?.weights.alampWeight,
+      icaaWeight: aestheticSummary?.weights.icaaWeight,
       notes: notes,
       warnings: warnings,
       scoreDetails: [

@@ -5,7 +5,7 @@ import 'package:image/image.dart' as img;
 
 import 'acut_perf.dart';
 
-enum ImageNormalization { zeroToOne, minusOneToOne }
+enum ImageNormalization { zeroToOne, minusOneToOne, rawZeroTo255, imageNet }
 
 class ImagePreprocessor {
   const ImagePreprocessor();
@@ -330,9 +330,9 @@ Uint8List _preprocessDecodedToRgbFloat32(
   for (var y = 0; y < height; y++) {
     for (var x = 0; x < width; x++) {
       final pixel = resized.getPixel(x, y);
-      output[cursor++] = _normalize(pixel.r, normalization);
-      output[cursor++] = _normalize(pixel.g, normalization);
-      output[cursor++] = _normalize(pixel.b, normalization);
+      output[cursor++] = _normalize(pixel.r, normalization, 0);
+      output[cursor++] = _normalize(pixel.g, normalization, 1);
+      output[cursor++] = _normalize(pixel.b, normalization, 2);
     }
   }
 
@@ -357,7 +357,7 @@ Uint8List _preprocessDecodedAlampGlobalViewFloat32(
   );
   final offsetX = ((width - resizedWidth) / 2).floor();
   final offsetY = ((height - resizedHeight) / 2).floor();
-  final padValue = _normalize(0, normalization);
+  final padValue = _normalize(0, normalization, 0);
   final output = Float32List(width * height * 3);
   for (var index = 0; index < output.length; index++) {
     output[index] = padValue;
@@ -367,9 +367,9 @@ Uint8List _preprocessDecodedAlampGlobalViewFloat32(
     for (var x = 0; x < resizedWidth; x++) {
       final pixel = resized.getPixel(x, y);
       var cursor = (((y + offsetY) * width) + x + offsetX) * 3;
-      output[cursor++] = _normalize(pixel.r, normalization);
-      output[cursor++] = _normalize(pixel.g, normalization);
-      output[cursor] = _normalize(pixel.b, normalization);
+      output[cursor++] = _normalize(pixel.r, normalization, 0);
+      output[cursor++] = _normalize(pixel.g, normalization, 1);
+      output[cursor] = _normalize(pixel.b, normalization, 2);
     }
   }
 
@@ -475,9 +475,9 @@ Uint8List _preprocessDecodedFixedAnchorPatchBatchToRgbFloat32(
     for (var y = 0; y < patchHeight; y++) {
       for (var x = 0; x < patchWidth; x++) {
         final pixel = resized.getPixel(x, y);
-        output[cursor++] = _normalize(pixel.r, normalization);
-        output[cursor++] = _normalize(pixel.g, normalization);
-        output[cursor++] = _normalize(pixel.b, normalization);
+        output[cursor++] = _normalize(pixel.r, normalization, 0);
+        output[cursor++] = _normalize(pixel.g, normalization, 1);
+        output[cursor++] = _normalize(pixel.b, normalization, 2);
       }
     }
   }
@@ -513,9 +513,9 @@ Uint8List _preprocessDecodedPatchBoxesToRgbFloat32(
     for (var y = 0; y < patchHeight; y++) {
       for (var x = 0; x < patchWidth; x++) {
         final pixel = resized.getPixel(x, y);
-        output[cursor++] = _normalize(pixel.r, normalization);
-        output[cursor++] = _normalize(pixel.g, normalization);
-        output[cursor++] = _normalize(pixel.b, normalization);
+        output[cursor++] = _normalize(pixel.r, normalization, 0);
+        output[cursor++] = _normalize(pixel.g, normalization, 1);
+        output[cursor++] = _normalize(pixel.b, normalization, 2);
       }
     }
   }
@@ -773,11 +773,21 @@ class _PatchSelection {
   String get debugLabel => boxes.map((box) => box.debugLabel).join(';');
 }
 
-double _normalize(num channel, ImageNormalization normalization) {
+double _normalize(
+  num channel,
+  ImageNormalization normalization,
+  int channelIndex,
+) {
   switch (normalization) {
     case ImageNormalization.zeroToOne:
       return channel / 255.0;
     case ImageNormalization.minusOneToOne:
       return (channel / 127.5) - 1.0;
+    case ImageNormalization.rawZeroTo255:
+      return channel.toDouble();
+    case ImageNormalization.imageNet:
+      const mean = [0.485, 0.456, 0.406];
+      const std = [0.229, 0.224, 0.225];
+      return ((channel / 255.0) - mean[channelIndex]) / std[channelIndex];
   }
 }
