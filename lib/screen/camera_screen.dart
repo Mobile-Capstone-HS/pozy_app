@@ -126,6 +126,7 @@ class _CameraScreenState extends State<CameraScreen> {
   Offset? _roiDragCurrent;
   Rect? _lockedRoi;
   Rect? _lockedRoiCamera;
+  bool _lockedRoiManual = false;
   int? _lockedClassIndex;
   Rect? _lockedAnchorRoiCamera;
   List<double>? _lockedAppearanceSignature;
@@ -133,8 +134,8 @@ class _CameraScreenState extends State<CameraScreen> {
   YOLOResult? _lockedTrackingDetection;
   int _lockedLostFrames = 0;
   static const int _lockLostFrameTolerance = 10;
-
-  List<YOLOResult> _latestRawDetections = [];
+  int _manualRoiTrackLossFrames = 0;
+  static const int _manualRoiTrackLossTolerance = 2;
 
   int _timerSeconds = 0;
   int _countdown = 0;
@@ -319,8 +320,24 @@ class _CameraScreenState extends State<CameraScreen> {
 
     if (_isLandscapeMode) return;
 
+    final trackedRoi = _trackedRoiFromMetrics(metrics);
+    if (_lockedRoiManual && trackedRoi != null) {
+      final screenRoi = _cameraToScreen(trackedRoi);
+      final confidence = metrics['trackedRoiConfidence'] ?? 0.0;
+      if (confidence >= 0.10 &&
+          (_lockedRoiCamera == null ||
+              _centerDistance(_lockedRoiCamera!, trackedRoi) > 0.003)) {
+        setState(() {
+          _lockedRoiCamera = trackedRoi;
+          _lockedRoi = screenRoi;
+          _lockedAnchorRoiCamera = trackedRoi;
+        });
+      }
+    }
+
+    _ensureUnlockedSceneFallbackGeometry();
     final coaching = _decorateLockedSubjectCoachingSafe(
-      _sceneCoach.applyImageMetrics(metrics),
+      _sceneCoach.applyImageMetrics(_objectMetricsForDisplayCoaching(metrics)),
     );
     if (coaching.guidance != _guidance ||
         coaching.subGuidance != _subGuidance ||
@@ -334,6 +351,24 @@ class _CameraScreenState extends State<CameraScreen> {
         _lightDirection = coaching.lightDirection;
       });
     }
+  }
+
+  Rect? _trackedRoiFromMetrics(Map<String, double> metrics) {
+    final left = metrics['trackedRoiLeft'];
+    final top = metrics['trackedRoiTop'];
+    final right = metrics['trackedRoiRight'];
+    final bottom = metrics['trackedRoiBottom'];
+    if (left == null || top == null || right == null || bottom == null) {
+      return null;
+    }
+    final nativeRoi = _rectFromNormalizedLTRB(left, top, right, bottom);
+    if (!_isFrontCamera) return nativeRoi;
+    return _rectFromNormalizedLTRB(
+      1.0 - nativeRoi.right,
+      nativeRoi.top,
+      1.0 - nativeRoi.left,
+      nativeRoi.bottom,
+    );
   }
 
   void _applyIdleCoachingForMode(ShootingMode mode) {
@@ -437,6 +472,49 @@ class _CameraScreenState extends State<CameraScreen> {
     );
   }
 
+  YOLOResult _detectionForDisplayCoaching(YOLOResult det) {
+    if (!_isFrontCamera) return det;
+    if (det.classIndex == -1 && det.className == 'selected') return det;
+
+    return YOLOResult(
+      classIndex: det.classIndex,
+      className: det.className,
+      confidence: det.confidence,
+      boundingBox: det.boundingBox,
+      normalizedBox: _normalizedRect(det),
+      mask: det.mask,
+      keypoints: det.keypoints,
+      keypointConfidences: det.keypointConfidences,
+      appearanceSignature: det.appearanceSignature,
+    );
+  }
+
+  List<YOLOResult> _detectionsForDisplayCoaching(List<YOLOResult> results) {
+    if (!_isFrontCamera) return results;
+    return results.map(_detectionForDisplayCoaching).toList(growable: false);
+  }
+
+  Map<String, double> _objectMetricsForDisplayCoaching(
+    Map<String, double> metrics,
+  ) {
+    if (!_isFrontCamera) return metrics;
+
+    final lightDirectionIndex = metrics['lightDirectionIndex']?.toInt();
+    if (lightDirectionIndex != LightDirection.left.index &&
+        lightDirectionIndex != LightDirection.right.index) {
+      return metrics;
+    }
+
+    return <String, double>{
+      ...metrics,
+      'lightDirectionIndex':
+          (lightDirectionIndex == LightDirection.left.index
+                  ? LightDirection.right.index
+                  : LightDirection.left.index)
+              .toDouble(),
+    };
+  }
+
   Rect _rectFromNormalizedLTRB(
     double left,
     double top,
@@ -534,14 +612,19 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   static double _overlapRatio(Rect a, Rect b) {
+    final inter = _intersectionArea(a, b);
+    if (inter <= 0) return 0.0;
+    final minArea = math.max(math.min(_rectArea(a), _rectArea(b)), 0.0001);
+    return inter / minArea;
+  }
+
+  static double _intersectionArea(Rect a, Rect b) {
     final il = math.max(a.left, b.left);
     final it = math.max(a.top, b.top);
     final ir = math.min(a.right, b.right);
     final ib = math.min(a.bottom, b.bottom);
     if (ir <= il || ib <= it) return 0.0;
-    final inter = (ir - il) * (ib - it);
-    final minArea = math.max(math.min(_rectArea(a), _rectArea(b)), 0.0001);
-    return inter / minArea;
+    return (ir - il) * (ib - it);
   }
 
   static double _appearanceDistance(List<double> a, List<double> b) {
@@ -681,38 +764,6 @@ class _CameraScreenState extends State<CameraScreen> {
         aspectSimilarityAnchor * 0.3;
   }
 
-  YOLOResult? _bestDetectionForTarget(
-    Rect target,
-    List<YOLOResult> results, {
-    String? lockedClassName,
-  }) {
-    final candidates = lockedClassName == null
-        ? results
-        : results
-              .where((r) => r.className.toLowerCase() == lockedClassName)
-              .toList();
-    final searchSpace = candidates.isNotEmpty ? candidates : results;
-
-    YOLOResult? bestMatch;
-    double bestScore = double.negativeInfinity;
-    for (final det in searchSpace) {
-      final box = _normalizedRect(det);
-      final iou = _iou(target, box);
-      final overlap = _overlapRatio(target, box);
-      final containsCenter = target.contains(box.center);
-      final score =
-          iou * 3.0 +
-          overlap * 2.4 +
-          (containsCenter ? 0.6 : 0.0) +
-          det.confidence * 0.8;
-      if (score > bestScore) {
-        bestScore = score;
-        bestMatch = det;
-      }
-    }
-    return bestMatch;
-  }
-
   YOLOResult? _bestDetectionForLockedTarget(
     Rect target,
     List<YOLOResult> results,
@@ -749,23 +800,6 @@ class _CameraScreenState extends State<CameraScreen> {
     );
   }
 
-  void _showSubjectSelectionGuidance() {
-    if (!mounted) return;
-    setState(() {
-      _guidance =
-          '\uD0D0\uC9C0\uB41C \uD53C\uC0AC\uCCB4\uB97C \uB2E4\uC2DC \uC120\uD0DD\uD574\uC8FC\uC138\uC694';
-      _subGuidance =
-          '\uD53C\uC0AC\uCCB4\uB97C \uD0ED\uD558\uAC70\uB098 \uADF8 \uC704\uB97C \uB4DC\uB798\uADF8\uD574\uC11C \uB2E4\uC2DC \uACE0\uC815\uD574\uBCF4\uC138\uC694';
-      _coachingLevel = CoachingLevel.caution;
-      _coachingScore = null;
-      _directionHint = DirectionHint.none;
-      _lightDirection = LightDirection.unknown;
-      _isDrawingRoi = false;
-      _roiDragStart = null;
-      _roiDragCurrent = null;
-    });
-  }
-
   /// 카메라 ROI를 네이티브에 전달할 때 전면 카메라면 X 좌표를 다시 원래로 되돌림
   void _setNativeLockedRoi(Rect roi) {
     if (_isFrontCamera) {
@@ -785,8 +819,64 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
-  void _lockToDetection(YOLOResult detection) {
-    final cameraRoi = _normalizedRect(detection);
+  YOLOResult _manualDetectionFromCameraRoi(Rect roi) {
+    return YOLOResult(
+      classIndex: -1,
+      className: 'selected',
+      confidence: 1.0,
+      boundingBox: Rect.zero,
+      normalizedBox: roi,
+    );
+  }
+
+  YOLOResult _sceneFallbackDetection() {
+    return YOLOResult(
+      classIndex: -2,
+      className: 'scene',
+      confidence: 1.0,
+      boundingBox: Rect.zero,
+      normalizedBox: const Rect.fromLTRB(0.22, 0.20, 0.78, 0.80),
+    );
+  }
+
+  void _clearManualRoiAfterTrackLoss() {
+    _cameraController.setLockedRoi();
+    setState(() {
+      _lockedRoi = null;
+      _lockedRoiCamera = null;
+      _lockedRoiManual = false;
+      _lockedClassIndex = null;
+      _lockedAnchorRoiCamera = null;
+      _lockedAppearanceSignature = null;
+      _lockedRecentAppearanceSignature = null;
+      _lockedTrackingDetection = null;
+      _lockedLostFrames = 0;
+      _manualRoiTrackLossFrames = 0;
+    });
+  }
+
+  bool _shouldClearManualRoiAfterTrackLoss() {
+    _manualRoiTrackLossFrames++;
+    return _manualRoiTrackLossFrames >= _manualRoiTrackLossTolerance;
+  }
+
+  void _ensureUnlockedSceneFallbackGeometry() {
+    if (_lockedRoiCamera != null ||
+        _sceneCoach.smoothedFeatures.numObjects >= 0.5) {
+      return;
+    }
+    final frameSize = _previewSize == Size.zero
+        ? MediaQuery.sizeOf(context)
+        : _previewSize;
+    _sceneCoach.updateDetections(
+      [_sceneFallbackDetection()],
+      frameSize,
+      subjectLocked: false,
+      subjectInFrame: true,
+    );
+  }
+
+  void _lockToManualRoi(Rect cameraRoi) {
     final screenRoi = _cameraToScreen(cameraRoi);
 
     _setNativeLockedRoi(cameraRoi);
@@ -795,68 +885,21 @@ class _CameraScreenState extends State<CameraScreen> {
     setState(() {
       _lockedRoi = screenRoi;
       _lockedRoiCamera = cameraRoi;
-      _lockedClassIndex = detection.classIndex;
+      _lockedRoiManual = true;
+      _lockedClassIndex = null;
       _lockedAnchorRoiCamera = cameraRoi;
-      _lockedAppearanceSignature = detection.appearanceSignature;
-      _lockedRecentAppearanceSignature = detection.appearanceSignature;
-      _lockedTrackingDetection = detection;
+      _lockedAppearanceSignature = null;
+      _lockedRecentAppearanceSignature = null;
+      _lockedTrackingDetection = null;
       _lockedLostFrames = 0;
       _isDrawingRoi = false;
       _roiDragStart = null;
       _roiDragCurrent = null;
-      _applyIdleCoachingForMode(_shootingMode);
       _coachingLevel = CoachingLevel.caution;
       _coachingScore = null;
       _directionHint = DirectionHint.none;
       _lightDirection = LightDirection.unknown;
     });
-  }
-
-  YOLOResult? _bestDetectionAtScreenPoint(Offset localPosition) {
-    if (_previewSize == Size.zero) return null;
-
-    final filtered = _filterResultsForMode(_latestRawDetections);
-    if (filtered.isEmpty) return null;
-
-    final nx = (localPosition.dx / _previewSize.width).clamp(0.0, 1.0);
-    final ny = (localPosition.dy / _previewSize.height).clamp(0.0, 1.0);
-    final cameraPoint = _screenToCamera(
-      Rect.fromLTWH(nx, ny, 0.0, 0.0),
-    ).topLeft;
-
-    YOLOResult? bestMatch;
-    double bestScore = double.negativeInfinity;
-
-    for (final det in filtered) {
-      final box = _normalizedRect(det);
-      final containsPoint = box.contains(cameraPoint);
-      final centerDistance = math.sqrt(
-        math.pow(box.center.dx - cameraPoint.dx, 2) +
-            math.pow(box.center.dy - cameraPoint.dy, 2),
-      );
-      final score =
-          (containsPoint ? 3.0 : 0.0) +
-          det.confidence * 1.5 -
-          centerDistance * 4.0 -
-          _rectArea(box) * 0.35;
-      if (score > bestScore) {
-        bestScore = score;
-        bestMatch = det;
-      }
-    }
-
-    if (bestMatch == null) return null;
-    final bestBox = _normalizedRect(bestMatch);
-    final maxDistance = bestBox.contains(cameraPoint)
-        ? 0.0
-        : math.max(bestBox.width, bestBox.height) * 0.7;
-    final dx = bestBox.center.dx - cameraPoint.dx;
-    final dy = bestBox.center.dy - cameraPoint.dy;
-    final actualDistance = math.sqrt(dx * dx + dy * dy);
-    if (!bestBox.contains(cameraPoint) && actualDistance > maxDistance) {
-      return null;
-    }
-    return bestMatch;
   }
 
   int _yoloDebugObjFrame = 0;
@@ -868,9 +911,17 @@ class _CameraScreenState extends State<CameraScreen> {
       );
     }
     if (!mounted || !_isObjectMode) return;
-    _latestRawDetections = results;
     _sceneCoach.setOrientation(_deviceOrientationDeg);
-    final filteredResults = _filterResultsForMode(results);
+    YOLOResult? trackedLockedRoiResult;
+    for (final result in results) {
+      if (result.className == '__locked_roi') {
+        trackedLockedRoiResult = result;
+        break;
+      }
+    }
+    final filteredResults = _filterResultsForMode(
+      results.where((r) => r.className != '__locked_roi').toList(),
+    );
 
     List<YOLOResult> forCoaching;
     Rect? updatedScreenRoi;
@@ -879,40 +930,81 @@ class _CameraScreenState extends State<CameraScreen> {
 
     final locked = _lockedRoiCamera;
     if (locked != null) {
-      final bestMatch = _bestDetectionForLockedTarget(locked, filteredResults);
-      if (bestMatch != null) {
-        forCoaching = [bestMatch];
-        subjectInFrameForCoaching = true;
-        _lockedLostFrames = 0;
-        final rawBox = _normalizedRect(bestMatch);
-        updatedScreenRoi = _cameraToScreen(rawBox);
-        _lockedRoiCamera = rawBox;
-        _lockedClassIndex = bestMatch.classIndex;
-        _lockedAppearanceSignature ??= bestMatch.appearanceSignature;
-        _lockedRecentAppearanceSignature = _blendAppearanceSignature(
-          _lockedRecentAppearanceSignature,
-          bestMatch.appearanceSignature,
-        );
-        _lockedTrackingDetection = bestMatch;
-        _setNativeLockedRoi(rawBox);
+      final trackedManualRoi =
+          _lockedRoiManual && trackedLockedRoiResult != null
+          ? _normalizedRect(trackedLockedRoiResult)
+          : null;
+      if (trackedManualRoi != null) {
+        final confidence = trackedLockedRoiResult!.confidence;
+        subjectInFrameForCoaching = confidence >= 0.10;
+        if (subjectInFrameForCoaching) {
+          _lockedLostFrames = 0;
+          _manualRoiTrackLossFrames = 0;
+          _lockedRoiCamera = trackedManualRoi;
+          _lockedAnchorRoiCamera = trackedManualRoi;
+          updatedScreenRoi = _cameraToScreen(trackedManualRoi);
+          forCoaching = [_manualDetectionFromCameraRoi(trackedManualRoi)];
+        } else {
+          if (_shouldClearManualRoiAfterTrackLoss()) {
+            _clearManualRoiAfterTrackLoss();
+            return;
+          }
+          forCoaching = const [];
+          subjectInFrameForCoaching = true;
+          holdWithoutFreshDetection = true;
+        }
       } else {
-        _lockedLostFrames++;
-        final holdTrack =
-            _lockedLostFrames < _lockLostFrameTolerance &&
-            _lockedTrackingDetection != null;
-        if (holdTrack) {
+        if (_lockedRoiManual) {
+          if (_shouldClearManualRoiAfterTrackLoss()) {
+            _clearManualRoiAfterTrackLoss();
+            return;
+          }
           forCoaching = const [];
           subjectInFrameForCoaching = true;
           holdWithoutFreshDetection = true;
         } else {
-          _lockedTrackingDetection = null;
-          subjectInFrameForCoaching = false;
-          _cameraController.setLockedRoi();
-          forCoaching = [];
+          final bestMatch = _bestDetectionForLockedTarget(
+            locked,
+            filteredResults,
+          );
+          if (bestMatch != null) {
+            forCoaching = [bestMatch];
+            subjectInFrameForCoaching = true;
+            _lockedLostFrames = 0;
+            final rawBox = _normalizedRect(bestMatch);
+            updatedScreenRoi = _cameraToScreen(rawBox);
+            _lockedRoiCamera = rawBox;
+            _lockedRoiManual = false;
+            _lockedClassIndex = bestMatch.classIndex;
+            _lockedAppearanceSignature ??= bestMatch.appearanceSignature;
+            _lockedRecentAppearanceSignature = _blendAppearanceSignature(
+              _lockedRecentAppearanceSignature,
+              bestMatch.appearanceSignature,
+            );
+            _lockedTrackingDetection = bestMatch;
+            _setNativeLockedRoi(rawBox);
+          } else {
+            _lockedLostFrames++;
+            final holdTrack =
+                _lockedLostFrames < _lockLostFrameTolerance &&
+                _lockedTrackingDetection != null;
+            if (holdTrack) {
+              forCoaching = const [];
+              subjectInFrameForCoaching = true;
+              holdWithoutFreshDetection = true;
+            } else {
+              _lockedTrackingDetection = null;
+              subjectInFrameForCoaching = false;
+              _cameraController.setLockedRoi();
+              forCoaching = [];
+            }
+          }
         }
       }
     } else {
-      forCoaching = filteredResults;
+      forCoaching = filteredResults.isEmpty
+          ? [_sceneFallbackDetection()]
+          : filteredResults;
     }
 
     final frameSize = _previewSize == Size.zero
@@ -923,7 +1015,7 @@ class _CameraScreenState extends State<CameraScreen> {
     if (!holdWithoutFreshDetection) {
       coaching = _decorateLockedSubjectCoachingSafe(
         _sceneCoach.updateDetections(
-          forCoaching,
+          _detectionsForDisplayCoaching(forCoaching),
           frameSize,
           subjectLocked: locked != null,
           subjectInFrame: subjectInFrameForCoaching,
@@ -957,7 +1049,19 @@ class _CameraScreenState extends State<CameraScreen> {
           _lightDirection = coaching.lightDirection;
         }
         if (roiMoved) _lockedRoi = updatedScreenRoi;
-        if (subjectLostBox) _lockedRoi = null;
+        if (subjectLostBox) {
+          _cameraController.setLockedRoi();
+          _lockedRoi = null;
+          _lockedRoiCamera = null;
+          _lockedRoiManual = false;
+          _lockedClassIndex = null;
+          _lockedAnchorRoiCamera = null;
+          _lockedAppearanceSignature = null;
+          _lockedRecentAppearanceSignature = null;
+          _lockedTrackingDetection = null;
+          _lockedLostFrames = 0;
+          _manualRoiTrackLossFrames = 0;
+        }
       });
     }
   }
@@ -1039,6 +1143,7 @@ class _CameraScreenState extends State<CameraScreen> {
     _resetPortraitState();
     _landscapeTemporalFilter.reset();
     _landscapeAnalyzer.reset();
+    _cameraController.setLockedRoi();
 
     setState(() {
       _isFrontCamera = !_isFrontCamera;
@@ -1054,6 +1159,19 @@ class _CameraScreenState extends State<CameraScreen> {
       _showSideToolSelector = false;
       _isRuleSelectorExpanded = false;
       _showPortraitIntentSelector = false;
+      _isDrawingRoi = false;
+      _roiDragStart = null;
+      _roiDragCurrent = null;
+      _lockedRoi = null;
+      _lockedRoiCamera = null;
+      _lockedRoiManual = false;
+      _lockedClassIndex = null;
+      _lockedAnchorRoiCamera = null;
+      _lockedAppearanceSignature = null;
+      _lockedRecentAppearanceSignature = null;
+      _lockedTrackingDetection = null;
+      _lockedLostFrames = 0;
+      _manualRoiTrackLossFrames = 0;
       _tiltX = 0.0;
       _gravX = 0.0;
       _gravY = 9.8;
@@ -1095,12 +1213,14 @@ class _CameraScreenState extends State<CameraScreen> {
       _roiDragCurrent = null;
       _lockedRoi = null;
       _lockedRoiCamera = null;
+      _lockedRoiManual = false;
       _lockedClassIndex = null;
       _lockedAnchorRoiCamera = null;
       _lockedAppearanceSignature = null;
       _lockedRecentAppearanceSignature = null;
       _lockedTrackingDetection = null;
       _lockedLostFrames = 0;
+      _manualRoiTrackLossFrames = 0;
       _lastSentOrientationDeg = -1;
       _landscapeDecision = null;
       _landscapeOverlayAdvice = const LandscapeOverlayAdvice.none();
@@ -1113,14 +1233,6 @@ class _CameraScreenState extends State<CameraScreen> {
 
   void _onTapFocus(Offset localPosition) {
     if (_previewSize == Size.zero || _isLandscapeMode) return;
-
-    if (_isObjectMode) {
-      final detection = _bestDetectionAtScreenPoint(localPosition);
-      if (detection != null) {
-        _lockToDetection(detection);
-        return;
-      }
-    }
 
     final nx = (localPosition.dx / _previewSize.width).clamp(0.0, 1.0);
     final ny = (localPosition.dy / _previewSize.height).clamp(0.0, 1.0);
@@ -1156,12 +1268,14 @@ class _CameraScreenState extends State<CameraScreen> {
     setState(() {
       _lockedRoi = null;
       _lockedRoiCamera = null;
+      _lockedRoiManual = false;
       _lockedClassIndex = null;
       _lockedAnchorRoiCamera = null;
       _lockedAppearanceSignature = null;
       _lockedRecentAppearanceSignature = null;
       _lockedTrackingDetection = null;
       _lockedLostFrames = 0;
+      _manualRoiTrackLossFrames = 0;
       _isDrawingRoi = false;
       _roiDragStart = null;
       _roiDragCurrent = null;
@@ -1245,7 +1359,7 @@ class _CameraScreenState extends State<CameraScreen> {
       setState(() {
         _roiDragStart = null;
         _roiDragCurrent = null;
-        _isDrawingRoi = false;
+        _isDrawingRoi = true;
       });
       return;
     }
@@ -1259,25 +1373,7 @@ class _CameraScreenState extends State<CameraScreen> {
     );
 
     final dragCamera = _screenToCamera(dragScreen);
-
-    final bestMatch = _bestDetectionForTarget(
-      dragCamera,
-      _filterResultsForMode(_latestRawDetections),
-    );
-    if (bestMatch == null) {
-      _showSubjectSelectionGuidance();
-      return;
-    }
-    final bestBox = _normalizedRect(bestMatch);
-
-    final matchIou = _iou(dragCamera, bestBox);
-    final matchOverlap = _overlapRatio(dragCamera, bestBox);
-    final hasUsableMatch = matchIou >= 0.18 || matchOverlap >= 0.45;
-    if (!hasUsableMatch) {
-      _showSubjectSelectionGuidance();
-      return;
-    }
-    _lockToDetection(bestMatch);
+    _lockToManualRoi(dragCamera);
   }
 
   void _cycleTimer() {
@@ -1685,9 +1781,12 @@ class _CameraScreenState extends State<CameraScreen> {
               : _isDrawingRoi
               ? Icons.close_rounded
               : Icons.center_focus_weak_rounded,
-          label: '고정',
+          label: '객체',
           onTap: _toggleRoiLock,
-          active: _lockedRoi != null,
+          active: _lockedRoi != null || _isDrawingRoi,
+          activeColor: _isDrawingRoi
+              ? const Color(0xFFFBBF24)
+              : const Color(0xFFBFDBFE),
         ),
       );
     }
@@ -1990,7 +2089,7 @@ class _CameraScreenState extends State<CameraScreen> {
             if (_isObjectMode && _isDrawingRoi)
               Positioned(
                 top: _objectSelectionHintTop,
-                left: isNarrowScreen ? 14.0 : 16.0,
+                right: isNarrowScreen ? 14.0 : 16.0,
                 child: IgnorePointer(
                   child: Container(
                     padding: const EdgeInsets.symmetric(
@@ -2005,7 +2104,7 @@ class _CameraScreenState extends State<CameraScreen> {
                       ),
                     ),
                     child: const Text(
-                      '\uD53C\uC0AC\uCCB4\uB97C \uD0ED\uD558\uAC70\uB098 \uB4DC\uB798\uADF8\uD574 \uC120\uD0DD\uD558\uC138\uC694',
+                      '\uACE0\uC815\uD560 \uD53C\uC0AC\uCCB4\uB97C \uB4DC\uB798\uADF8\uD574 \uC120\uD0DD\uD558\uC138\uC694',
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 12.5,
@@ -2041,6 +2140,7 @@ class _CameraScreenState extends State<CameraScreen> {
                         ? LightDirection.unknown
                         : _lightDirection,
                     maxWidth: bubbleMaxWidth,
+                    quarterTurns: (4 - (_deviceOrientationDeg ~/ 90)) % 4,
                   ),
                 ),
               ),
@@ -2071,10 +2171,7 @@ class _CameraScreenState extends State<CameraScreen> {
                 right: portraitSelectorRightInset,
                 child: ConstrainedBox(
                   constraints: BoxConstraints(
-                    maxWidth: math.min(
-                      screenWidth * 0.72,
-                      260.0,
-                    ),
+                    maxWidth: math.min(screenWidth * 0.72, 260.0),
                   ),
                   child: PortraitIntentSelector(
                     selected: _portraitIntent,

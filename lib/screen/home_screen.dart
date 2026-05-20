@@ -170,8 +170,10 @@ class _Header extends StatelessWidget {
         children: [
           Image.asset(
             'assets/images/pozy_logo2.png',
-            height: 40,
+            height: 32,
             fit: BoxFit.contain,
+            filterQuality: FilterQuality.high,
+            isAntiAlias: true,
           ),
           const Spacer(),
           GestureDetector(
