@@ -2121,6 +2121,7 @@ class _CameraScreenState extends State<CameraScreen> {
                         ? LightDirection.unknown
                         : _lightDirection,
                     maxWidth: bubbleMaxWidth,
+                    quarterTurns: (4 - (_deviceOrientationDeg ~/ 90)) % 4,
                   ),
                 ),
               ),
