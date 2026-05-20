@@ -12,6 +12,7 @@ class CoachingSpeechBubble extends StatelessWidget {
   final DirectionHint directionHint;
   final LightDirection lightDirection;
   final double? maxWidth;
+  final int quarterTurns;
 
   const CoachingSpeechBubble({
     super.key,
@@ -22,6 +23,7 @@ class CoachingSpeechBubble extends StatelessWidget {
     this.directionHint = DirectionHint.none,
     this.lightDirection = LightDirection.unknown,
     this.maxWidth,
+    this.quarterTurns = 0,
   });
 
   factory CoachingSpeechBubble.fromResult(
@@ -36,6 +38,7 @@ class CoachingSpeechBubble extends StatelessWidget {
       score: result.score,
       directionHint: result.directionHint,
       lightDirection: result.lightDirection,
+      quarterTurns: 0,
     );
   }
 
@@ -54,117 +57,120 @@ class CoachingSpeechBubble extends StatelessWidget {
     };
     final resolvedMaxWidth = maxWidth ?? math.min(screenWidth * 0.58, 280.0);
 
-    return ConstrainedBox(
-      constraints: BoxConstraints(maxWidth: resolvedMaxWidth),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.50),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: borderColor, width: 1),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x33000000),
-              blurRadius: 14,
-              offset: Offset(0, 6),
-            ),
-          ],
-        ),
-        child: Stack(
-          children: [
-            Positioned(
-              left: 0,
-              top: 2,
-              bottom: 2,
-              child: Container(
-                width: 3,
-                decoration: BoxDecoration(
-                  color: borderColor,
-                  borderRadius: BorderRadius.circular(999),
+    return RotatedBox(
+      quarterTurns: quarterTurns % 4,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: resolvedMaxWidth),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.50),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: borderColor, width: 1),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x33000000),
+                blurRadius: 14,
+                offset: Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Stack(
+            children: [
+              Positioned(
+                left: 0,
+                top: 2,
+                bottom: 2,
+                child: Container(
+                  width: 3,
+                  decoration: BoxDecoration(
+                    color: borderColor,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
                 ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(left: 10),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (score != null) ...[
-                    _ScoreGauge(score: score!, accent: accent),
-                    const SizedBox(height: 6),
-                  ],
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        width: 6,
-                        height: 6,
-                        margin: const EdgeInsets.only(top: 5),
-                        decoration: BoxDecoration(
-                          color: accent,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: accent.withValues(alpha: 0.28),
-                              blurRadius: 6,
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (directionHint != DirectionHint.none) ...[
-                        const SizedBox(width: 6),
-                        _DirectionArrow(hint: directionHint, color: accent),
-                      ],
-                      const SizedBox(width: 6),
-                      Flexible(
-                        child: Text(
-                          guidance,
-                          textAlign: TextAlign.right,
-                          softWrap: true,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.98),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            height: 1.3,
+              Padding(
+                padding: const EdgeInsets.only(left: 10),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (score != null) ...[
+                      _ScoreGauge(score: score!, accent: accent),
+                      const SizedBox(height: 6),
+                    ],
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 6,
+                          height: 6,
+                          margin: const EdgeInsets.only(top: 5),
+                          decoration: BoxDecoration(
+                            color: accent,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: accent.withValues(alpha: 0.28),
+                                blurRadius: 6,
+                              ),
+                            ],
                           ),
+                        ),
+                        if (directionHint != DirectionHint.none) ...[
+                          const SizedBox(width: 6),
+                          _DirectionArrow(hint: directionHint, color: accent),
+                        ],
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            guidance,
+                            textAlign: TextAlign.right,
+                            softWrap: true,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.98),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              height: 1.3,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (subGuidance != null && subGuidance!.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        subGuidance!,
+                        textAlign: TextAlign.right,
+                        softWrap: true,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.70),
+                          fontSize: 10,
+                          height: 1.3,
                         ),
                       ),
                     ],
-                  ),
-                  if (subGuidance != null && subGuidance!.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      subGuidance!,
-                      textAlign: TextAlign.right,
-                      softWrap: true,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.70),
-                        fontSize: 10,
-                        height: 1.3,
+                    if (lightDirection != LightDirection.unknown) ...[
+                      const SizedBox(height: 6),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: _LightIndicator(
+                          direction: lightDirection,
+                          accent: accent,
+                        ),
                       ),
-                    ),
+                    ],
                   ],
-                  if (lightDirection != LightDirection.unknown) ...[
-                    const SizedBox(height: 6),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: _LightIndicator(
-                        direction: lightDirection,
-                        accent: accent,
-                      ),
-                    ),
-                  ],
-                ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
