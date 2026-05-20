@@ -1934,7 +1934,7 @@ class _CameraScreenState extends State<CameraScreen> {
                       opacity: 0.5,
                       child: Image.asset(
                         'assets/images/pose_standing.png',
-                        fit: BoxFit.contain,
+                        fit: BoxFit.fitHeight,
                       ),
                     );
                     if (targetBox != null) {
