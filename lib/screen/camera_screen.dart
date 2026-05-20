@@ -45,6 +45,7 @@ import 'package:pose_camera_app/utils/debug_log_flags.dart';
 const String poseModelPath = 'yolov8n-pose_float16.tflite';
 const double poseConfidenceThreshold = 0.15;
 const double groupPersonConfidenceThreshold = 0.08;
+const double groupPersonLandscapeConfidenceThreshold = 0.05;
 const double poseIouThreshold = 0.65;
 
 class CameraScreen extends StatefulWidget {
@@ -174,6 +175,8 @@ class _CameraScreenState extends State<CameraScreen> {
   bool get _isObjectMode => _shootingMode == ShootingMode.object;
   bool get _isGroupPortraitMode =>
       _isPortraitMode && _portraitIntent == portrait.PortraitIntent.group;
+  bool get _isLandscapeDeviceOrientation =>
+      _deviceOrientationDeg == 90 || _deviceOrientationDeg == 270;
 
   /// 현재 기기 방향 기준 상대 기울기 (isLevel 판단 전용)
   /// 사용자가 상단 selector에서 선택한 구도 규칙. 인물/객체 모드에서만 사용.
@@ -1570,7 +1573,7 @@ class _CameraScreenState extends State<CameraScreen> {
             ? 'group_detect'
             : _isPortraitMode
             ? 'pose'
-            : 'detect'}_${_isFrontCamera ? 'front' : 'back'}',
+            : 'detect'}_${_isFrontCamera ? 'front' : 'back'}_${_isLandscapeDeviceOrientation ? 'landscape' : 'portrait'}',
       ),
       controller: _cameraController,
       modelPath: _isGroupPortraitMode
@@ -1587,12 +1590,14 @@ class _CameraScreenState extends State<CameraScreen> {
       showNativeUI: false,
       showOverlays: false,
       confidenceThreshold: _isGroupPortraitMode
-          ? groupPersonConfidenceThreshold
+          ? (_isLandscapeDeviceOrientation
+                ? groupPersonLandscapeConfidenceThreshold
+                : groupPersonConfidenceThreshold)
           : _isPortraitMode
           ? poseConfidenceThreshold
           : detectionConfidenceThreshold,
       iouThreshold: _isGroupPortraitMode
-          ? 0.50
+          ? (_isLandscapeDeviceOrientation ? 0.40 : 0.50)
           : _isPortraitMode
           ? poseIouThreshold
           : 0.45,
