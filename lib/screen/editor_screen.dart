@@ -1217,7 +1217,7 @@ class _ActionChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bg = active
-        ? _kDark
+        ? _kBlue
         : highlight
             ? _kBlue.withValues(alpha: 0.12)
             : _kGrey100;

@@ -10,6 +10,7 @@ import 'package:ultralytics_yolo/yolo.dart';
 import 'package:ultralytics_yolo/yolo_streaming_config.dart';
 import 'package:ultralytics_yolo/yolo_view.dart';
 
+import 'package:pose_camera_app/app.dart' show isCameraScreenActive;
 import 'package:pose_camera_app/coaching/coaching_result.dart';
 import 'package:pose_camera_app/composition/composition_rule.dart';
 import 'package:pose_camera_app/composition/composition_rule_registry.dart';
@@ -29,7 +30,7 @@ import 'package:pose_camera_app/coaching/portrait/portrait_overlay_painter.dart'
 import 'package:pose_camera_app/coaching/portrait/portrait_scene_state.dart'
     as portrait;
 import 'package:pose_camera_app/coaching/portrait/silhouette_shapes.dart';
-import 'package:pose_camera_app/screen/camera/widgets/silhouette_painter.dart';
+
 import 'package:pose_camera_app/coaching/subject/subject_detection.dart'
     show detectModelPath, detectionConfidenceThreshold;
 import 'package:pose_camera_app/feature/landscape/landscape_overlay_painter.dart';
@@ -184,6 +185,7 @@ class _CameraScreenState extends State<CameraScreen> {
   @override
   void initState() {
     super.initState();
+    isCameraScreenActive = true;
     _shootingMode = widget.initialMode;
     _applyIdleCoachingForMode(_shootingMode);
     if (DebugLogFlags.yoloDebug) {
@@ -1923,6 +1925,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
   @override
   void dispose() {
+    isCameraScreenActive = false;
     _accelerometerSub?.cancel();
     _countdownTimer?.cancel();
     _focusIndicatorTimer?.cancel();
@@ -2023,15 +2026,31 @@ class _CameraScreenState extends State<CameraScreen> {
                       bodyRect.height * size.height,
                     );
                   }
-                  return IgnorePointer(
-                    child: CustomPaint(
-                      painter: SilhouettePainter(
-                        type: _selectedSilhouette,
-                        targetBox: targetBox,
+
+                  Widget content = const SizedBox();
+                  if (_selectedSilhouette == SilhouetteType.standing) {
+                    content = Opacity(
+                      opacity: 0.5,
+                      child: Image.asset(
+                        'assets/images/pose_standing.png',
+                        fit: BoxFit.fitHeight,
                       ),
-                      size: Size.infinite,
-                    ),
-                  );
+                    );
+                    if (targetBox != null) {
+                      content = Stack(
+                        children: [
+                          Positioned.fromRect(
+                            rect: targetBox,
+                            child: content,
+                          ),
+                        ],
+                      );
+                    } else {
+                      content = Center(child: content);
+                    }
+                  }
+
+                  return IgnorePointer(child: content);
                 },
               ),
             if (!_isLandscapeMode)
