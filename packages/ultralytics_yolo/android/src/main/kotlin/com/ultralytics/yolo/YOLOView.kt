@@ -176,11 +176,647 @@ class YOLOView @JvmOverloads constructor(
 
     // Subject lock — normalized ROI [0,1] set by Flutter; null = auto from YOLO detections
     @Volatile var lockedRoi: android.graphics.RectF? = null
+    private data class RoiTrackPoint(var x: Float, var y: Float, var patch: FloatArray)
+    private data class RoiTrackMatch(val previous: RoiTrackPoint, val next: RoiTrackPoint)
+    private data class RoiAppearance(val histogram: FloatArray, val contrast: Float)
+    private data class RoiTemplate(val samplesX: Int, val samplesY: Int, val data: FloatArray)
+
+    private var lockedRoiTrackPoints: MutableList<RoiTrackPoint> = mutableListOf()
+    private var lockedRoiTrackFailures: Int = 0
+    private var lockedRoiAppearance: RoiAppearance? = null
+    private var lockedRoiTemplate: RoiTemplate? = null
+    private var lockedRoiNeedsRefinement: Boolean = false
+    @Volatile private var latestTrackedLockedRoi: android.graphics.RectF? = null
+    @Volatile private var latestTrackedLockedRoiConfidence: Float = 0f
+    private val roiPatchRadiusPx = 4
+    private val maxRoiTrackPoints = 28
 
     fun setLockedRoi(left: Float?, top: Float?, right: Float?, bottom: Float?) {
         lockedRoi = if (left != null && top != null && right != null && bottom != null)
             android.graphics.RectF(left, top, right, bottom)
         else null
+        lockedRoiTrackPoints.clear()
+        lockedRoiTrackFailures = 0
+        lockedRoiAppearance = null
+        lockedRoiTemplate = null
+        lockedRoiNeedsRefinement = lockedRoi != null
+        latestTrackedLockedRoi = lockedRoi
+        latestTrackedLockedRoiConfidence = if (lockedRoi != null) 1f else 0f
+    }
+
+    private fun clampNormalizedRoi(roi: android.graphics.RectF): android.graphics.RectF {
+        val left = roi.left.coerceIn(0f, 1f)
+        val top = roi.top.coerceIn(0f, 1f)
+        val right = roi.right.coerceIn(0f, 1f)
+        val bottom = roi.bottom.coerceIn(0f, 1f)
+        return android.graphics.RectF(
+            min(left, right),
+            min(top, bottom),
+            max(left, right),
+            max(top, bottom),
+        )
+    }
+
+    private fun lumaAt(bitmap: Bitmap, x: Int, y: Int): Float {
+        val pixel = bitmap.getPixel(x.coerceIn(0, bitmap.width - 1), y.coerceIn(0, bitmap.height - 1))
+        val r = (pixel shr 16) and 0xFF
+        val g = (pixel shr 8) and 0xFF
+        val b = pixel and 0xFF
+        return ((0.299f * r) + (0.587f * g) + (0.114f * b)) / 255f
+    }
+
+    private fun extractRoiAppearance(bitmap: Bitmap, roi: android.graphics.RectF): RoiAppearance? {
+        val clipped = clampNormalizedRoi(roi)
+        if (clipped.width() < 0.015f || clipped.height() < 0.015f) return null
+
+        val histogram = FloatArray(64)
+        var count = 0
+        var lumaSum = 0f
+        var lumaSqSum = 0f
+        val samplesX = 12
+        val samplesY = 12
+
+        for (sy in 0 until samplesY) {
+            for (sx in 0 until samplesX) {
+                val nx = clipped.left + clipped.width() * ((sx + 0.5f) / samplesX.toFloat())
+                val ny = clipped.top + clipped.height() * ((sy + 0.5f) / samplesY.toFloat())
+                val x = (nx * bitmap.width).toInt().coerceIn(0, bitmap.width - 1)
+                val y = (ny * bitmap.height).toInt().coerceIn(0, bitmap.height - 1)
+                val pixel = bitmap.getPixel(x, y)
+                val r = (pixel shr 16) and 0xFF
+                val g = (pixel shr 8) and 0xFF
+                val b = pixel and 0xFF
+                val rb = (r * 4 / 256).coerceIn(0, 3)
+                val gb = (g * 4 / 256).coerceIn(0, 3)
+                val bb = (b * 4 / 256).coerceIn(0, 3)
+                histogram[(rb * 16) + (gb * 4) + bb] += 1f
+
+                val luma = ((0.299f * r) + (0.587f * g) + (0.114f * b)) / 255f
+                lumaSum += luma
+                lumaSqSum += luma * luma
+                count++
+            }
+        }
+
+        if (count == 0) return null
+        for (i in histogram.indices) {
+            histogram[i] /= count.toFloat()
+        }
+        val mean = lumaSum / count.toFloat()
+        val variance = (lumaSqSum / count.toFloat()) - (mean * mean)
+        return RoiAppearance(
+            histogram = histogram,
+            contrast = kotlin.math.sqrt(max(0f, variance).toDouble()).toFloat(),
+        )
+    }
+
+    private fun appearanceDistance(a: RoiAppearance, b: RoiAppearance): Float {
+        val n = min(a.histogram.size, b.histogram.size)
+        var chiSquare = 0f
+        for (i in 0 until n) {
+            val sum = a.histogram[i] + b.histogram[i]
+            if (sum > 0.0001f) {
+                val d = a.histogram[i] - b.histogram[i]
+                chiSquare += (d * d) / sum
+            }
+        }
+        val contrastDistance = kotlin.math.abs(a.contrast - b.contrast)
+        return (chiSquare * 0.5f) + (contrastDistance * 1.8f)
+    }
+
+    private fun blendAppearance(previous: RoiAppearance, next: RoiAppearance, alpha: Float = 0.04f): RoiAppearance {
+        val n = min(previous.histogram.size, next.histogram.size)
+        val histogram = FloatArray(n) { i ->
+            previous.histogram[i] * (1f - alpha) + next.histogram[i] * alpha
+        }
+        return RoiAppearance(
+            histogram = histogram,
+            contrast = previous.contrast * (1f - alpha) + next.contrast * alpha,
+        )
+    }
+
+    private fun colorDistance(r1: Float, g1: Float, b1: Float, r2: Float, g2: Float, b2: Float): Float {
+        val dr = r1 - r2
+        val dg = g1 - g2
+        val db = b1 - b2
+        return kotlin.math.sqrt((dr * dr + dg * dg + db * db).toDouble()).toFloat()
+    }
+
+    private fun refineInitialLockedRoi(bitmap: Bitmap, roi: android.graphics.RectF): android.graphics.RectF {
+        val clipped = clampNormalizedRoi(roi)
+        if (clipped.width() < 0.06f || clipped.height() < 0.06f) return clipped
+
+        val gridX = 28
+        val gridY = 28
+        var seedR = 0f
+        var seedG = 0f
+        var seedB = 0f
+        var seedCount = 0
+        var borderR = 0f
+        var borderG = 0f
+        var borderB = 0f
+        var borderCount = 0
+
+        for (gy in 0 until gridY) {
+            for (gx in 0 until gridX) {
+                val fx = (gx + 0.5f) / gridX.toFloat()
+                val fy = (gy + 0.5f) / gridY.toFloat()
+                val nx = clipped.left + clipped.width() * fx
+                val ny = clipped.top + clipped.height() * fy
+                val x = (nx * bitmap.width).toInt().coerceIn(0, bitmap.width - 1)
+                val y = (ny * bitmap.height).toInt().coerceIn(0, bitmap.height - 1)
+                val pixel = bitmap.getPixel(x, y)
+                val r = ((pixel shr 16) and 0xFF) / 255f
+                val g = ((pixel shr 8) and 0xFF) / 255f
+                val b = (pixel and 0xFF) / 255f
+
+                if (fx in 0.36f..0.64f && fy in 0.36f..0.64f) {
+                    seedR += r
+                    seedG += g
+                    seedB += b
+                    seedCount++
+                }
+                if (fx < 0.14f || fx > 0.86f || fy < 0.14f || fy > 0.86f) {
+                    borderR += r
+                    borderG += g
+                    borderB += b
+                    borderCount++
+                }
+            }
+        }
+
+        if (seedCount == 0 || borderCount == 0) return clipped
+        seedR /= seedCount.toFloat()
+        seedG /= seedCount.toFloat()
+        seedB /= seedCount.toFloat()
+        borderR /= borderCount.toFloat()
+        borderG /= borderCount.toFloat()
+        borderB /= borderCount.toFloat()
+
+        val foreground = Array(gridY) { BooleanArray(gridX) }
+        var foregroundCount = 0
+        for (gy in 0 until gridY) {
+            for (gx in 0 until gridX) {
+                val fx = (gx + 0.5f) / gridX.toFloat()
+                val fy = (gy + 0.5f) / gridY.toFloat()
+                val nx = clipped.left + clipped.width() * fx
+                val ny = clipped.top + clipped.height() * fy
+                val x = (nx * bitmap.width).toInt().coerceIn(0, bitmap.width - 1)
+                val y = (ny * bitmap.height).toInt().coerceIn(0, bitmap.height - 1)
+                val pixel = bitmap.getPixel(x, y)
+                val r = ((pixel shr 16) and 0xFF) / 255f
+                val g = ((pixel shr 8) and 0xFF) / 255f
+                val b = (pixel and 0xFF) / 255f
+                val seedDistance = colorDistance(r, g, b, seedR, seedG, seedB)
+                val borderDistance = colorDistance(r, g, b, borderR, borderG, borderB)
+                val seedLooksDifferentFromBorder = colorDistance(seedR, seedG, seedB, borderR, borderG, borderB)
+                val isForeground = seedDistance < max(0.16f, seedLooksDifferentFromBorder * 0.72f) &&
+                    borderDistance > seedDistance * 0.92f
+                if (isForeground) {
+                    foreground[gy][gx] = true
+                    foregroundCount++
+                }
+            }
+        }
+
+        val ratio = foregroundCount.toFloat() / (gridX * gridY).toFloat()
+        if (ratio < 0.08f || ratio > 0.82f) return clipped
+
+        val visited = Array(gridY) { BooleanArray(gridX) }
+        val queue = ArrayDeque<Pair<Int, Int>>()
+        val centerX = gridX / 2
+        val centerY = gridY / 2
+        var seedFound = false
+        for (radius in 0..4) {
+            for (gy in (centerY - radius)..(centerY + radius)) {
+                for (gx in (centerX - radius)..(centerX + radius)) {
+                    if (gx in 0 until gridX && gy in 0 until gridY && foreground[gy][gx]) {
+                        queue.add(Pair(gx, gy))
+                        visited[gy][gx] = true
+                        seedFound = true
+                        break
+                    }
+                }
+                if (seedFound) break
+            }
+            if (seedFound) break
+        }
+        if (!seedFound) return clipped
+
+        var minX = gridX
+        var minY = gridY
+        var maxX = -1
+        var maxY = -1
+        var componentCount = 0
+        while (queue.isNotEmpty()) {
+            val (x, y) = queue.removeFirst()
+            minX = min(minX, x)
+            minY = min(minY, y)
+            maxX = max(maxX, x)
+            maxY = max(maxY, y)
+            componentCount++
+
+            val neighbors = arrayOf(
+                Pair(x - 1, y),
+                Pair(x + 1, y),
+                Pair(x, y - 1),
+                Pair(x, y + 1),
+            )
+            for ((nx, ny) in neighbors) {
+                if (nx !in 0 until gridX || ny !in 0 until gridY) continue
+                if (visited[ny][nx] || !foreground[ny][nx]) continue
+                visited[ny][nx] = true
+                queue.add(Pair(nx, ny))
+            }
+        }
+
+        val componentRatio = componentCount.toFloat() / (gridX * gridY).toFloat()
+        if (componentRatio < 0.08f) return clipped
+
+        val padX = 2f / gridX.toFloat()
+        val padY = 2f / gridY.toFloat()
+        val refinedLeft = clipped.left + clipped.width() * ((minX.toFloat() / gridX.toFloat()) - padX)
+        val refinedTop = clipped.top + clipped.height() * ((minY.toFloat() / gridY.toFloat()) - padY)
+        val refinedRight = clipped.left + clipped.width() * (((maxX + 1).toFloat() / gridX.toFloat()) + padX)
+        val refinedBottom = clipped.top + clipped.height() * (((maxY + 1).toFloat() / gridY.toFloat()) + padY)
+        val refined = clampNormalizedRoi(
+            android.graphics.RectF(refinedLeft, refinedTop, refinedRight, refinedBottom)
+        )
+
+        val widthRatio = refined.width() / clipped.width()
+        val heightRatio = refined.height() / clipped.height()
+        val areaRatio = (refined.width() * refined.height()) / max(0.0001f, clipped.width() * clipped.height())
+        if (widthRatio < 0.30f || heightRatio < 0.30f || areaRatio < 0.14f || areaRatio > 0.95f) {
+            return clipped
+        }
+        return refined
+    }
+
+    private fun extractNormalizedPatch(bitmap: Bitmap, nx: Float, ny: Float): FloatArray? {
+        val cx = (nx * bitmap.width).toInt()
+        val cy = (ny * bitmap.height).toInt()
+        if (cx - roiPatchRadiusPx < 0 ||
+            cy - roiPatchRadiusPx < 0 ||
+            cx + roiPatchRadiusPx >= bitmap.width ||
+            cy + roiPatchRadiusPx >= bitmap.height
+        ) {
+            return null
+        }
+
+        val side = roiPatchRadiusPx * 2 + 1
+        val patch = FloatArray(side * side)
+        var sum = 0f
+        var index = 0
+        for (py in -roiPatchRadiusPx..roiPatchRadiusPx) {
+            for (px in -roiPatchRadiusPx..roiPatchRadiusPx) {
+                val value = lumaAt(bitmap, cx + px, cy + py)
+                patch[index++] = value
+                sum += value
+            }
+        }
+
+        val mean = sum / patch.size
+        var variance = 0f
+        for (i in patch.indices) {
+            patch[i] -= mean
+            variance += patch[i] * patch[i]
+        }
+        if (variance / patch.size < 0.0008f) return null
+
+        val norm = kotlin.math.sqrt(variance.toDouble()).toFloat().coerceAtLeast(0.0001f)
+        for (i in patch.indices) {
+            patch[i] /= norm
+        }
+        return patch
+    }
+
+    private fun patchMeanSquaredError(a: FloatArray, b: FloatArray): Float {
+        val n = min(a.size, b.size)
+        if (n <= 0) return Float.MAX_VALUE
+        var sum = 0f
+        for (i in 0 until n) {
+            val d = a[i] - b[i]
+            sum += d * d
+        }
+        return sum / n
+    }
+
+    private fun blendPatches(previous: FloatArray, next: FloatArray, alpha: Float = 0.06f): FloatArray {
+        val n = min(previous.size, next.size)
+        return FloatArray(n) { i -> previous[i] * (1f - alpha) + next[i] * alpha }
+    }
+
+    private fun extractRoiTemplate(
+        bitmap: Bitmap,
+        roi: android.graphics.RectF,
+        samplesX: Int = 14,
+        samplesY: Int = 14,
+    ): RoiTemplate? {
+        val clipped = clampNormalizedRoi(roi)
+        if (clipped.width() < 0.015f || clipped.height() < 0.015f) return null
+
+        val data = FloatArray(samplesX * samplesY)
+        var sum = 0f
+        var index = 0
+        for (sy in 0 until samplesY) {
+            for (sx in 0 until samplesX) {
+                val nx = clipped.left + clipped.width() * ((sx + 0.5f) / samplesX.toFloat())
+                val ny = clipped.top + clipped.height() * ((sy + 0.5f) / samplesY.toFloat())
+                val x = (nx * bitmap.width).toInt().coerceIn(0, bitmap.width - 1)
+                val y = (ny * bitmap.height).toInt().coerceIn(0, bitmap.height - 1)
+                val value = lumaAt(bitmap, x, y)
+                data[index++] = value
+                sum += value
+            }
+        }
+
+        val mean = sum / data.size
+        var variance = 0f
+        for (i in data.indices) {
+            data[i] -= mean
+            variance += data[i] * data[i]
+        }
+        if (variance / data.size < 0.0004f) return null
+
+        val norm = kotlin.math.sqrt(variance.toDouble()).toFloat().coerceAtLeast(0.0001f)
+        for (i in data.indices) {
+            data[i] /= norm
+        }
+        return RoiTemplate(samplesX, samplesY, data)
+    }
+
+    private fun templateMeanSquaredError(a: RoiTemplate, b: RoiTemplate): Float {
+        val n = min(a.data.size, b.data.size)
+        if (n <= 0) return Float.MAX_VALUE
+        var sum = 0f
+        for (i in 0 until n) {
+            val d = a.data[i] - b.data[i]
+            sum += d * d
+        }
+        return sum / n
+    }
+
+    private fun blendTemplates(previous: RoiTemplate, next: RoiTemplate, alpha: Float = 0.035f): RoiTemplate {
+        val n = min(previous.data.size, next.data.size)
+        val data = FloatArray(n) { i -> previous.data[i] * (1f - alpha) + next.data[i] * alpha }
+        return RoiTemplate(previous.samplesX, previous.samplesY, data)
+    }
+
+    private fun trackTemplate(
+        bitmap: Bitmap,
+        template: RoiTemplate,
+        roi: android.graphics.RectF,
+    ): Pair<android.graphics.RectF, Float>? {
+        val radiusX = max(0.04f, min(0.14f, roi.width() * 0.90f))
+        val radiusY = max(0.04f, min(0.14f, roi.height() * 0.90f))
+        val stepX = max(2f / bitmap.width.toFloat(), min(0.014f, roi.width() * 0.10f))
+        val stepY = max(2f / bitmap.height.toFloat(), min(0.014f, roi.height() * 0.10f))
+
+        var bestRoi: android.graphics.RectF? = null
+        var bestScore = Float.MAX_VALUE
+        var dy = -radiusY
+        while (dy <= radiusY + 0.0001f) {
+            var dx = -radiusX
+            while (dx <= radiusX + 0.0001f) {
+                val candidate = clampNormalizedRoi(
+                    android.graphics.RectF(
+                        roi.left + dx,
+                        roi.top + dy,
+                        roi.right + dx,
+                        roi.bottom + dy,
+                    )
+                )
+                if (kotlin.math.abs(candidate.width() - roi.width()) < 0.002f &&
+                    kotlin.math.abs(candidate.height() - roi.height()) < 0.002f
+                ) {
+                    val nextTemplate = extractRoiTemplate(
+                        bitmap,
+                        candidate,
+                        template.samplesX,
+                        template.samplesY,
+                    )
+                    if (nextTemplate != null) {
+                        val score = templateMeanSquaredError(template, nextTemplate)
+                        if (score < bestScore) {
+                            bestScore = score
+                            bestRoi = candidate
+                        }
+                    }
+                }
+                dx += stepX
+            }
+            dy += stepY
+        }
+
+        val matchedRoi = bestRoi ?: return null
+        if (bestScore > 0.055f) return null
+        val confidence = (1f - (bestScore / 0.055f)).coerceIn(0f, 1f)
+        return Pair(matchedRoi, confidence)
+    }
+
+    private fun median(values: List<Float>): Float {
+        if (values.isEmpty()) return 0f
+        val sorted = values.sorted()
+        return sorted[sorted.size / 2]
+    }
+
+    private fun roiFromCenter(
+        centerX: Float,
+        centerY: Float,
+        width: Float,
+        height: Float,
+    ): android.graphics.RectF {
+        val halfWidth = width / 2f
+        val halfHeight = height / 2f
+        return clampNormalizedRoi(
+            android.graphics.RectF(
+                centerX - halfWidth,
+                centerY - halfHeight,
+                centerX + halfWidth,
+                centerY + halfHeight,
+            )
+        )
+    }
+
+    private fun estimateScale(
+        matches: List<RoiTrackMatch>,
+        roi: android.graphics.RectF,
+        dx: Float,
+        dy: Float,
+    ): Float {
+        val previousCenterX = roi.centerX()
+        val previousCenterY = roi.centerY()
+        val nextCenterX = previousCenterX + dx
+        val nextCenterY = previousCenterY + dy
+        val previousRadii = mutableListOf<Float>()
+        val nextRadii = mutableListOf<Float>()
+
+        for (match in matches) {
+            val previousDx = (match.previous.x - previousCenterX) / roi.width()
+            val previousDy = (match.previous.y - previousCenterY) / roi.height()
+            val nextDx = (match.next.x - nextCenterX) / roi.width()
+            val nextDy = (match.next.y - nextCenterY) / roi.height()
+            val previousRadius = kotlin.math.sqrt(
+                (previousDx * previousDx + previousDy * previousDy).toDouble()
+            ).toFloat()
+            val nextRadius = kotlin.math.sqrt(
+                (nextDx * nextDx + nextDy * nextDy).toDouble()
+            ).toFloat()
+            if (previousRadius > 0.04f && nextRadius > 0.01f) {
+                previousRadii.add(previousRadius)
+                nextRadii.add(nextRadius)
+            }
+        }
+
+        if (previousRadii.size < 5 || nextRadii.size < 5) return 1f
+        val previousMedian = median(previousRadii)
+        val nextMedian = median(nextRadii)
+        if (previousMedian <= 0.01f) return 1f
+        return (nextMedian / previousMedian).coerceIn(0.90f, 1.10f)
+    }
+
+    private fun initializeLockedRoiTrackPoints(bitmap: Bitmap, roi: android.graphics.RectF) {
+        lockedRoiTrackPoints.clear()
+        val candidates = mutableListOf<RoiTrackPoint>()
+        val grid = 7
+        for (gy in 1 until grid) {
+            for (gx in 1 until grid) {
+                val nx = roi.left + roi.width() * (gx.toFloat() / grid.toFloat())
+                val ny = roi.top + roi.height() * (gy.toFloat() / grid.toFloat())
+                val patch = extractNormalizedPatch(bitmap, nx, ny) ?: continue
+                candidates.add(RoiTrackPoint(nx, ny, patch))
+            }
+        }
+        candidates.sortByDescending { point ->
+            point.patch.fold(0f) { acc, v -> acc + kotlin.math.abs(v) }
+        }
+        lockedRoiTrackPoints.addAll(candidates.take(maxRoiTrackPoints))
+    }
+
+    private fun trackPoint(bitmap: Bitmap, point: RoiTrackPoint, roi: android.graphics.RectF): RoiTrackPoint? {
+        val radiusX = max(0.035f, min(0.085f, roi.width() * 0.55f))
+        val radiusY = max(0.035f, min(0.085f, roi.height() * 0.55f))
+        val stepX = max(2f / bitmap.width.toFloat(), roi.width() * 0.08f)
+        val stepY = max(2f / bitmap.height.toFloat(), roi.height() * 0.08f)
+
+        var bestX = point.x
+        var bestY = point.y
+        var bestPatch: FloatArray? = null
+        var bestScore = Float.MAX_VALUE
+
+        var dy = -radiusY
+        while (dy <= radiusY + 0.0001f) {
+            var dx = -radiusX
+            while (dx <= radiusX + 0.0001f) {
+                val nx = (point.x + dx).coerceIn(0f, 1f)
+                val ny = (point.y + dy).coerceIn(0f, 1f)
+                val patch = extractNormalizedPatch(bitmap, nx, ny)
+                if (patch != null) {
+                    val score = patchMeanSquaredError(point.patch, patch)
+                    if (score < bestScore) {
+                        bestScore = score
+                        bestX = nx
+                        bestY = ny
+                        bestPatch = patch
+                    }
+                }
+                dx += stepX
+            }
+            dy += stepY
+        }
+
+        val patch = bestPatch ?: return null
+        if (bestScore > 0.030f) return null
+        return RoiTrackPoint(bestX, bestY, blendPatches(point.patch, patch))
+    }
+
+    private fun updateLockedRoiTracker(bitmap: Bitmap): Pair<android.graphics.RectF, Float>? {
+        val current = lockedRoi ?: return null
+        val currentRoi = clampNormalizedRoi(current)
+        if (currentRoi.width() < 0.015f || currentRoi.height() < 0.015f) return null
+        lockedRoiNeedsRefinement = false
+
+        if (lockedRoiTrackPoints.size < 4) {
+            initializeLockedRoiTrackPoints(bitmap, currentRoi)
+            lockedRoiTemplate = extractRoiTemplate(bitmap, currentRoi)
+            lockedRoiTrackFailures = 0
+            val initialized = lockedRoiTrackPoints.size >= 4 || lockedRoiTemplate != null
+            return Pair(currentRoi, if (initialized) 1f else 0f)
+        }
+
+        val templateTrack = lockedRoiTemplate?.let { template ->
+            trackTemplate(bitmap, template, currentRoi)
+        }
+        val previousPoints = lockedRoiTrackPoints
+        val trackedPoints = mutableListOf<RoiTrackPoint>()
+        val dxs = mutableListOf<Float>()
+        val dys = mutableListOf<Float>()
+        for (point in previousPoints) {
+            val next = trackPoint(bitmap, point, currentRoi) ?: continue
+            trackedPoints.add(next)
+            dxs.add(next.x - point.x)
+            dys.add(next.y - point.y)
+        }
+
+        val pointConfidence = (trackedPoints.size.toFloat() / max(1, previousPoints.size).toFloat()).coerceIn(0f, 1f)
+        if (templateTrack != null || (trackedPoints.size >= 3 && pointConfidence >= 0.12f)) {
+            val templateRoi = templateTrack?.first
+            val templateConfidence = templateTrack?.second ?: 0f
+            val mdx = median(dxs)
+            val mdy = median(dys)
+            val pointRoi = if (trackedPoints.size >= 3 && pointConfidence >= 0.12f) {
+                clampNormalizedRoi(
+                    android.graphics.RectF(
+                        currentRoi.left + mdx,
+                        currentRoi.top + mdy,
+                        currentRoi.right + mdx,
+                        currentRoi.bottom + mdy,
+                    )
+                )
+            } else {
+                null
+            }
+            val bestRoi = when {
+                templateRoi != null && pointRoi != null -> {
+                    val templateWeight = (0.58f + templateConfidence * 0.22f).coerceIn(0.58f, 0.80f)
+                    val pointWeight = 1f - templateWeight
+                    clampNormalizedRoi(
+                        android.graphics.RectF(
+                            templateRoi.left * templateWeight + pointRoi.left * pointWeight,
+                            templateRoi.top * templateWeight + pointRoi.top * pointWeight,
+                            templateRoi.right * templateWeight + pointRoi.right * pointWeight,
+                            templateRoi.bottom * templateWeight + pointRoi.bottom * pointWeight,
+                        )
+                    )
+                }
+                templateRoi != null -> templateRoi
+                pointRoi != null -> pointRoi
+                else -> currentRoi
+            }
+            lockedRoi = bestRoi
+            lockedRoiTrackPoints = if (trackedPoints.size >= 3) trackedPoints else previousPoints
+            val nextTemplate = extractRoiTemplate(
+                bitmap,
+                bestRoi,
+                lockedRoiTemplate?.samplesX ?: 14,
+                lockedRoiTemplate?.samplesY ?: 14,
+            )
+            if (nextTemplate != null) {
+                lockedRoiTemplate = lockedRoiTemplate?.let {
+                    blendTemplates(it, nextTemplate)
+                } ?: nextTemplate
+            }
+            lockedRoiTrackFailures = 0
+            val confidence = max(pointConfidence * 0.82f, templateConfidence)
+            return Pair(bestRoi, confidence)
+        }
+
+        lockedRoiTrackFailures++
+        if (lockedRoiTrackFailures >= 3) {
+            lockedRoiTrackPoints.clear()
+            lockedRoiTemplate = null
+        }
+        return Pair(currentRoi, max(pointConfidence * 0.5f, templateTrack?.second ?: 0f))
     }
 
     /** Set the callback */
@@ -961,18 +1597,30 @@ class YOLOView @JvmOverloads constructor(
                 }
                 
                 inferenceResult = resultWithOriginalImage
+                val trackedLockedRoi = if (task == YOLOTask.DETECT) {
+                    updateLockedRoiTracker(inferenceBitmap)
+                } else {
+                    null
+                }
+                if (trackedLockedRoi != null) {
+                    latestTrackedLockedRoi = trackedLockedRoi.first
+                    latestTrackedLockedRoiConfidence = trackedLockedRoi.second
+                } else if (lockedRoi == null) {
+                    latestTrackedLockedRoi = null
+                    latestTrackedLockedRoiConfidence = 0f
+                }
 
                 // Image metrics analysis (every metricsFrameInterval frames)
                 onImageMetrics?.let { callback ->
                     metricsFrameCount++
                     if (metricsFrameCount >= metricsFrameInterval) {
                         metricsFrameCount = 0
-                        val locked = lockedRoi
+                        val locked = trackedLockedRoi?.first ?: lockedRoi
                         val detectionRoi = result.boxes.firstOrNull()?.xywhn
                         // Prefer user-locked ROI; fall back to YOLO detection ROI
                         val roi = locked ?: detectionRoi
                         val baseMetrics = ImageMetricsAnalyzer.analyze(
-                            bitmap,
+                            if (shouldNormalizeCameraRotation) inferenceBitmap else bitmap,
                             roiLeft   = roi?.left,
                             roiTop    = roi?.top,
                             roiRight  = roi?.right,
@@ -992,6 +1640,14 @@ class YOLOView @JvmOverloads constructor(
                         }
                         if (locked != null) {
                             metrics["subjectLocked"] = 1.0
+                            trackedLockedRoi?.let { tracked ->
+                                val trackedRoi = tracked.first
+                                metrics["trackedRoiLeft"] = trackedRoi.left.toDouble()
+                                metrics["trackedRoiTop"] = trackedRoi.top.toDouble()
+                                metrics["trackedRoiRight"] = trackedRoi.right.toDouble()
+                                metrics["trackedRoiBottom"] = trackedRoi.bottom.toDouble()
+                                metrics["trackedRoiConfidence"] = tracked.second.toDouble()
+                            }
                             // Check overlap of any detection with locked ROI (>= 20% of locked area)
                             val visible = result.boxes.any { box ->
                                 val b = box.xywhn
@@ -1005,7 +1661,8 @@ class YOLOView @JvmOverloads constructor(
                                     area > 0f && inter / area >= 0.2f
                                 } else false
                             }
-                            metrics["subjectInFrame"] = if (visible) 1.0 else 0.0
+                            val trackedVisible = trackedLockedRoi?.second?.let { it >= 0.10f } ?: false
+                            metrics["subjectInFrame"] = if (visible || trackedVisible) 1.0 else 0.0
                         } else {
                             metrics["subjectLocked"] = 0.0
                             metrics["subjectInFrame"] = 1.0
@@ -2029,6 +2686,34 @@ class YOLOView @JvmOverloads constructor(
                 detections.add(detection)
             }
             
+            if (task == YOLOTask.DETECT) {
+                val trackedRoi = latestTrackedLockedRoi
+                if (trackedRoi != null) {
+                    val confidence = latestTrackedLockedRoiConfidence.coerceIn(0f, 1f)
+                    val detection = HashMap<String, Any>()
+                    detection["classIndex"] = -1
+                    detection["className"] = "__locked_roi"
+                    detection["confidence"] = confidence.toDouble()
+
+                    val iw = result.origShape.width.toDouble()
+                    val ih = result.origShape.height.toDouble()
+                    val boundingBox = HashMap<String, Any>()
+                    boundingBox["left"] = trackedRoi.left.toDouble() * iw
+                    boundingBox["top"] = trackedRoi.top.toDouble() * ih
+                    boundingBox["right"] = trackedRoi.right.toDouble() * iw
+                    boundingBox["bottom"] = trackedRoi.bottom.toDouble() * ih
+                    detection["boundingBox"] = boundingBox
+
+                    val normalizedBox = HashMap<String, Any>()
+                    normalizedBox["left"] = trackedRoi.left.toDouble()
+                    normalizedBox["top"] = trackedRoi.top.toDouble()
+                    normalizedBox["right"] = trackedRoi.right.toDouble()
+                    normalizedBox["bottom"] = trackedRoi.bottom.toDouble()
+                    detection["normalizedBox"] = normalizedBox
+                    detections.add(detection)
+                }
+            }
+
             applyPoseDetectionStability(detections)
             map["detections"] = detections
             Log.d(TAG, "✅ Total detections in stream: ${detections.size} (boxes: ${result.boxes.size}, obb: ${result.obb.size})")
