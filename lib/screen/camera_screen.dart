@@ -2033,25 +2033,41 @@ class _CameraScreenState extends State<CameraScreen> {
                   }
 
                   Widget content = const SizedBox();
-                  if (_selectedSilhouette == SilhouetteType.standing) {
-                    content = Opacity(
-                      opacity: 0.5,
-                      child: Image.asset(
-                        'assets/images/pose_standing.png',
-                        fit: BoxFit.fitHeight,
-                      ),
-                    );
-                    if (targetBox != null) {
-                      content = Stack(
-                        children: [
-                          Positioned.fromRect(
-                            rect: targetBox,
-                            child: content,
-                          ),
-                        ],
+                  if (_selectedSilhouette != SilhouetteType.none) {
+                    String assetPath = '';
+                    switch (_selectedSilhouette) {
+                      case SilhouetteType.standing:
+                        assetPath = 'assets/images/pose_standing.png';
+                        break;
+                      case SilhouetteType.sitting:
+                        assetPath = 'assets/images/pose_sitting.png';
+                        break;
+                      case SilhouetteType.standing2:
+                        assetPath = 'assets/images/pose_standing2.png';
+                        break;
+                      default:
+                        break;
+                    }
+                    if (assetPath.isNotEmpty) {
+                      content = Opacity(
+                        opacity: 0.5,
+                        child: Image.asset(
+                          assetPath,
+                          fit: BoxFit.fitHeight,
+                        ),
                       );
-                    } else {
-                      content = Center(child: content);
+                      if (targetBox != null) {
+                        content = Stack(
+                          children: [
+                            Positioned.fromRect(
+                              rect: targetBox,
+                              child: content,
+                            ),
+                          ],
+                        );
+                      } else {
+                        content = Center(child: content);
+                      }
                     }
                   }
 
