@@ -441,6 +441,7 @@ const AestheticModelContract nimaMobileContract = AestheticModelContract(
   id: 'nima_mobile',
   label: 'NIMA',
   assetPath: 'assets/models/nima_mobile.tflite',
+  metadataAssetPathOverride: 'assets/models/nima_mobile.metadata.json',
   dimension: ModelScoreDimension.aesthetic,
   inputWidth: 224,
   inputHeight: 224,
@@ -454,6 +455,7 @@ const AestheticModelContract rgnetPaperAadbContract = AestheticModelContract(
   id: 'rgnet_paper_aadb',
   label: 'RGNet Paper',
   assetPath: 'assets/models/rgnet_paper_aadb_fp16.tflite',
+  metadataAssetPathOverride: 'assets/models/rgnet_paper_aadb.metadata.json',
   dimension: ModelScoreDimension.aesthetic,
   inputWidth: 256,
   inputHeight: 256,
@@ -482,6 +484,7 @@ const AestheticModelContract mobileAlampV2Contract = AestheticModelContract(
   id: 'mobile_alamp_v2',
   label: 'Mobile A-LAMP v2',
   assetPath: 'assets/models/mobile_alamp_v2_fp16.tflite',
+  metadataAssetPathOverride: 'assets/models/mobile_alamp_v2.metadata.json',
   dimension: ModelScoreDimension.aesthetic,
   inputWidth: 384,
   inputHeight: 384,
@@ -513,6 +516,8 @@ const AestheticModelContract icaaColorAestheticContract =
       id: 'icaa_color_aesthetic',
       label: 'ICAA',
       assetPath: 'assets/models/icaa_dat_tf_native_fp16.tflite',
+      metadataAssetPathOverride:
+          'assets/models/icaa_dat_tf_native.metadata.json',
       dimension: ModelScoreDimension.aesthetic,
       inputWidth: 224,
       inputHeight: 224,
@@ -591,7 +596,7 @@ const List<AestheticModelContract> aestheticComparisonModelContracts = [
 /// Active four-model ensemble for A-cut aesthetic scoring.
 const List<AestheticModelContract> activeAestheticEnsembleContracts = [
   nimaMobileContract,
-  rgnetPaperAadbContract,
-  mobileAlampV2Contract,
   icaaColorAestheticContract,
+  mobileAlampV2Contract,
+  rgnetPaperAadbContract,
 ];

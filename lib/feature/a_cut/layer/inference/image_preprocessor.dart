@@ -49,6 +49,23 @@ class ImagePreprocessor {
     );
   }
 
+  Future<Uint8List> preprocessResizeWithPadToRgbFloat32(
+    Uint8List imageBytes, {
+    required int width,
+    required int height,
+    ImageNormalization normalization = ImageNormalization.zeroToOne,
+  }) {
+    return compute(
+      _preprocessResizeWithPadToRgbFloat32,
+      _PreprocessRequest(
+        imageBytes: imageBytes,
+        width: width,
+        height: height,
+        normalization: normalization,
+      ),
+    );
+  }
+
   Future<Uint8List> preprocessPatchBatchToRgbFloat32(
     Uint8List imageBytes, {
     required int patchWidth,
@@ -150,6 +167,33 @@ class AcutImagePreprocessBundle {
     _tensorCache[key] = buffer;
     _recordTiming('rgb_$width', sw.elapsedMilliseconds);
     debugPrint('[AcutPerf] preprocess_${width}_ms=${sw.elapsedMilliseconds}');
+    return buffer;
+  }
+
+  Future<Uint8List> resizeWithPadRgbFloat32({
+    required int width,
+    required int height,
+    ImageNormalization normalization = ImageNormalization.zeroToOne,
+  }) async {
+    final key = 'rgb_pad_${width}x$height:${normalization.name}';
+    final existing = _tensorCache[key];
+    if (existing != null) {
+      return existing;
+    }
+
+    final sw = Stopwatch()..start();
+    final buffer = _preprocessDecodedResizeWithPadToRgbFloat32(
+      decoded,
+      width: width,
+      height: height,
+      normalization: normalization,
+    );
+    sw.stop();
+    _tensorCache[key] = buffer;
+    _recordTiming('rgb_pad_$width', sw.elapsedMilliseconds);
+    debugPrint(
+      '[AcutPerf] preprocess_resize_with_pad_${width}_ms=${sw.elapsedMilliseconds}',
+    );
     return buffer;
   }
 
@@ -297,6 +341,20 @@ Uint8List _preprocessToRgbFloat32(_PreprocessRequest request) {
   );
 }
 
+Uint8List _preprocessResizeWithPadToRgbFloat32(_PreprocessRequest request) {
+  final decoded = img.decodeImage(request.imageBytes);
+  if (decoded == null) {
+    throw Exception('Cannot decode image bytes.');
+  }
+
+  return _preprocessDecodedResizeWithPadToRgbFloat32(
+    decoded,
+    width: request.width,
+    height: request.height,
+    normalization: request.normalization,
+  );
+}
+
 Uint8List _preprocessAlampGlobalViewFloat32(_PreprocessRequest request) {
   final decoded = img.decodeImage(request.imageBytes);
   if (decoded == null) {
@@ -345,7 +403,37 @@ Uint8List _preprocessDecodedAlampGlobalViewFloat32(
   required int height,
   required ImageNormalization normalization,
 }) {
-  // A-LAMP training used aspect-preserving resize with deterministic black pad.
+  return _preprocessDecodedResizeWithPadToRgbFloat32Internal(
+    decoded,
+    width: width,
+    height: height,
+    normalization: normalization,
+    debugLabel: 'alamp_global_view',
+  );
+}
+
+Uint8List _preprocessDecodedResizeWithPadToRgbFloat32(
+  img.Image decoded, {
+  required int width,
+  required int height,
+  required ImageNormalization normalization,
+}) {
+  return _preprocessDecodedResizeWithPadToRgbFloat32Internal(
+    decoded,
+    width: width,
+    height: height,
+    normalization: normalization,
+    debugLabel: 'resize_with_pad',
+  );
+}
+
+Uint8List _preprocessDecodedResizeWithPadToRgbFloat32Internal(
+  img.Image decoded, {
+  required int width,
+  required int height,
+  required ImageNormalization normalization,
+  required String debugLabel,
+}) {
   final scale = math.min(width / decoded.width, height / decoded.height);
   final resizedWidth = math.max(1, (decoded.width * scale).round());
   final resizedHeight = math.max(1, (decoded.height * scale).round());
@@ -374,7 +462,7 @@ Uint8List _preprocessDecodedAlampGlobalViewFloat32(
   }
 
   debugPrint(
-    '[AcutPerf] alamp_global_view source=${decoded.width}x${decoded.height} '
+    '[AcutPerf] $debugLabel source=${decoded.width}x${decoded.height} '
     'resized=${resizedWidth}x$resizedHeight target=${width}x$height',
   );
   return output.buffer.asUint8List();
