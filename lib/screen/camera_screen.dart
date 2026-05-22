@@ -10,6 +10,7 @@ import 'package:ultralytics_yolo/yolo.dart';
 import 'package:ultralytics_yolo/yolo_streaming_config.dart';
 import 'package:ultralytics_yolo/yolo_view.dart';
 
+import 'package:pose_camera_app/app.dart' show isCameraScreenActive;
 import 'package:pose_camera_app/coaching/coaching_result.dart';
 import 'package:pose_camera_app/composition/composition_rule.dart';
 import 'package:pose_camera_app/composition/composition_rule_registry.dart';
@@ -29,7 +30,7 @@ import 'package:pose_camera_app/coaching/portrait/portrait_overlay_painter.dart'
 import 'package:pose_camera_app/coaching/portrait/portrait_scene_state.dart'
     as portrait;
 import 'package:pose_camera_app/coaching/portrait/silhouette_shapes.dart';
-import 'package:pose_camera_app/screen/camera/widgets/silhouette_painter.dart';
+
 import 'package:pose_camera_app/coaching/subject/subject_detection.dart'
     show detectModelPath, detectionConfidenceThreshold;
 import 'package:pose_camera_app/feature/landscape/landscape_overlay_painter.dart';
@@ -44,6 +45,7 @@ import 'package:pose_camera_app/utils/debug_log_flags.dart';
 const String poseModelPath = 'yolov8n-pose_float16.tflite';
 const double poseConfidenceThreshold = 0.15;
 const double groupPersonConfidenceThreshold = 0.08;
+const double groupPersonLandscapeConfidenceThreshold = 0.05;
 const double poseIouThreshold = 0.65;
 
 class CameraScreen extends StatefulWidget {
@@ -173,6 +175,8 @@ class _CameraScreenState extends State<CameraScreen> {
   bool get _isObjectMode => _shootingMode == ShootingMode.object;
   bool get _isGroupPortraitMode =>
       _isPortraitMode && _portraitIntent == portrait.PortraitIntent.group;
+  bool get _isLandscapeDeviceOrientation =>
+      _deviceOrientationDeg == 90 || _deviceOrientationDeg == 270;
 
   /// 현재 기기 방향 기준 상대 기울기 (isLevel 판단 전용)
   /// 사용자가 상단 selector에서 선택한 구도 규칙. 인물/객체 모드에서만 사용.
@@ -184,6 +188,7 @@ class _CameraScreenState extends State<CameraScreen> {
   @override
   void initState() {
     super.initState();
+    isCameraScreenActive = true;
     _shootingMode = widget.initialMode;
     _applyIdleCoachingForMode(_shootingMode);
     if (DebugLogFlags.yoloDebug) {
@@ -1568,7 +1573,7 @@ class _CameraScreenState extends State<CameraScreen> {
             ? 'group_detect'
             : _isPortraitMode
             ? 'pose'
-            : 'detect'}_${_isFrontCamera ? 'front' : 'back'}',
+            : 'detect'}_${_isFrontCamera ? 'front' : 'back'}_${_isLandscapeDeviceOrientation ? 'landscape' : 'portrait'}',
       ),
       controller: _cameraController,
       modelPath: _isGroupPortraitMode
@@ -1585,12 +1590,14 @@ class _CameraScreenState extends State<CameraScreen> {
       showNativeUI: false,
       showOverlays: false,
       confidenceThreshold: _isGroupPortraitMode
-          ? groupPersonConfidenceThreshold
+          ? (_isLandscapeDeviceOrientation
+                ? groupPersonLandscapeConfidenceThreshold
+                : groupPersonConfidenceThreshold)
           : _isPortraitMode
           ? poseConfidenceThreshold
           : detectionConfidenceThreshold,
       iouThreshold: _isGroupPortraitMode
-          ? 0.50
+          ? (_isLandscapeDeviceOrientation ? 0.40 : 0.50)
           : _isPortraitMode
           ? poseIouThreshold
           : 0.45,
@@ -1923,6 +1930,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
   @override
   void dispose() {
+    isCameraScreenActive = false;
     _accelerometerSub?.cancel();
     _countdownTimer?.cancel();
     _focusIndicatorTimer?.cancel();
@@ -2023,15 +2031,31 @@ class _CameraScreenState extends State<CameraScreen> {
                       bodyRect.height * size.height,
                     );
                   }
-                  return IgnorePointer(
-                    child: CustomPaint(
-                      painter: SilhouettePainter(
-                        type: _selectedSilhouette,
-                        targetBox: targetBox,
+
+                  Widget content = const SizedBox();
+                  if (_selectedSilhouette == SilhouetteType.standing) {
+                    content = Opacity(
+                      opacity: 0.5,
+                      child: Image.asset(
+                        'assets/images/pose_standing.png',
+                        fit: BoxFit.fitHeight,
                       ),
-                      size: Size.infinite,
-                    ),
-                  );
+                    );
+                    if (targetBox != null) {
+                      content = Stack(
+                        children: [
+                          Positioned.fromRect(
+                            rect: targetBox,
+                            child: content,
+                          ),
+                        ],
+                      );
+                    } else {
+                      content = Center(child: content);
+                    }
+                  }
+
+                  return IgnorePointer(child: content);
                 },
               ),
             if (!_isLandscapeMode)

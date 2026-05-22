@@ -1729,7 +1729,12 @@ class PortraitModeHandler {
   List<YOLOResult> _dedupePersons(List<YOLOResult> persons) {
     if (persons.length <= 1) return persons;
 
-    final minConfidence = intent == PortraitIntent.group ? 0.06 : 0.12;
+    final isLandscapeGroup =
+        intent == PortraitIntent.group &&
+        (deviceOrientationDeg == 90 || deviceOrientationDeg == 270);
+    final minConfidence = intent == PortraitIntent.group
+        ? (isLandscapeGroup ? 0.04 : 0.06)
+        : 0.12;
     final sorted = [...persons]
       ..sort((a, b) {
         final aScore =
@@ -1757,6 +1762,9 @@ class PortraitModeHandler {
   bool _looksLikeSamePerson(YOLOResult a, YOLOResult b) {
     final boxA = a.normalizedBox;
     final boxB = b.normalizedBox;
+    final isLandscapeGroup =
+        intent == PortraitIntent.group &&
+        (deviceOrientationDeg == 90 || deviceOrientationDeg == 270);
 
     final intersectionArea = _intersectionArea(boxA, boxB);
     final areaA = boxA.width * boxA.height;
@@ -1770,6 +1778,11 @@ class PortraitModeHandler {
 
     if (isFrontCamera) {
       if (intent == PortraitIntent.group) {
+        if (isLandscapeGroup) {
+          return iou > 0.78 ||
+              overlapOnSmaller > 0.95 ||
+              (centerDistance < 0.025 && areaRatio > 0.90);
+        }
         return iou > 0.68 ||
             overlapOnSmaller > 0.92 ||
             (centerDistance < 0.035 && areaRatio > 0.82);
@@ -1780,6 +1793,11 @@ class PortraitModeHandler {
     }
 
     if (intent == PortraitIntent.group) {
+      if (isLandscapeGroup) {
+        return iou > 0.80 ||
+            overlapOnSmaller > 0.95 ||
+            (centerDistance < 0.028 && areaRatio > 0.90);
+      }
       return iou > 0.70 ||
           overlapOnSmaller > 0.90 ||
           (centerDistance < 0.04 && areaRatio > 0.78);

@@ -17,12 +17,6 @@ class SilhouetteSelector extends StatelessWidget {
     const items = [
       (SilhouetteType.none, Icons.not_interested_rounded, '없음'),
       (SilhouetteType.standing, Icons.accessibility_new_rounded, '전신'),
-      (SilhouetteType.halfBody, Icons.person_rounded, '상반신'),
-      (
-        SilhouetteType.sitting,
-        Icons.airline_seat_recline_normal_rounded,
-        '앉은 자세',
-      ),
     ];
 
     return SingleChildScrollView(
