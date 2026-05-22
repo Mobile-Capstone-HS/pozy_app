@@ -1116,11 +1116,12 @@ class TfliteAestheticService {
       'koniq_mobile' => ExperimentalFeatures.disableKoniqDuringBatchScoring,
       'flive_image_mobile' =>
         ExperimentalFeatures.disableFliveDuringBatchScoring,
-      'nima_mobile' => ExperimentalFeatures.disableNimaDuringBatchScoring,
-      'rgnet_aadb_gpu' ||
-      'rgnet_paper_aadb' => ExperimentalFeatures.disableRgnetDuringBatchScoring,
-      'alamp_aadb_gpu' ||
-      'mobile_alamp_v2' => ExperimentalFeatures.disableAlampDuringBatchScoring,
+      'nima_mobile' ||
+      'icaa_color_aesthetic' ||
+      'mobile_alamp_v2' ||
+      'rgnet_paper_aadb' => false,
+      'rgnet_aadb_gpu' => ExperimentalFeatures.disableRgnetDuringBatchScoring,
+      'alamp_aadb_gpu' => ExperimentalFeatures.disableAlampDuringBatchScoring,
       _ => false,
     };
 
