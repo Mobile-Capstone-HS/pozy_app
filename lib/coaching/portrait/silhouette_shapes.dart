@@ -1,4 +1,4 @@
 
-enum SilhouetteType { none, standing }
+enum SilhouetteType { none, standing, sitting, standing2 }
 
 
