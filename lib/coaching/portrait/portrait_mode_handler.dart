@@ -213,6 +213,7 @@ class PortraitAnalysisResult {
   final ShotType shotType;
   final int personCount;
   final bool hasPersonStable;
+  final PortraitSceneState? sceneState;
 
   const PortraitAnalysisResult({
     required this.coaching,
@@ -220,6 +221,7 @@ class PortraitAnalysisResult {
     required this.shotType,
     required this.personCount,
     required this.hasPersonStable,
+    this.sceneState,
   });
 }
 
@@ -547,6 +549,46 @@ class PortraitModeHandler {
     );
   }
 
+  Future<void> analyzeStillImage(
+    Uint8List bytes,
+    List<YOLOResult> results, {
+    bool analyzeFace = true,
+    bool analyzeLighting = true,
+    bool analyzeFaceQuality = true,
+  }) async {
+    final rawPersons = results
+        .where((r) => r.className.toLowerCase() == 'person')
+        .toList();
+    final persons = _dedupePersons(rawPersons);
+    if (persons.isEmpty) return;
+
+    final main = _selectMainPerson(persons);
+    final nose = _kp(main, PoseKeypointIndex.nose);
+    final lEye = _kp(main, PoseKeypointIndex.leftEye);
+    final rEye = _kp(main, PoseKeypointIndex.rightEye);
+    final lShoulder = _kp(main, PoseKeypointIndex.leftShoulder);
+    final rShoulder = _kp(main, PoseKeypointIndex.rightShoulder);
+
+    if (analyzeFace) {
+      await _analyzeFaceFromPreviewCapture(
+        bytes,
+        analyzeQuality: analyzeFaceQuality,
+      );
+    }
+
+    if (analyzeLighting) {
+      await _analyzeLight(
+        bytes,
+        main,
+        nose,
+        lEye,
+        rEye,
+        lShoulder,
+        rShoulder,
+      );
+    }
+  }
+
   void updateNativeMetrics(Map<String, double> metrics) {
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     double? rawYaw = metrics['portraitFaceYaw'];
@@ -820,6 +862,7 @@ class PortraitModeHandler {
         shotType: ShotType.unknown,
         personCount: 0,
         hasPersonStable: false,
+        sceneState: const PortraitSceneState(personCount: 0),
       );
     }
 
@@ -837,6 +880,7 @@ class PortraitModeHandler {
         shotType: ShotType.unknown,
         personCount: 0,
         hasPersonStable: false,
+        sceneState: const PortraitSceneState(personCount: 0),
       );
     }
 
@@ -1174,6 +1218,12 @@ class PortraitModeHandler {
     );
     _smoothedFaceRect = _smoothRect(_smoothedFaceRect, rawFaceRect);
     final faceRect = _smoothedFaceRect ?? rawFaceRect;
+    headroom = _adjustHeadroomForFraming(
+      shot: shot,
+      personBox: mainBox,
+      currentHeadroom: headroom,
+      faceRect: faceRect,
+    );
 
     // ─── 발 간격 비율 (어깨 너비 대비) ──────────────────────
     double? ankleSpacing;
@@ -1379,6 +1429,7 @@ class PortraitModeHandler {
       shotType: shot,
       personCount: _stablePersonCount,
       hasPersonStable: true,
+      sceneState: state,
     );
   }
 
@@ -2096,6 +2147,34 @@ class PortraitModeHandler {
     final l = (center.dx - w / 2).clamp(0.0, 1.0);
     final t = (center.dy - h * 0.45).clamp(0.0, 1.0);
     return Rect.fromLTWH(l, t, w.clamp(0.05, 1.0 - l), h.clamp(0.05, 1.0 - t));
+  }
+
+  double _adjustHeadroomForFraming({
+    required ShotType shot,
+    required Rect personBox,
+    required double currentHeadroom,
+    required Rect faceRect,
+  }) {
+    switch (shot) {
+      case ShotType.extremeCloseUp:
+      case ShotType.closeUp:
+      case ShotType.headShot:
+        // Close framing often misses the true hairline in pose keypoints.
+        // Clamp headroom against the detector's person box top so "too close"
+        // and "too much headroom" do not alternate on the same framing.
+        return math.min(currentHeadroom, personBox.top.clamp(0.0, 1.0));
+      case ShotType.upperBody:
+        // Upper-body shots benefit from a softer correction using the estimated
+        // face guide instead of the full person box.
+        return math.min(currentHeadroom, faceRect.top.clamp(0.0, 1.0));
+      case ShotType.waistShot:
+      case ShotType.kneeShot:
+      case ShotType.fullBody:
+      case ShotType.environmental:
+      case ShotType.groupShot:
+      case ShotType.unknown:
+        return currentHeadroom;
+    }
   }
 
   // ─── 유틸리티 ─────────────────────────────────────

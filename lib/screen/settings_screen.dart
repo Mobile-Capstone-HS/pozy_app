@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import 'portrait_asset_test_screen.dart';
 import '../theme/app_colors.dart';
 import '../widget/app_top_bar.dart';
 
@@ -35,6 +36,20 @@ class SettingsScreen extends StatelessWidget {
                       Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) => const PermissionManagementScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  _buildSettingsDivider(),
+                  _buildModernSettingsItem(
+                    context,
+                    title: '인물 에셋 테스트',
+                    description:
+                        'lib/assets 사진에 인물모드 로직을 적용해서 안내 문구와 비율을 볼 수 있어요.',
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const PortraitAssetTestScreen(),
                         ),
                       );
                     },
