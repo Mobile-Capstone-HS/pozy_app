@@ -38,6 +38,12 @@ abstract final class ExperimentalFeatures {
     'POZY_DISABLE_FLIVE_DURING_BATCH_SCORING',
     defaultValue: false,
   );
+  static const bool technicalIqaMixed112Enabled =
+      kDebugMode &&
+      bool.fromEnvironment(
+        'POZY_TECHNICAL_IQA_MIXED112_ENABLED',
+        defaultValue: false,
+      );
   static const bool disableNimaDuringBatchScoring = bool.fromEnvironment(
     'POZY_DISABLE_NIMA_DURING_BATCH_SCORING',
     defaultValue: false,

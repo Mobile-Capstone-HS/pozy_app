@@ -877,6 +877,11 @@ class YOLOView @JvmOverloads constructor(
     // Flag to track if the view is stopped/disposed to prevent race conditions
     @Volatile
     private var isStopped = false    
+    @Volatile
+    private var isStartingCamera = false
+    @Volatile
+    private var isCameraStarted = false
+    private var startCameraCallCount = 0
 
     // Zoom related
     private var currentZoomRatio = 1.0f
@@ -1044,6 +1049,11 @@ class YOLOView @JvmOverloads constructor(
 
     fun setDeviceOrientation(degrees: Int) {
         deviceOrientationDeg = degrees
+        Log.d(
+            "AcutCamera",
+            "${System.currentTimeMillis()} YOLOView.setDeviceOrientation " +
+                "degrees=$degrees noCameraRestart=true"
+        )
         Log.d(TAG, "Device orientation set to $degrees°")
     }
 
@@ -1259,7 +1269,12 @@ class YOLOView @JvmOverloads constructor(
                     callback?.invoke(true)
                     // Ensure camera starts after model loads if it's not already running
                     if (allPermissionsGranted() && lifecycleOwner != null && (camera == null || isStopped)) {
-                        startCamera()
+                        Log.d(
+                            "AcutCamera",
+                            "${System.currentTimeMillis()} YOLOView.setModel post -> startCamera " +
+                                "camera=${camera != null} isStopped=$isStopped"
+                        )
+                        startCamera(reason = "setModel.post")
                     }
                 }
             } catch (e: Exception) {
@@ -1306,20 +1321,34 @@ class YOLOView @JvmOverloads constructor(
      * Called when a LifecycleOwner is available for camera operations
      */
     fun onLifecycleOwnerAvailable(owner: LifecycleOwner) {
+        Log.d(
+            "AcutCamera",
+            "${System.currentTimeMillis()} YOLOView.onLifecycleOwnerAvailable " +
+                "permissions=${allPermissionsGranted()} camera=${camera != null} " +
+                "isStopped=$isStopped"
+        )
         this.lifecycleOwner = owner
         owner.lifecycle.addObserver(this)
         
         if (allPermissionsGranted() && (camera == null || isStopped)) {
-            startCamera()
+            Log.d("AcutCamera", "${System.currentTimeMillis()} YOLOView.onLifecycleOwnerAvailable -> startCamera")
+            startCamera(reason = "onLifecycleOwnerAvailable")
         }
     }
     
     // region camera init
 
     fun initCamera() {
+        Log.d(
+            "AcutCamera",
+            "${System.currentTimeMillis()} YOLOView.initCamera " +
+                "permissions=${allPermissionsGranted()} lifecycleOwner=${lifecycleOwner != null} " +
+                "camera=${camera != null} isStopped=$isStopped"
+        )
         if (allPermissionsGranted()) {
             if (lifecycleOwner != null && (camera == null || isStopped)) {
-                startCamera()
+                Log.d("AcutCamera", "${System.currentTimeMillis()} YOLOView.initCamera -> startCamera")
+                startCamera(reason = "initCamera")
             }
         } else {
             val activity = context as? Activity ?: return
@@ -1338,7 +1367,8 @@ class YOLOView @JvmOverloads constructor(
     ) {
         if (requestCode == REQUEST_CODE_PERMISSIONS) {
             if (allPermissionsGranted()) {
-                startCamera()
+                Log.d("AcutCamera", "${System.currentTimeMillis()} YOLOView.permissionResult -> startCamera")
+                startCamera(reason = "permissionResult")
             } else {
                 Toast.makeText(context, "Camera permission not granted.", Toast.LENGTH_SHORT).show()
             }
@@ -1349,7 +1379,35 @@ class YOLOView @JvmOverloads constructor(
         ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
     }
 
-    fun startCamera() {
+    fun startCamera(forceRestart: Boolean = false, reason: String = "unspecified") {
+        startCameraCallCount += 1
+        val callNumber = startCameraCallCount
+        Log.d(
+            "AcutCamera",
+            "${System.currentTimeMillis()} YOLOView.startCamera enter " +
+                "call=$callNumber reason=$reason forceRestart=$forceRestart " +
+                "isStartingCamera=$isStartingCamera isCameraStarted=$isCameraStarted " +
+                "isStopped=$isStopped camera=${camera != null} " +
+                "providerFutureInitialized=${::cameraProviderFuture.isInitialized} " +
+                "lifecycleOwner=${lifecycleOwner != null}"
+        )
+        if (isStartingCamera) {
+            Log.d(
+                "AcutCamera",
+                "${System.currentTimeMillis()} YOLOView.startCamera duplicate ignored " +
+                    "call=$callNumber reason=$reason because start is already in progress"
+            )
+            return
+        }
+        if (!forceRestart && isCameraStarted && !isStopped && camera != null) {
+            Log.d(
+                "AcutCamera",
+                "${System.currentTimeMillis()} YOLOView.startCamera duplicate ignored " +
+                    "call=$callNumber reason=$reason because camera is already started"
+            )
+            return
+        }
+        isStartingCamera = true
         isStopped = false
 
         try {
@@ -1357,6 +1415,11 @@ class YOLOView @JvmOverloads constructor(
             cameraProviderFuture.addListener({
                 try {
                     val cameraProvider = cameraProviderFuture.get()
+                    Log.d(
+                        "AcutCamera",
+                        "${System.currentTimeMillis()} YOLOView.startCamera provider ready " +
+                            "call=$callNumber reason=$reason"
+                    )
                     Log.d(TAG, "Camera provider obtained")
 
                     // RATIO_16_9: 세로형 폰 화면과 비율 일치 → 프리뷰 크롭 최소화
@@ -1387,16 +1450,32 @@ class YOLOView @JvmOverloads constructor(
                         .build()
 
                     Log.d(TAG, "Unbinding all camera use cases")
+                    Log.d(
+                        "AcutCamera",
+                        "${System.currentTimeMillis()} YOLOView.startCamera unbindAll " +
+                            "call=$callNumber reason=$reason"
+                    )
                     cameraProvider.unbindAll()
 
                     try {
                         val owner = lifecycleOwner
                         if (owner == null) {
                             Log.e(TAG, "No LifecycleOwner available. Call onLifecycleOwnerAvailable() first.")
+                            Log.d(
+                                "AcutCamera",
+                                "${System.currentTimeMillis()} YOLOView.startCamera abort " +
+                                    "call=$callNumber reason=$reason no LifecycleOwner"
+                            )
+                            isStartingCamera = false
                             return@addListener
                         }
 
                         Log.d(TAG, "Binding camera use cases to lifecycle")
+                        Log.d(
+                            "AcutCamera",
+                            "${System.currentTimeMillis()} YOLOView.startCamera bindToLifecycle before " +
+                                "call=$callNumber reason=$reason"
+                        )
                         camera = cameraProvider.bindToLifecycle(
                             owner,
                             cameraSelector,
@@ -1426,14 +1505,27 @@ class YOLOView @JvmOverloads constructor(
                         detectUltrawideCamera()
 
                         Log.d(TAG, "Camera setup completed successfully")
+                        isCameraStarted = true
+                        isStartingCamera = false
+                        Log.d(
+                            "AcutCamera",
+                            "${System.currentTimeMillis()} YOLOView.startCamera completed " +
+                                "call=$callNumber reason=$reason isCameraStarted=$isCameraStarted"
+                        )
                     } catch (e: Exception) {
+                        isCameraStarted = false
+                        isStartingCamera = false
                         Log.e(TAG, "Use case binding failed", e)
                     }
                 } catch (e: Exception) {
+                    isCameraStarted = false
+                    isStartingCamera = false
                     Log.e(TAG, "Error getting camera provider", e)
                 }
             }, ContextCompat.getMainExecutor(context))
         } catch (e: Exception) {
+            isCameraStarted = false
+            isStartingCamera = false
             Log.e(TAG, "Error starting camera", e)
         }
     }
@@ -1442,7 +1534,12 @@ class YOLOView @JvmOverloads constructor(
         lensFacing = facing
         // Restart camera if already started
         if (::cameraProviderFuture.isInitialized) {
-            startCamera()
+            Log.d(
+                "AcutCamera",
+                "${System.currentTimeMillis()} YOLOView.setLensFacing -> startCamera " +
+                    "forceRestart=true facing=$facing"
+            )
+            startCamera(forceRestart = true, reason = "setLensFacing")
         }
     }
 
@@ -1452,7 +1549,12 @@ class YOLOView @JvmOverloads constructor(
         } else {
             CameraSelector.LENS_FACING_BACK
         }
-        startCamera()
+        Log.d(
+            "AcutCamera",
+            "${System.currentTimeMillis()} YOLOView.switchCamera -> startCamera " +
+                "forceRestart=true lensFacing=$lensFacing"
+        )
+        startCamera(forceRestart = true, reason = "switchCamera")
     }
 
     // endregion
@@ -1465,7 +1567,8 @@ class YOLOView @JvmOverloads constructor(
             // This ensures camera resumes when navigating back
             if (isStopped || camera == null) {
                 Log.d(TAG, "Camera is stopped or null, restarting on onStart")
-                startCamera()
+                Log.d("AcutCamera", "${System.currentTimeMillis()} YOLOView.onStart -> startCamera")
+                startCamera(reason = "onStart")
             } else {
                 Log.d(TAG, "Camera is already running, no restart needed")
             }
@@ -1478,13 +1581,19 @@ class YOLOView @JvmOverloads constructor(
             // Double-check camera is running on resume
             if (isStopped || camera == null) {
                 Log.d(TAG, "Camera not running on resume, restarting...")
-                startCamera()
+                Log.d("AcutCamera", "${System.currentTimeMillis()} YOLOView.onResume -> startCamera")
+                startCamera(reason = "onResume")
             }
         }
     }
 
     override fun onStop(owner: LifecycleOwner) {
         Log.d(TAG, "Lifecycle onStop")
+        Log.d(
+            "AcutCamera",
+            "${System.currentTimeMillis()} YOLOView.onStop " +
+                "isCameraStarted=$isCameraStarted isStartingCamera=$isStartingCamera"
+        )
         // Camera will be automatically stopped by CameraX when lifecycle stops
     }
 
@@ -3131,9 +3240,17 @@ class YOLOView @JvmOverloads constructor(
      */
     fun stop() {
         Log.d(TAG, "YOLOView.stop() called - tearing down camera")
+        Log.d(
+            "AcutCamera",
+            "${System.currentTimeMillis()} YOLOView.stop start " +
+                "isCameraStarted=$isCameraStarted isStartingCamera=$isStartingCamera " +
+                "camera=${camera != null}"
+        )
         
         // Set stopped flag first to prevent new frames from being processed
         isStopped = true
+        isStartingCamera = false
+        isCameraStarted = false
 
         try {
             imageAnalysisUseCase?.clearAnalyzer()
@@ -3141,6 +3258,10 @@ class YOLOView @JvmOverloads constructor(
                 try {
                     val cameraProvider = cameraProviderFuture.get(1, TimeUnit.SECONDS)
                     Log.d(TAG, "Unbinding all camera use cases")
+                    Log.d(
+                        "AcutCamera",
+                        "${System.currentTimeMillis()} YOLOView.stop unbindAll"
+                    )
                     cameraProvider.unbindAll()
                 } catch (e: Exception) {
                     Log.e(TAG, "Error getting camera provider for unbind", e)
@@ -3187,6 +3308,7 @@ class YOLOView @JvmOverloads constructor(
             inferenceResult = null
 
             Log.d(TAG, "YOLOView stop completed successfully")
+            Log.d("AcutCamera", "${System.currentTimeMillis()} YOLOView.stop completed")
         } catch (e: Exception) {
             Log.e(TAG, "Error during YOLOView stop", e)
         }
