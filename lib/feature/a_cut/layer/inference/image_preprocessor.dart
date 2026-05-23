@@ -5,7 +5,7 @@ import 'package:image/image.dart' as img;
 
 import 'acut_perf.dart';
 
-enum ImageNormalization { zeroToOne, minusOneToOne }
+enum ImageNormalization { zeroToOne, minusOneToOne, rawZeroTo255, imageNet }
 
 class ImagePreprocessor {
   const ImagePreprocessor();
@@ -40,6 +40,23 @@ class ImagePreprocessor {
   }) {
     return compute(
       _preprocessToRgbFloat32,
+      _PreprocessRequest(
+        imageBytes: imageBytes,
+        width: width,
+        height: height,
+        normalization: normalization,
+      ),
+    );
+  }
+
+  Future<Uint8List> preprocessResizeWithPadToRgbFloat32(
+    Uint8List imageBytes, {
+    required int width,
+    required int height,
+    ImageNormalization normalization = ImageNormalization.zeroToOne,
+  }) {
+    return compute(
+      _preprocessResizeWithPadToRgbFloat32,
       _PreprocessRequest(
         imageBytes: imageBytes,
         width: width,
@@ -150,6 +167,33 @@ class AcutImagePreprocessBundle {
     _tensorCache[key] = buffer;
     _recordTiming('rgb_$width', sw.elapsedMilliseconds);
     debugPrint('[AcutPerf] preprocess_${width}_ms=${sw.elapsedMilliseconds}');
+    return buffer;
+  }
+
+  Future<Uint8List> resizeWithPadRgbFloat32({
+    required int width,
+    required int height,
+    ImageNormalization normalization = ImageNormalization.zeroToOne,
+  }) async {
+    final key = 'rgb_pad_${width}x$height:${normalization.name}';
+    final existing = _tensorCache[key];
+    if (existing != null) {
+      return existing;
+    }
+
+    final sw = Stopwatch()..start();
+    final buffer = _preprocessDecodedResizeWithPadToRgbFloat32(
+      decoded,
+      width: width,
+      height: height,
+      normalization: normalization,
+    );
+    sw.stop();
+    _tensorCache[key] = buffer;
+    _recordTiming('rgb_pad_$width', sw.elapsedMilliseconds);
+    debugPrint(
+      '[AcutPerf] preprocess_resize_with_pad_${width}_ms=${sw.elapsedMilliseconds}',
+    );
     return buffer;
   }
 
@@ -297,6 +341,20 @@ Uint8List _preprocessToRgbFloat32(_PreprocessRequest request) {
   );
 }
 
+Uint8List _preprocessResizeWithPadToRgbFloat32(_PreprocessRequest request) {
+  final decoded = img.decodeImage(request.imageBytes);
+  if (decoded == null) {
+    throw Exception('Cannot decode image bytes.');
+  }
+
+  return _preprocessDecodedResizeWithPadToRgbFloat32(
+    decoded,
+    width: request.width,
+    height: request.height,
+    normalization: request.normalization,
+  );
+}
+
 Uint8List _preprocessAlampGlobalViewFloat32(_PreprocessRequest request) {
   final decoded = img.decodeImage(request.imageBytes);
   if (decoded == null) {
@@ -330,9 +388,9 @@ Uint8List _preprocessDecodedToRgbFloat32(
   for (var y = 0; y < height; y++) {
     for (var x = 0; x < width; x++) {
       final pixel = resized.getPixel(x, y);
-      output[cursor++] = _normalize(pixel.r, normalization);
-      output[cursor++] = _normalize(pixel.g, normalization);
-      output[cursor++] = _normalize(pixel.b, normalization);
+      output[cursor++] = _normalize(pixel.r, normalization, 0);
+      output[cursor++] = _normalize(pixel.g, normalization, 1);
+      output[cursor++] = _normalize(pixel.b, normalization, 2);
     }
   }
 
@@ -345,7 +403,37 @@ Uint8List _preprocessDecodedAlampGlobalViewFloat32(
   required int height,
   required ImageNormalization normalization,
 }) {
-  // A-LAMP training used aspect-preserving resize with deterministic black pad.
+  return _preprocessDecodedResizeWithPadToRgbFloat32Internal(
+    decoded,
+    width: width,
+    height: height,
+    normalization: normalization,
+    debugLabel: 'alamp_global_view',
+  );
+}
+
+Uint8List _preprocessDecodedResizeWithPadToRgbFloat32(
+  img.Image decoded, {
+  required int width,
+  required int height,
+  required ImageNormalization normalization,
+}) {
+  return _preprocessDecodedResizeWithPadToRgbFloat32Internal(
+    decoded,
+    width: width,
+    height: height,
+    normalization: normalization,
+    debugLabel: 'resize_with_pad',
+  );
+}
+
+Uint8List _preprocessDecodedResizeWithPadToRgbFloat32Internal(
+  img.Image decoded, {
+  required int width,
+  required int height,
+  required ImageNormalization normalization,
+  required String debugLabel,
+}) {
   final scale = math.min(width / decoded.width, height / decoded.height);
   final resizedWidth = math.max(1, (decoded.width * scale).round());
   final resizedHeight = math.max(1, (decoded.height * scale).round());
@@ -357,7 +445,7 @@ Uint8List _preprocessDecodedAlampGlobalViewFloat32(
   );
   final offsetX = ((width - resizedWidth) / 2).floor();
   final offsetY = ((height - resizedHeight) / 2).floor();
-  final padValue = _normalize(0, normalization);
+  final padValue = _normalize(0, normalization, 0);
   final output = Float32List(width * height * 3);
   for (var index = 0; index < output.length; index++) {
     output[index] = padValue;
@@ -367,14 +455,14 @@ Uint8List _preprocessDecodedAlampGlobalViewFloat32(
     for (var x = 0; x < resizedWidth; x++) {
       final pixel = resized.getPixel(x, y);
       var cursor = (((y + offsetY) * width) + x + offsetX) * 3;
-      output[cursor++] = _normalize(pixel.r, normalization);
-      output[cursor++] = _normalize(pixel.g, normalization);
-      output[cursor] = _normalize(pixel.b, normalization);
+      output[cursor++] = _normalize(pixel.r, normalization, 0);
+      output[cursor++] = _normalize(pixel.g, normalization, 1);
+      output[cursor] = _normalize(pixel.b, normalization, 2);
     }
   }
 
   debugPrint(
-    '[AcutPerf] alamp_global_view source=${decoded.width}x${decoded.height} '
+    '[AcutPerf] $debugLabel source=${decoded.width}x${decoded.height} '
     'resized=${resizedWidth}x$resizedHeight target=${width}x$height',
   );
   return output.buffer.asUint8List();
@@ -475,9 +563,9 @@ Uint8List _preprocessDecodedFixedAnchorPatchBatchToRgbFloat32(
     for (var y = 0; y < patchHeight; y++) {
       for (var x = 0; x < patchWidth; x++) {
         final pixel = resized.getPixel(x, y);
-        output[cursor++] = _normalize(pixel.r, normalization);
-        output[cursor++] = _normalize(pixel.g, normalization);
-        output[cursor++] = _normalize(pixel.b, normalization);
+        output[cursor++] = _normalize(pixel.r, normalization, 0);
+        output[cursor++] = _normalize(pixel.g, normalization, 1);
+        output[cursor++] = _normalize(pixel.b, normalization, 2);
       }
     }
   }
@@ -513,9 +601,9 @@ Uint8List _preprocessDecodedPatchBoxesToRgbFloat32(
     for (var y = 0; y < patchHeight; y++) {
       for (var x = 0; x < patchWidth; x++) {
         final pixel = resized.getPixel(x, y);
-        output[cursor++] = _normalize(pixel.r, normalization);
-        output[cursor++] = _normalize(pixel.g, normalization);
-        output[cursor++] = _normalize(pixel.b, normalization);
+        output[cursor++] = _normalize(pixel.r, normalization, 0);
+        output[cursor++] = _normalize(pixel.g, normalization, 1);
+        output[cursor++] = _normalize(pixel.b, normalization, 2);
       }
     }
   }
@@ -773,11 +861,21 @@ class _PatchSelection {
   String get debugLabel => boxes.map((box) => box.debugLabel).join(';');
 }
 
-double _normalize(num channel, ImageNormalization normalization) {
+double _normalize(
+  num channel,
+  ImageNormalization normalization,
+  int channelIndex,
+) {
   switch (normalization) {
     case ImageNormalization.zeroToOne:
       return channel / 255.0;
     case ImageNormalization.minusOneToOne:
       return (channel / 127.5) - 1.0;
+    case ImageNormalization.rawZeroTo255:
+      return channel.toDouble();
+    case ImageNormalization.imageNet:
+      const mean = [0.485, 0.456, 0.406];
+      const std = [0.229, 0.224, 0.225];
+      return ((channel / 255.0) - mean[channelIndex]) / std[channelIndex];
   }
 }

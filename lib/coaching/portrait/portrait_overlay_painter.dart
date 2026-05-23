@@ -11,6 +11,7 @@
 library;
 
 import 'dart:math' as math;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../composition/composition_rule.dart';
@@ -137,10 +138,7 @@ class PortraitOverlayPainter extends CustomPainter {
   final OverlayData data;
   final bool showDebugGuides;
 
-  PortraitOverlayPainter({
-    required this.data,
-    this.showDebugGuides = true,
-  });
+  PortraitOverlayPainter({required this.data, this.showDebugGuides = true});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -225,7 +223,8 @@ class PortraitOverlayPainter extends CustomPainter {
   // ─── 구도 그리드 (사용자 선택 규칙 기반) ───────────
 
   void _drawCompositionGrid(Canvas canvas, Size size) {
-    final rule = data.activeRule ??
+    final rule =
+        data.activeRule ??
         CompositionRuleRegistry.of(CompositionRuleType.ruleOfThirds);
     rule.paintOverlay(
       canvas,
@@ -245,24 +244,33 @@ class PortraitOverlayPainter extends CustomPainter {
 
     // 서브 포인트 (어깨~엉덩이) — 작은 글로우
     for (final pt in [
-      data.leftShoulder, data.rightShoulder,
-      data.leftElbow, data.rightElbow,
-      data.leftWrist, data.rightWrist,
-      data.leftHip, data.rightHip,
+      data.leftShoulder,
+      data.rightShoulder,
+      data.leftElbow,
+      data.rightElbow,
+      data.leftWrist,
+      data.rightWrist,
+      data.leftHip,
+      data.rightHip,
     ]) {
       _drawGlowPoint(canvas, size, pt, radius: 3.5, isMain: false);
     }
 
     // 하체 포인트 (무릎~발목) — 작은 글로우
     for (final pt in [
-      data.leftKnee, data.rightKnee,
-      data.leftAnkle, data.rightAnkle,
+      data.leftKnee,
+      data.rightKnee,
+      data.leftAnkle,
+      data.rightAnkle,
     ]) {
       _drawGlowPoint(canvas, size, pt, radius: 3.5, isMain: false);
     }
   }
 
-  void _drawGlowPoint(Canvas canvas, Size size, Offset? point, {
+  void _drawGlowPoint(
+    Canvas canvas,
+    Size size,
+    Offset? point, {
     required double radius,
     required bool isMain,
   }) {
@@ -271,7 +279,8 @@ class PortraitOverlayPainter extends CustomPainter {
 
     // 글로우 (블러 효과)
     canvas.drawCircle(
-      pos, radius + 4,
+      pos,
+      radius + 4,
       Paint()
         ..color = isMain ? _Colors.cyanGlow : const Color(0x3338BDF8)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
@@ -279,7 +288,8 @@ class PortraitOverlayPainter extends CustomPainter {
 
     // 외곽 링
     canvas.drawCircle(
-      pos, radius + 1.5,
+      pos,
+      radius + 1.5,
       Paint()
         ..color = isMain ? _Colors.cyanSoft : const Color(0x5538BDF8)
         ..style = PaintingStyle.stroke
@@ -288,7 +298,8 @@ class PortraitOverlayPainter extends CustomPainter {
 
     // 중심 점
     canvas.drawCircle(
-      pos, radius,
+      pos,
+      radius,
       Paint()
         ..color = isMain ? _Colors.cyan : _Colors.cyanSoft
         ..style = PaintingStyle.fill,
@@ -331,7 +342,8 @@ class PortraitOverlayPainter extends CustomPainter {
 
     // 그림자
     canvas.drawLine(
-      left - extend, right + extend,
+      left - extend,
+      right + extend,
       Paint()
         ..color = Colors.black.withValues(alpha: 0.4)
         ..strokeWidth = 4.5
@@ -340,7 +352,8 @@ class PortraitOverlayPainter extends CustomPainter {
 
     // 메인 라인
     canvas.drawLine(
-      left - extend, right + extend,
+      left - extend,
+      right + extend,
       Paint()
         ..color = lineColor
         ..strokeWidth = 2.5
@@ -458,19 +471,15 @@ class PortraitOverlayPainter extends CustomPainter {
       );
 
       final labelY = math.max(18.0, r.top - 14.0);
-      _drawLabel(
-        canvas,
-        '눈 감음',
-        Offset(r.center.dx, labelY),
-        warningColor,
-      );
+      _drawLabel(canvas, '눈 감음', Offset(r.center.dx, labelY), warningColor);
     }
   }
 
   void _drawCheckMark(Canvas canvas, Offset center) {
     // 글로우 원
     canvas.drawCircle(
-      center, 18,
+      center,
+      18,
       Paint()
         ..color = const Color(0x334ADE80)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
@@ -478,7 +487,8 @@ class PortraitOverlayPainter extends CustomPainter {
 
     // 외곽 원
     canvas.drawCircle(
-      center, 14,
+      center,
+      14,
       Paint()
         ..color = _Colors.greenSoft
         ..style = PaintingStyle.stroke
@@ -516,7 +526,7 @@ class PortraitOverlayPainter extends CustomPainter {
     var currentY = eyeMid.dy + direction * 22;
 
     while ((direction > 0 && currentY < targetY - 12) ||
-           (direction < 0 && currentY > targetY + 12)) {
+        (direction < 0 && currentY > targetY + 12)) {
       final endY = currentY + direction * dashLen;
       canvas.drawLine(
         Offset(eyeMid.dx, currentY),
@@ -604,9 +614,7 @@ class PortraitOverlayPainter extends CustomPainter {
 
   // ─── 라벨 헬퍼 ───────────────────────────────────
 
-  void _drawLabel(
-    Canvas canvas, String text, Offset position, Color color,
-  ) {
+  void _drawLabel(Canvas canvas, String text, Offset position, Color color) {
     final tp = TextPainter(
       text: TextSpan(
         text: text,
@@ -638,5 +646,46 @@ class PortraitOverlayPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant PortraitOverlayPainter oldDelegate) => true;
+  bool shouldRepaint(covariant PortraitOverlayPainter oldDelegate) {
+    return oldDelegate.showDebugGuides != showDebugGuides ||
+        !_sameOverlayData(oldDelegate.data, data);
+  }
+
+  bool _sameOverlayData(OverlayData oldData, OverlayData nextData) {
+    return listEquals(oldData.closedFaceRects, nextData.closedFaceRects) &&
+        oldData.leftEye == nextData.leftEye &&
+        oldData.rightEye == nextData.rightEye &&
+        oldData.nose == nextData.nose &&
+        oldData.leftShoulder == nextData.leftShoulder &&
+        oldData.rightShoulder == nextData.rightShoulder &&
+        oldData.leftElbow == nextData.leftElbow &&
+        oldData.rightElbow == nextData.rightElbow &&
+        oldData.leftWrist == nextData.leftWrist &&
+        oldData.rightWrist == nextData.rightWrist &&
+        oldData.leftHip == nextData.leftHip &&
+        oldData.rightHip == nextData.rightHip &&
+        oldData.leftKnee == nextData.leftKnee &&
+        oldData.rightKnee == nextData.rightKnee &&
+        oldData.leftAnkle == nextData.leftAnkle &&
+        oldData.rightAnkle == nextData.rightAnkle &&
+        _sameCoaching(oldData.coaching, nextData.coaching) &&
+        oldData.shotType == nextData.shotType &&
+        oldData.eyeConfidence == nextData.eyeConfidence &&
+        oldData.shoulderConfidence == nextData.shoulderConfidence &&
+        oldData.faceGuideRect == nextData.faceGuideRect &&
+        oldData.bodyGuideRect == nextData.bodyGuideRect &&
+        oldData.targetEyeLineY == nextData.targetEyeLineY &&
+        oldData.targetHeadroomTop == nextData.targetHeadroomTop &&
+        oldData.groupPersonCount == nextData.groupPersonCount &&
+        oldData.groupFaceHiddenCount == nextData.groupFaceHiddenCount &&
+        oldData.groupClosedEyeCount == nextData.groupClosedEyeCount &&
+        oldData.activeRule?.type == nextData.activeRule?.type;
+  }
+
+  bool _sameCoaching(CoachingResult oldCoaching, CoachingResult nextCoaching) {
+    return oldCoaching.message == nextCoaching.message &&
+        oldCoaching.priority == nextCoaching.priority &&
+        oldCoaching.confidence == nextCoaching.confidence &&
+        oldCoaching.reason == nextCoaching.reason;
+  }
 }

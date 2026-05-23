@@ -1,11 +1,20 @@
 // Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:ultralytics_yolo/config/channel_config.dart';
 import 'package:ultralytics_yolo/models/yolo_task.dart';
 import 'package:ultralytics_yolo/yolo_streaming_config.dart';
 import 'package:ultralytics_yolo/utils/logger.dart';
+
+void _acutCameraLog(String message) {
+  if (kDebugMode) {
+    debugPrint(
+      '[AcutCamera] ${DateTime.now().millisecondsSinceEpoch} $message',
+    );
+  }
+}
 
 /// Controller for managing YOLO detection settings and camera controls.
 class YOLOViewController {
@@ -37,34 +46,32 @@ class YOLOViewController {
 
   void _subscribeToMetrics(String viewUniqueId) {
     final channel = ChannelConfig.createImageMetricsChannel(viewUniqueId);
-    _metricsSubscription = channel.receiveBroadcastStream().listen(
-      (event) {
-        if (event is Map && onImageMetrics != null) {
-          final metrics = <String, double>{};
-          event.forEach((k, v) {
-            if (k is String && v is num) metrics[k] = v.toDouble();
-          });
-          onImageMetrics!(metrics);
-        }
-      },
-      onError: (e) => logInfo('imageMetrics stream error: $e'),
-    );
+    _metricsSubscription = channel.receiveBroadcastStream().listen((event) {
+      if (event is Map && onImageMetrics != null) {
+        final metrics = <String, double>{};
+        event.forEach((k, v) {
+          if (k is String && v is num) metrics[k] = v.toDouble();
+        });
+        onImageMetrics!(metrics);
+      }
+    }, onError: (e) => logInfo('imageMetrics stream error: $e'));
   }
 
   void _subscribeToPortraitFaceResults(String viewUniqueId) {
-    final channel = ChannelConfig.createPortraitFaceResultsChannel(viewUniqueId);
-    _portraitFaceResultsSubscription = channel.receiveBroadcastStream().listen(
-      (event) {
-        if (event is Map && onPortraitFaceResults != null) {
-          final payload = <String, dynamic>{};
-          event.forEach((k, v) {
-            if (k is String) payload[k] = v;
-          });
-          onPortraitFaceResults!(payload);
-        }
-      },
-      onError: (e) => logInfo('portraitFaceResults stream error: $e'),
+    final channel = ChannelConfig.createPortraitFaceResultsChannel(
+      viewUniqueId,
     );
+    _portraitFaceResultsSubscription = channel.receiveBroadcastStream().listen((
+      event,
+    ) {
+      if (event is Map && onPortraitFaceResults != null) {
+        final payload = <String, dynamic>{};
+        event.forEach((k, v) {
+          if (k is String) payload[k] = v;
+        });
+        onPortraitFaceResults!(payload);
+      }
+    }, onError: (e) => logInfo('portraitFaceResults stream error: $e'));
   }
 
   void dispose() {
@@ -267,13 +274,29 @@ class YOLOViewController {
     }
   }
 
-  Future<void> restartCamera() async {
+  Future<void> restartCamera({String reason = 'unspecified'}) async {
+    _acutCameraLog(
+      'YOLOViewController.restartCamera enter initialized=$isInitialized '
+      'viewId=$_viewId reason=$reason',
+    );
     if (_methodChannel != null) {
       try {
-        await _methodChannel!.invokeMethod('restartCamera');
+        _acutCameraLog(
+          'YOLOViewController.restartCamera invokeMethod restartCamera '
+          'viewId=$_viewId reason=$reason',
+        );
+        await _methodChannel!.invokeMethod('restartCamera', {'reason': reason});
+        _acutCameraLog(
+          'YOLOViewController.restartCamera invokeMethod restartCamera done '
+          'viewId=$_viewId reason=$reason',
+        );
       } catch (e) {
         logInfo('Error restarting camera: $e');
       }
+    } else {
+      _acutCameraLog(
+        'YOLOViewController.restartCamera skipped; methodChannel is null',
+      );
     }
   }
 
@@ -308,7 +331,9 @@ class YOLOViewController {
   Future<void> setTorchMode(bool enabled) async {
     if (_methodChannel != null) {
       try {
-        await _methodChannel!.invokeMethod('setTorchMode', {'enabled': enabled});
+        await _methodChannel!.invokeMethod('setTorchMode', {
+          'enabled': enabled,
+        });
       } catch (_) {}
     }
   }
@@ -332,7 +357,9 @@ class YOLOViewController {
   Future<double> getMinZoomLevel() async {
     if (_methodChannel != null) {
       try {
-        final result = await _methodChannel!.invokeMethod<double>('getMinZoomLevel');
+        final result = await _methodChannel!.invokeMethod<double>(
+          'getMinZoomLevel',
+        );
         return result ?? 1.0;
       } catch (e) {
         logInfo('Error getting min zoom level: $e');

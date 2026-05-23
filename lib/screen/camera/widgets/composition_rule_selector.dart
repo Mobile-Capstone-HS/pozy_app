@@ -56,9 +56,13 @@ class _CompositionRuleSelectorState extends State<CompositionRuleSelector> {
   String _silhouetteLabel(SilhouetteType type) {
     switch (type) {
       case SilhouetteType.none:
-        return '없음';
+        return '실루엣 선택';
       case SilhouetteType.standing:
-        return '전신';
+        return '전신 (서기)';
+      case SilhouetteType.sitting:
+        return '전신 (앉기)';
+      case SilhouetteType.standing2:
+        return '전신 2';
     }
   }
 

@@ -1,0 +1,30 @@
+{
+  "model_id": "icaa_dat_tf_native",
+  "model_name": "ICAA Color Aesthetic",
+  "source_model_path": "outputs/icaa_tf_native_tflite_fp16_20260516_144023/icaa_dat_tf_native_fp16.tflite",
+  "flutter_asset_path": "assets/models/icaa_dat_tf_native_fp16.tflite",
+  "input_type": "float32",
+  "input_shapes": {
+    "image": [
+      1,
+      224,
+      224,
+      3
+    ]
+  },
+  "color_order": "RGB",
+  "pixel_range": "0..1",
+  "normalization": "pixel_value / 255.0 then ImageNet mean/std (mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])",
+  "output_shape": [
+    1,
+    2
+  ],
+  "output_mapping": {
+    "index_0": "MOS / holistic aesthetic score",
+    "index_1": "Color aesthetic score"
+  },
+  "active_output_index": 1,
+  "score_range": "0..1",
+  "ensemble_weight": 0.2,
+  "notes": "Use output[1] for color aesthetic score."
+}
