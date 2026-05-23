@@ -502,7 +502,8 @@ class TfliteAestheticService {
       AcutPerfMetrics.totalKoniqMs += totalMs;
     } else if (contract.id == 'flive_image_mobile') {
       AcutPerfMetrics.totalFliveMs += totalMs;
-    } else if (contract.id == 'rgnet_aadb_gpu') {
+    } else if (contract.id == 'rgnet_aadb_gpu' ||
+        contract.id == 'rgnet_paper_aadb') {
       AcutPerfMetrics.totalRgnetMs += totalMs;
     }
 
@@ -735,7 +736,7 @@ class TfliteAestheticService {
       debugPrint(
         '[AcutPerf] model_total_with_preprocess_ms=$totalMs model=${contract.id}',
       );
-      if (contract.id == 'alamp_aadb_gpu') {
+      if (contract.id == 'alamp_aadb_gpu' || contract.id == 'mobile_alamp_v2') {
         AcutPerfMetrics.totalAlampMs += totalMs;
       }
 
@@ -813,6 +814,7 @@ class TfliteAestheticService {
           bundle: bundle,
         );
       case 'alamp_aadb_gpu':
+      case 'mobile_alamp_v2':
         return _prepareAlampInputs(
           imageBytes,
           contract,
@@ -890,15 +892,16 @@ class TfliteAestheticService {
     required Map<String, Future<Uint8List>> inputCache,
     AcutImagePreprocessBundle? bundle,
   }) async {
-    final globalInputName = _findInputName(
-      inputNames,
-      contains: 'global',
-      fallback: inputNames.first,
-    );
     final patchInputName = _findInputName(
       inputNames,
       contains: 'patch',
       fallback: inputNames.length > 1 ? inputNames[1] : inputNames.first,
+    );
+    final globalInputName = _findInputNameByAny(
+      inputNames,
+      containsAny: const ['full', 'global', 'image'],
+      fallback: inputNames.first,
+      exclude: {patchInputName},
     );
 
     if (globalInputName == patchInputName) {
@@ -925,18 +928,29 @@ class TfliteAestheticService {
     final preSw = Stopwatch()..start();
     final globalBuffer = await inputCache.putIfAbsent(
       globalCacheKey,
-      () =>
-          bundle?.alampGlobalViewFloat32(
-            width: globalSide,
-            height: globalSide,
-            normalization: contract.normalization,
-          ) ??
-          _preprocessor.preprocessAlampGlobalViewFloat32(
-            imageBytes,
-            width: globalSide,
-            height: globalSide,
-            normalization: contract.normalization,
-          ),
+      () => contract.id == 'mobile_alamp_v2'
+          ? bundle?.rgbFloat32(
+                  width: globalSide,
+                  height: globalSide,
+                  normalization: contract.normalization,
+                ) ??
+                _preprocessor.preprocessToRgbFloat32(
+                  imageBytes,
+                  width: globalSide,
+                  height: globalSide,
+                  normalization: contract.normalization,
+                )
+          : bundle?.alampGlobalViewFloat32(
+                  width: globalSide,
+                  height: globalSide,
+                  normalization: contract.normalization,
+                ) ??
+                _preprocessor.preprocessAlampGlobalViewFloat32(
+                  imageBytes,
+                  width: globalSide,
+                  height: globalSide,
+                  normalization: contract.normalization,
+                ),
     );
     final patchBuffer = await inputCache.putIfAbsent(
       patchesCacheKey,
@@ -989,6 +1003,34 @@ class TfliteAestheticService {
     final lowered = contains.toLowerCase();
     for (final inputName in inputNames) {
       if (inputName.toLowerCase().contains(lowered)) {
+        return inputName;
+      }
+    }
+    return fallback;
+  }
+
+  String _findInputNameByAny(
+    List<String> inputNames, {
+    required List<String> containsAny,
+    required String fallback,
+    Set<String> exclude = const {},
+  }) {
+    for (final fragment in containsAny) {
+      final lowered = fragment.toLowerCase();
+      for (final inputName in inputNames) {
+        if (exclude.contains(inputName)) {
+          continue;
+        }
+        if (inputName.toLowerCase().contains(lowered)) {
+          return inputName;
+        }
+      }
+    }
+    if (!exclude.contains(fallback)) {
+      return fallback;
+    }
+    for (final inputName in inputNames) {
+      if (!exclude.contains(inputName)) {
         return inputName;
       }
     }
@@ -1074,7 +1116,10 @@ class TfliteAestheticService {
       'koniq_mobile' => ExperimentalFeatures.disableKoniqDuringBatchScoring,
       'flive_image_mobile' =>
         ExperimentalFeatures.disableFliveDuringBatchScoring,
-      'nima_mobile' => ExperimentalFeatures.disableNimaDuringBatchScoring,
+      'nima_mobile' ||
+      'icaa_color_aesthetic' ||
+      'mobile_alamp_v2' ||
+      'rgnet_paper_aadb' => false,
       'rgnet_aadb_gpu' => ExperimentalFeatures.disableRgnetDuringBatchScoring,
       'alamp_aadb_gpu' => ExperimentalFeatures.disableAlampDuringBatchScoring,
       _ => false,

@@ -48,6 +48,15 @@ const double groupPersonConfidenceThreshold = 0.08;
 const double groupPersonLandscapeConfidenceThreshold = 0.05;
 const double poseIouThreshold = 0.65;
 
+void _acutCameraLog(String message) {
+  assert(() {
+    debugPrint(
+      '[AcutCamera] ${DateTime.now().millisecondsSinceEpoch} $message',
+    );
+    return true;
+  }());
+}
+
 class CameraScreen extends StatefulWidget {
   final ValueChanged<int> onMoveTab;
   final VoidCallback onBack;
@@ -84,6 +93,11 @@ class _CameraScreenState extends State<CameraScreen> {
   static const double _coachingBubbleRightInset = 12;
   static const double _groupCounterLeftInset = 16;
   static const double _bottomControlsHorizontalInset = 0;
+  static const double _tiltRebuildThresholdDeg = 1.0;
+  static const double _gravityRebuildThreshold = 0.3;
+  static const double _orientationAxisThreshold = 5.5;
+  static const double _orientationAxisMargin = 0.8;
+  static const int _orientationCommitDelayMs = 180;
 
   final _cameraController = YOLOViewController();
   final _landscapeController = FastScnnViewController();
@@ -144,6 +158,9 @@ class _CameraScreenState extends State<CameraScreen> {
   double _tiltX = 0.0;
   double _gravX = 0.0;
   double _gravY = 9.8;
+  int _deviceOrientationDeg = 0;
+  int? _pendingDeviceOrientationDeg;
+  int _pendingOrientationSinceMs = 0;
   int _lastSentOrientationDeg = -1;
 
   portrait.CoachingResult _portraitCoaching = const portrait.CoachingResult(
@@ -169,6 +186,7 @@ class _CameraScreenState extends State<CameraScreen> {
   Timer? _countdownTimer;
   StreamSubscription<AccelerometerEvent>? _accelerometerSub;
   bool _loggedFirstBuild = false;
+  String? _lastLoggedYoloPreviewSignature;
 
   bool get _isPortraitMode => _shootingMode == ShootingMode.person;
   bool get _isLandscapeMode => _shootingMode == ShootingMode.landscape;
@@ -190,6 +208,10 @@ class _CameraScreenState extends State<CameraScreen> {
     super.initState();
     isCameraScreenActive = true;
     _shootingMode = widget.initialMode;
+    _acutCameraLog(
+      'CameraScreen.initState start mode=${_shootingMode.name} '
+      'front=$_isFrontCamera',
+    );
     _applyIdleCoachingForMode(_shootingMode);
     if (DebugLogFlags.yoloDebug) {
       debugPrint('[YOLO_DEBUG][screen] initState mode=${_shootingMode.name}');
@@ -198,20 +220,25 @@ class _CameraScreenState extends State<CameraScreen> {
     unawaited(_portraitHandler.init());
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      _acutCameraLog(
+        'CameraScreen.addPostFrameCallback start mounted=$mounted '
+        'mode=${_shootingMode.name} front=$_isFrontCamera',
+      );
       if (DebugLogFlags.yoloDebug) {
-        debugPrint('[YOLO_DEBUG][startup] restartCamera scheduled');
+        debugPrint('[YOLO_DEBUG][startup] native camera auto-start expected');
       }
       await Future<void>.delayed(const Duration(milliseconds: 300));
-      if (!mounted) return;
+      if (!mounted) {
+        _acutCameraLog('CameraScreen startup skipped because unmounted');
+        return;
+      }
 
       try {
-        if (DebugLogFlags.yoloDebug) {
-          debugPrint('[YOLO_DEBUG][startup] restartCamera start');
-        }
-        await _cameraController.restartCamera();
-        if (DebugLogFlags.yoloDebug) {
-          debugPrint('[YOLO_DEBUG][startup] restartCamera done');
-        }
+        _acutCameraLog(
+          'CameraScreen startup skip restartCamera; '
+          'native YOLOView auto-start handles first entry '
+          'mode=${_shootingMode.name} front=$_isFrontCamera',
+        );
         await _cameraController.setZoomLevel(_selectedZoom);
         if (DebugLogFlags.yoloDebug) {
           debugPrint(
@@ -247,29 +274,132 @@ class _CameraScreenState extends State<CameraScreen> {
           accelerometerEventStream(
             samplingPeriod: SensorInterval.uiInterval,
           ).listen((event) {
-            _gravX = (_gravX * 0.7) + (event.x * 0.3);
-            _gravY = (_gravY * 0.7) + (event.y * 0.3);
+            if (!mounted) return;
+
+            final nowMs = DateTime.now().millisecondsSinceEpoch;
+            final previousOrientation = _deviceOrientationDeg;
+            final previousIsLandscape = _isLandscapeDeviceOrientation;
+            final nextGravX = (_gravX * 0.7) + (event.x * 0.3);
+            final nextGravY = (_gravY * 0.7) + (event.y * 0.3);
 
             // 절대 각도: 시각 표현에 사용 (Flutter 캔버스 회전값)
-            final absDeg = math.atan2(_gravX, _gravY) * 180.0 / math.pi;
-            _tiltX = absDeg;
+            final nextTiltX =
+                math.atan2(nextGravX, nextGravY) * 180.0 / math.pi;
+            final candidateOrientation = _resolveDeviceOrientationCandidate(
+              nextGravX,
+              nextGravY,
+            );
+            final orientationChanged = _commitOrientationCandidate(
+              candidateOrientation,
+              nowMs,
+            );
+            final gravChangedEnough =
+                (nextGravX - _gravX).abs() > _gravityRebuildThreshold ||
+                (nextGravY - _gravY).abs() > _gravityRebuildThreshold;
+            final tiltChangedEnough =
+                (nextTiltX - _tiltX).abs() > _tiltRebuildThresholdDeg;
 
             // 상대 기울기: isLevel 판단 및 코칭 tilt에 사용
-            final baseDeg = (absDeg / 90.0).round() * 90.0;
-            final relativeDeg = absDeg - baseDeg;
+            final baseDeg = (nextTiltX / 90.0).round() * 90.0;
+            final relativeDeg = nextTiltX - baseDeg;
+            _gravX = nextGravX;
+            _gravY = nextGravY;
+            _tiltX = nextTiltX;
             _sceneCoach.updateTilt(relativeDeg);
 
-            // 인물 모드에서만 네이티브 YOLOView 방향을 갱신합니다.
-            if (_isPortraitMode) {
-              final newOrientation = _deviceOrientationDeg;
-              if (newOrientation != _lastSentOrientationDeg) {
-                _lastSentOrientationDeg = newOrientation;
-                _cameraController.setDeviceOrientation(newOrientation);
+            if (orientationChanged) {
+              _acutCameraLog(
+                'orientation committed $previousOrientation -> '
+                '$_deviceOrientationDeg isLandscape '
+                '$previousIsLandscape -> $_isLandscapeDeviceOrientation',
+              );
+              // 인물 모드에서만 네이티브 YOLOView 방향을 갱신합니다.
+              _syncPortraitDeviceOrientation();
+              if (_isGroupPortraitMode) {
+                _syncGroupPortraitThresholdsForOrientation(
+                  _deviceOrientationDeg,
+                );
               }
             }
-            setState(() {});
+
+            if (orientationChanged || gravChangedEnough || tiltChangedEnough) {
+              setState(() {});
+            }
           });
     } catch (_) {}
+  }
+
+  int _resolveDeviceOrientationCandidate(double gravX, double gravY) {
+    final absX = gravX.abs();
+    final absY = gravY.abs();
+
+    if (absX > _orientationAxisThreshold &&
+        absX > absY + _orientationAxisMargin) {
+      return gravX < 0 ? 90 : 270;
+    }
+    if (absY > _orientationAxisThreshold &&
+        absY > absX + _orientationAxisMargin) {
+      return gravY < 0 ? 180 : 0;
+    }
+    return _deviceOrientationDeg;
+  }
+
+  bool _commitOrientationCandidate(int candidateOrientation, int nowMs) {
+    if (candidateOrientation == _deviceOrientationDeg) {
+      _pendingDeviceOrientationDeg = null;
+      _pendingOrientationSinceMs = 0;
+      return false;
+    }
+
+    if (_pendingDeviceOrientationDeg != candidateOrientation) {
+      _pendingDeviceOrientationDeg = candidateOrientation;
+      _pendingOrientationSinceMs = nowMs;
+      _acutCameraLog(
+        'orientation candidate $_deviceOrientationDeg -> '
+        '$candidateOrientation',
+      );
+      return false;
+    }
+
+    if (nowMs - _pendingOrientationSinceMs < _orientationCommitDelayMs) {
+      return false;
+    }
+
+    _deviceOrientationDeg = candidateOrientation;
+    _pendingDeviceOrientationDeg = null;
+    _pendingOrientationSinceMs = 0;
+    return true;
+  }
+
+  void _syncPortraitDeviceOrientation() {
+    if (!_isPortraitMode) return;
+    final newOrientation = _deviceOrientationDeg;
+    if (newOrientation == _lastSentOrientationDeg) return;
+
+    _lastSentOrientationDeg = newOrientation;
+    _acutCameraLog(
+      'setDeviceOrientation orientation=$newOrientation reason=committed',
+    );
+    unawaited(_cameraController.setDeviceOrientation(newOrientation));
+  }
+
+  void _syncGroupPortraitThresholdsForOrientation(int orientationDeg) {
+    final isLandscape = orientationDeg == 90 || orientationDeg == 270;
+    final confidenceThreshold = isLandscape
+        ? groupPersonLandscapeConfidenceThreshold
+        : groupPersonConfidenceThreshold;
+    final iouThreshold = isLandscape ? 0.40 : 0.50;
+
+    _acutCameraLog(
+      'sync group thresholds orientation=$orientationDeg '
+      'confidence=$confidenceThreshold iou=$iouThreshold',
+    );
+    unawaited(
+      _cameraController.setThresholds(
+        confidenceThreshold: confidenceThreshold,
+        iouThreshold: iouThreshold,
+      ),
+    );
   }
 
   Future<void> _configureZoomPresets() async {
@@ -1069,17 +1199,6 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
-  /// 가속도계 데이터(_gravX, _gravY)로 기기 방향을 0/90/180/270 중 하나로 반환합니다.
-  int get _deviceOrientationDeg {
-    // |gravX| > 5 m/s² 이면 가로 모드
-    if (_gravX.abs() > 5.0) {
-      return _gravX < 0 ? 90 : 270; // 왼쪽/오른쪽 가로
-    }
-    // gravY < -5 이면 거꾸로 든 세로 (180°)
-    if (_gravY < -5.0) return 180;
-    return 0; // 정방향 세로
-  }
-
   int _yoloDebugPoseFrame = 0;
   void _handlePoseDetections(List<YOLOResult> results) {
     if (++_yoloDebugPoseFrame % 30 == 1 && DebugLogFlags.yoloDebug) {
@@ -1101,11 +1220,7 @@ class _CameraScreenState extends State<CameraScreen> {
           ? FaceAnalysisSource.imageAnalysis
           : FaceAnalysisSource.previewCapture,
     );
-    final currentOrientation = _deviceOrientationDeg;
-    if (currentOrientation != _lastSentOrientationDeg) {
-      _lastSentOrientationDeg = currentOrientation;
-      _cameraController.setDeviceOrientation(currentOrientation);
-    }
+    _syncPortraitDeviceOrientation();
     // 그룹샷 눈 감김 검사를 위해 YOLO 카메라의 captureFrame 콜백을 주입
     _portraitHandler.captureFrameCallback ??= _cameraController.captureFrame;
     final analysis = _portraitHandler.processResults(results);
@@ -1178,6 +1293,9 @@ class _CameraScreenState extends State<CameraScreen> {
       _tiltX = 0.0;
       _gravX = 0.0;
       _gravY = 9.8;
+      _deviceOrientationDeg = 0;
+      _pendingDeviceOrientationDeg = null;
+      _pendingOrientationSinceMs = 0;
       _lastSentOrientationDeg = -1;
       _landscapeDecision = null;
       _landscapeOverlayAdvice = const LandscapeOverlayAdvice.none();
@@ -1567,14 +1685,17 @@ class _CameraScreenState extends State<CameraScreen> {
       );
     }
 
+    const yoloViewKey = ValueKey<String>('acut_yolo_camera_view');
+    final yoloViewSignature =
+        '${yoloViewKey.value}|mode=${_shootingMode.name}|front=$_isFrontCamera|'
+        'orientation=$_deviceOrientationDeg|landscape=$_isLandscapeDeviceOrientation';
+    if (_lastLoggedYoloPreviewSignature != yoloViewSignature) {
+      _lastLoggedYoloPreviewSignature = yoloViewSignature;
+      _acutCameraLog('YOLOView build $yoloViewSignature');
+    }
+
     return YOLOView(
-      key: ValueKey(
-        'yolo_${_isGroupPortraitMode
-            ? 'group_detect'
-            : _isPortraitMode
-            ? 'pose'
-            : 'detect'}_${_isFrontCamera ? 'front' : 'back'}_${_isLandscapeDeviceOrientation ? 'landscape' : 'portrait'}',
-      ),
+      key: yoloViewKey,
       controller: _cameraController,
       modelPath: _isGroupPortraitMode
           ? detectModelPath
@@ -1930,6 +2051,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
   @override
   void dispose() {
+    _acutCameraLog('CameraScreen.dispose start mode=${_shootingMode.name}');
     isCameraScreenActive = false;
     _accelerometerSub?.cancel();
     _countdownTimer?.cancel();

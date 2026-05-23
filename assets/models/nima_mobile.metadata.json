@@ -1,0 +1,28 @@
+{
+  "model_id": "nima_mobile",
+  "model_name": "NIMA Aesthetic Distribution",
+  "source_model_path": "checkpoints/nima_ava_gpu/final_model.keras",
+  "flutter_asset_path": "assets/models/nima_mobile.tflite",
+  "input_type": "float32",
+  "input_shapes": {
+    "image": [
+      1,
+      224,
+      224,
+      3
+    ]
+  },
+  "color_order": "RGB",
+  "pixel_range": "0..1",
+  "normalization": "pixel_value / 255.0",
+  "output_shape": [
+    1,
+    10
+  ],
+  "output_mapping": {
+    "index_0_to_9": "Score probabilities for 1..10"
+  },
+  "score_range": "1..10",
+  "ensemble_weight": 0.1,
+  "notes": "Standard NIMA model. Mean score = sum(prob[i] * (i + 1))."
+}

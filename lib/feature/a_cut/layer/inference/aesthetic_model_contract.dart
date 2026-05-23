@@ -5,7 +5,11 @@ import '../../model/tflite_model_metadata.dart';
 import 'image_preprocessor.dart';
 import 'tflite_model_metadata_loader.dart';
 
-enum AestheticModelOutputType { scalarPercent, scalarUnitInterval, distribution }
+enum AestheticModelOutputType {
+  scalarPercent,
+  scalarUnitInterval,
+  distribution,
+}
 
 enum AestheticModelExecutionMode { tensor, signature }
 
@@ -20,6 +24,7 @@ class AestheticModelContract {
   final int expectedOutputLength;
   final ImageNormalization normalization;
   final AestheticModelOutputType outputType;
+  final int outputIndex;
   final double weight;
   final bool useFlexDelegate;
   final String inputDtype;
@@ -39,6 +44,7 @@ class AestheticModelContract {
     required this.expectedOutputLength,
     required this.normalization,
     required this.outputType,
+    this.outputIndex = 0,
     required this.weight,
     this.useFlexDelegate = false,
     this.inputDtype = 'float32',
@@ -64,16 +70,23 @@ class AestheticModelContract {
 
     final resolvedNormalization = _resolveNormalization(metadata);
     if (metadata != null && resolvedNormalization == null) {
-      resolutionNotes.add('Unsupported normalization in metadata. Using preset fallback.');
+      resolutionNotes.add(
+        'Unsupported normalization in metadata. Using preset fallback.',
+      );
     }
 
     final resolvedOutputType = _resolveOutputType(metadata);
     if (metadata != null && resolvedOutputType == null) {
-      resolutionNotes.add('Unsupported output interpretation in metadata. Using preset fallback.');
+      resolutionNotes.add(
+        'Unsupported output interpretation in metadata. Using preset fallback.',
+      );
     }
 
     final resolvedColorFormat = _resolveColorFormat(metadata, resolutionNotes);
-    final resolvedTensorLayout = _resolveTensorLayout(metadata, resolutionNotes);
+    final resolvedTensorLayout = _resolveTensorLayout(
+      metadata,
+      resolutionNotes,
+    );
     final resolvedDtype = _resolveDtype(metadata, resolutionNotes);
 
     return ResolvedAestheticModelConfig(
@@ -84,9 +97,11 @@ class AestheticModelContract {
       dimension: dimension,
       inputWidth: metadata?.inputWidth ?? inputWidth,
       inputHeight: metadata?.inputHeight ?? inputHeight,
-      expectedOutputLength: metadata?.outputElementCount ?? expectedOutputLength,
+      expectedOutputLength:
+          metadata?.outputElementCount ?? expectedOutputLength,
       normalization: resolvedNormalization ?? normalization,
       outputType: resolvedOutputType ?? outputType,
+      outputIndex: outputIndex,
       weight: weight,
       useFlexDelegate: metadata?.requiresSelectTfOps ?? useFlexDelegate,
       inputDtype: resolvedDtype,
@@ -121,7 +136,9 @@ class AestheticModelContract {
         hint.contains('pixel_value_div_255')) {
       return ImageNormalization.zeroToOne;
     }
-    if (hint.contains('127.5') || hint.contains('-1.0') || hint.contains('[-1')) {
+    if (hint.contains('127.5') ||
+        hint.contains('-1.0') ||
+        hint.contains('[-1')) {
       return ImageNormalization.minusOneToOne;
     }
     return null;
@@ -188,7 +205,9 @@ class AestheticModelContract {
     if (value == 'RGB') {
       return value;
     }
-    resolutionNotes.add('Unsupported color format "$value". Using $colorFormat fallback.');
+    resolutionNotes.add(
+      'Unsupported color format "$value". Using $colorFormat fallback.',
+    );
     return colorFormat;
   }
 
@@ -203,7 +222,9 @@ class AestheticModelContract {
     if (value == 'NHWC') {
       return value;
     }
-    resolutionNotes.add('Unsupported tensor layout "$value". Using $tensorLayout fallback.');
+    resolutionNotes.add(
+      'Unsupported tensor layout "$value". Using $tensorLayout fallback.',
+    );
     return tensorLayout;
   }
 
@@ -218,7 +239,9 @@ class AestheticModelContract {
     if (value == 'float32') {
       return value;
     }
-    resolutionNotes.add('Unsupported input dtype "$value". Using $inputDtype fallback.');
+    resolutionNotes.add(
+      'Unsupported input dtype "$value". Using $inputDtype fallback.',
+    );
     return inputDtype;
   }
 
@@ -242,7 +265,13 @@ class AestheticModelContract {
       AestheticModelOutputType.distribution =>
         'distribution mean -> normalize from 1-10 into [0,1]',
     };
-    return metadata == null ? 'preset fallback: $fallback' : fallback;
+    final outputIndexNote =
+        outputType == AestheticModelOutputType.distribution || outputIndex == 0
+        ? ''
+        : ' using output[$outputIndex]';
+    return metadata == null
+        ? 'preset fallback: $fallback$outputIndexNote'
+        : '$fallback$outputIndexNote';
   }
 }
 
@@ -257,6 +286,7 @@ class ResolvedAestheticModelConfig {
   final int expectedOutputLength;
   final ImageNormalization normalization;
   final AestheticModelOutputType outputType;
+  final int outputIndex;
   final double weight;
   final bool useFlexDelegate;
   final String inputDtype;
@@ -280,6 +310,7 @@ class ResolvedAestheticModelConfig {
     required this.expectedOutputLength,
     required this.normalization,
     required this.outputType,
+    required this.outputIndex,
     required this.weight,
     required this.useFlexDelegate,
     required this.inputDtype,
@@ -322,6 +353,7 @@ class ResolvedAestheticModelConfig {
       expectedOutputLength: expectedOutputLength ?? this.expectedOutputLength,
       normalization: normalization,
       outputType: outputType ?? this.outputType,
+      outputIndex: outputIndex,
       weight: weight,
       useFlexDelegate: useFlexDelegate,
       inputDtype: inputDtype,
@@ -340,7 +372,10 @@ class ResolvedAestheticModelConfig {
     switch (outputType) {
       case AestheticModelOutputType.scalarPercent:
       case AestheticModelOutputType.scalarUnitInterval:
-        return values.first;
+        if (outputIndex < 0 || outputIndex >= values.length) {
+          throw RangeError.index(outputIndex, values, 'outputIndex');
+        }
+        return values[outputIndex];
       case AestheticModelOutputType.distribution:
         var weightedMean = 0.0;
         for (var index = 0; index < values.length; index++) {
@@ -406,13 +441,28 @@ const AestheticModelContract nimaMobileContract = AestheticModelContract(
   id: 'nima_mobile',
   label: 'NIMA',
   assetPath: 'assets/models/nima_mobile.tflite',
+  metadataAssetPathOverride: 'assets/models/nima_mobile.metadata.json',
   dimension: ModelScoreDimension.aesthetic,
   inputWidth: 224,
   inputHeight: 224,
   expectedOutputLength: 10,
   normalization: ImageNormalization.zeroToOne,
   outputType: AestheticModelOutputType.distribution,
-  weight: 1.0,
+  weight: 0.10,
+);
+
+const AestheticModelContract rgnetPaperAadbContract = AestheticModelContract(
+  id: 'rgnet_paper_aadb',
+  label: 'RGNet Paper',
+  assetPath: 'assets/models/rgnet_paper_aadb_fp16.tflite',
+  metadataAssetPathOverride: 'assets/models/rgnet_paper_aadb.metadata.json',
+  dimension: ModelScoreDimension.aesthetic,
+  inputWidth: 256,
+  inputHeight: 256,
+  expectedOutputLength: 1,
+  normalization: ImageNormalization.zeroToOne,
+  outputType: AestheticModelOutputType.scalarUnitInterval,
+  weight: 0.40,
 );
 
 const AestheticModelContract rgnetAadbGpuContract = AestheticModelContract(
@@ -426,6 +476,22 @@ const AestheticModelContract rgnetAadbGpuContract = AestheticModelContract(
   normalization: ImageNormalization.zeroToOne,
   outputType: AestheticModelOutputType.scalarUnitInterval,
   weight: 1.0,
+  executionMode: AestheticModelExecutionMode.signature,
+  signatureKey: 'serving_default',
+);
+
+const AestheticModelContract mobileAlampV2Contract = AestheticModelContract(
+  id: 'mobile_alamp_v2',
+  label: 'Mobile A-LAMP v2',
+  assetPath: 'assets/models/mobile_alamp_v2_fp16.tflite',
+  metadataAssetPathOverride: 'assets/models/mobile_alamp_v2.metadata.json',
+  dimension: ModelScoreDimension.aesthetic,
+  inputWidth: 384,
+  inputHeight: 384,
+  expectedOutputLength: 1,
+  normalization: ImageNormalization.rawZeroTo255,
+  outputType: AestheticModelOutputType.scalarUnitInterval,
+  weight: 0.30,
   executionMode: AestheticModelExecutionMode.signature,
   signatureKey: 'serving_default',
 );
@@ -445,6 +511,23 @@ const AestheticModelContract alampAadbGpuContract = AestheticModelContract(
   signatureKey: 'serving_default',
 );
 
+const AestheticModelContract icaaColorAestheticContract =
+    AestheticModelContract(
+      id: 'icaa_color_aesthetic',
+      label: 'ICAA',
+      assetPath: 'assets/models/icaa_dat_tf_native_fp16.tflite',
+      metadataAssetPathOverride:
+          'assets/models/icaa_dat_tf_native.metadata.json',
+      dimension: ModelScoreDimension.aesthetic,
+      inputWidth: 224,
+      inputHeight: 224,
+      expectedOutputLength: 2,
+      normalization: ImageNormalization.imageNet,
+      outputType: AestheticModelOutputType.scalarUnitInterval,
+      outputIndex: 1,
+      weight: 0.20,
+    );
+
 const List<AestheticModelContract> defaultTechnicalModelContracts = [
   koniqMobileContract,
   fliveImageMobileContract,
@@ -461,25 +544,25 @@ const List<AestheticModelContract> futureAestheticModelContracts = [
 /// Output: [1,1] float32 scalar in [0,1] (higher = better aesthetics)
 const AestheticModelContract stage5StudentAadbBaselineContract =
     AestheticModelContract(
-  id: 'stage5_student_aadb_baseline',
-  label: 'AADB Baseline',
-  assetPath:
-      'assets/models/stage5_student_full_aadb_aesthetic_mobile_fp32.tflite',
-  dimension: ModelScoreDimension.aesthetic,
-  inputWidth: 224,
-  inputHeight: 224,
-  expectedOutputLength: 1,
-  normalization: ImageNormalization.zeroToOne,
-  outputType: AestheticModelOutputType.scalarUnitInterval,
-  weight: 1.0,
-  useFlexDelegate: false,
-);
+      id: 'stage5_student_aadb_baseline',
+      label: 'AADB Baseline',
+      assetPath:
+          'assets/models/stage5_student_full_aadb_aesthetic_mobile_fp32.tflite',
+      dimension: ModelScoreDimension.aesthetic,
+      inputWidth: 224,
+      inputHeight: 224,
+      expectedOutputLength: 1,
+      normalization: ImageNormalization.zeroToOne,
+      outputType: AestheticModelOutputType.scalarUnitInterval,
+      weight: 1.0,
+      useFlexDelegate: false,
+    );
 
 /// Conservative student candidate for local side-by-side testing.
 /// Input : 224×224, float32, RGB÷255, NHWC
 /// Output: [1,1] float32 scalar in [0,1] (higher = better aesthetics)
-const AestheticModelContract conservativeStudentAadbContract =
-    AestheticModelContract(
+const AestheticModelContract
+conservativeStudentAadbContract = AestheticModelContract(
   id: 'student_conservative_aadb_20260423',
   label: 'AADB Conservative Student',
   assetPath:
@@ -510,9 +593,10 @@ const List<AestheticModelContract> aestheticComparisonModelContracts = [
   conservativeStudentAadbContract,
 ];
 
-/// Active three-model ensemble for A-cut aesthetic scoring.
+/// Active four-model ensemble for A-cut aesthetic scoring.
 const List<AestheticModelContract> activeAestheticEnsembleContracts = [
   nimaMobileContract,
-  rgnetAadbGpuContract,
-  alampAadbGpuContract,
+  icaaColorAestheticContract,
+  mobileAlampV2Contract,
+  rgnetPaperAadbContract,
 ];
