@@ -391,6 +391,9 @@ class PortraitCoachEngine {
       // (b) 프레임 가장자리에서 관절이 잘리는 경우
       if (s.croppedJoints.isNotEmpty) {
         final joint = s.croppedJoints.first;
+        if (s.isFrontCamera && (joint == 'wrist' || joint == 'elbow')) {
+          return null;
+        }
         final msg = switch (joint) {
           'knee' => '무릎선에 걸려요. 허벅지 중간이나 종아리까지 담아보세요.',
           'ankle' => '발끝까지 담거나, 종아리 중간에서 맞춰보세요.',
@@ -529,7 +532,7 @@ class PortraitCoachEngine {
           confidence: 0.72,
         );
       }
-      if (s.faceBoxRatio > 0.22 && s.shotType == ShotType.closeUp) {
+      if (s.faceBoxRatio > 0.30 && s.shotType == ShotType.closeUp) {
         return const CoachingResult(
           message: '조금 뒤로 물러서보세요.',
           priority: CoachingPriority.composition,
@@ -547,6 +550,10 @@ class PortraitCoachEngine {
     if (!s.isBottomJointCut) return null;
     final joint = s.bottomJoint!;
     final y = s.bottomJointY!;
+
+    if (s.isFrontCamera && joint == 'wrist') {
+      return null;
+    }
 
     if ((joint == 'knee' && !s.hasReliableKnees) ||
         (joint == 'ankle' && !s.hasReliableAnkles)) {
@@ -706,7 +713,9 @@ class PortraitCoachEngine {
         tolerance = 0.08;
       case ShotType.headShot:
         targetY = 0.35;
-        tolerance = 0.08;
+        // Head shots on front-camera selfies often sit slightly lower
+        // than the ideal eye line while still feeling natural.
+        tolerance = 0.10;
       case ShotType.upperBody:
         targetY = 0.32;
         tolerance = 0.07;
@@ -726,7 +735,7 @@ class PortraitCoachEngine {
     if ((eyeY - targetY).abs() <= tolerance) return null;
 
     return CoachingResult(
-      message: eyeY < targetY ? '폰을 살짝 내려보세요.' : '폰을 살짝 올려보세요.',
+      message: eyeY < targetY ? '폰을 살짝 올려보세요.' : '폰을 살짝 내려보세요.',
       priority: CoachingPriority.composition,
       confidence: 0.8,
       reason: '눈 위치가 맞으면 더 자연스러워요',
@@ -746,7 +755,9 @@ class PortraitCoachEngine {
         maxH = 0.12;
       case ShotType.headShot:
         minH = 0.06;
-        maxH = 0.13;
+        // Still-image portrait tests can estimate headroom from facial
+        // keypoints lower than the actual hairline, so allow a wider range.
+        maxH = 0.45;
       case ShotType.upperBody:
         minH = 0.08;
         maxH = 0.15;
@@ -846,7 +857,8 @@ class PortraitCoachEngine {
     // waistShot/upperBody: 손이 프레임 가장자리에 걸리면
     if ((s.shotType == ShotType.waistShot ||
             s.shotType == ShotType.upperBody) &&
-        s.hasVisibleHands) {
+        s.hasVisibleHands &&
+        !s.isFrontCamera) {
       final lw = s.leftWristPosition;
       final rw = s.rightWristPosition;
       if ((lw != null && (lw.dx < 0.05 || lw.dx > 0.95)) ||
@@ -923,7 +935,7 @@ class PortraitCoachEngine {
       );
     }
 
-    if (s.faceRoll != null && s.faceRoll!.abs() > 20) {
+    if (s.faceRoll != null && s.faceRoll!.abs() > 28) {
       return const CoachingResult(
         message: '고개가 기울었어요. 바로 세워보세요.',
         priority: CoachingPriority.refinement,
@@ -961,7 +973,7 @@ class PortraitCoachEngine {
 
   CoachingResult? _evaluateSelfie(PortraitSceneState s) {
     // ── 1. 광각 왜곡 경고 (전면 카메라 = 광각, 가까울수록 왜곡 심함) ──
-    if (s.personBboxRatio > 0.55) {
+    if (s.personBboxRatio > 0.90) {
       return const CoachingResult(
         message: '너무 가까워요',
         priority: CoachingPriority.composition,
@@ -969,7 +981,7 @@ class PortraitCoachEngine {
         reason: '팔을 조금 더 뻗으면 자연스러워요',
       );
     }
-    if (s.faceBoxRatio > 0.13 &&
+    if (s.faceBoxRatio > 0.32 &&
         (s.shotType == ShotType.closeUp ||
             s.shotType == ShotType.headShot ||
             s.shotType == ShotType.extremeCloseUp)) {
@@ -997,7 +1009,7 @@ class PortraitCoachEngine {
     // pitch < 0: 턱 내려감 = 카메라가 위에 있음 (내려다보는 중)
     // 이상적: 카메라가 눈높이 살짝 위 → pitch 약간 양수(5~15°)
     if (s.facePitch != null) {
-      if (s.facePitch! < -10) {
+      if (s.facePitch! < -20) {
         // 카메라가 아래에 있음 → 이중턱, 불리한 각도
         return const CoachingResult(
           message: '폰을 조금 올려보세요',
@@ -1042,6 +1054,9 @@ class PortraitCoachEngine {
     }
 
     // ── 6. 얼굴 각도 (3/4 뷰가 최적) ─────────────────────
+    final selfieAngle = _evaluateSelfieAngle(s);
+    if (selfieAngle != null) return selfieAngle;
+
     if (s.faceYaw != null) {
       if (s.faceYaw!.abs() > 40) {
         return const CoachingResult(
@@ -1077,6 +1092,77 @@ class PortraitCoachEngine {
         message: '고개가 기울었어요. 바로 세워보세요.',
         priority: CoachingPriority.refinement,
         confidence: 0.7,
+      );
+    }
+
+    return null;
+  }
+
+  CoachingResult? _evaluateSelfieAngle(PortraitSceneState s) {
+    if (!s.isFrontCamera || !s.hasFace) return null;
+
+    final yaw = s.faceYaw?.abs();
+    final pitch = s.facePitch;
+    final roll = s.faceRoll?.abs();
+
+    if (yaw != null && yaw < 8) {
+      return const CoachingResult(
+        message: '얼굴을 살짝만 옆으로 틀어보세요.',
+        priority: CoachingPriority.pose,
+        confidence: 0.64,
+        reason: '정면보다 살짝 틀어진 각도가 셀카에 더 자연스러워요',
+      );
+    }
+
+    if (yaw != null && yaw > 32) {
+      return const CoachingResult(
+        message: '얼굴을 정면 쪽으로 조금만 돌려보세요.',
+        priority: CoachingPriority.pose,
+        confidence: 0.66,
+        reason: '너무 옆을 보면 얼굴선이 강해 보여요',
+      );
+    }
+
+    if (pitch != null && pitch < -12) {
+      return const CoachingResult(
+        message: '폰을 눈높이에 조금 더 가깝게 맞춰보세요.',
+        priority: CoachingPriority.refinement,
+        confidence: 0.60,
+        reason: '눈높이보다 살짝 위 각도가 셀카에 가장 자연스러워요',
+      );
+    }
+
+    if (pitch != null && pitch > 12) {
+      return const CoachingResult(
+        message: '폰을 조금만 더 높여보세요.',
+        priority: CoachingPriority.refinement,
+        confidence: 0.60,
+        reason: '아래에서 올려다보는 각도보다 살짝 위가 더 안정적이에요',
+      );
+    }
+
+    if (roll != null && roll > 18) {
+      return const CoachingResult(
+        message: '고개 기울임을 조금만 줄여보세요.',
+        priority: CoachingPriority.refinement,
+        confidence: 0.58,
+        reason: '앵글은 좋고 기울기만 정리되면 더 자연스러워요',
+      );
+    }
+
+    if (yaw != null &&
+        pitch != null &&
+        roll != null &&
+        yaw >= 12 &&
+        yaw <= 28 &&
+        pitch >= -12 &&
+        pitch <= 8 &&
+        roll <= 18) {
+      return const CoachingResult(
+        message: '셀카 앵글이 좋아요',
+        priority: CoachingPriority.perfect,
+        confidence: 0.72,
+        reason: '지금 각도로 그대로 찍어도 자연스럽게 나와요',
       );
     }
 
