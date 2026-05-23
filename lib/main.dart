@@ -15,8 +15,8 @@ List<CameraDescription> cameras = [];
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await _loadDotenv();
+  await _initializeAppServices();
   runApp(const PozyApp());
-  unawaited(_initializeAppServices());
 }
 
 Future<void> _loadDotenv() async {
@@ -28,9 +28,11 @@ Future<void> _loadDotenv() async {
 }
 
 Future<void> _initializeAppServices() async {
-  unawaited(_initializeNaverMap());
-  unawaited(_initializeFirebase());
-  unawaited(_initializeCameras());
+  await Future.wait([
+    _initializeNaverMap(),
+    _initializeFirebase(),
+    _initializeCameras(),
+  ]);
 }
 
 Future<void> _initializeNaverMap() async {
