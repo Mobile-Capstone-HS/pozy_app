@@ -55,28 +55,38 @@ class AestheticEnsembleScoringService {
     }
 
     final nimaRun = runs[nimaMobileContract.id];
-    final rgnetRun = runs[rgnetAadbGpuContract.id];
-    final alampRun = runs[alampAadbGpuContract.id];
+    final rgnetRun = runs[rgnetPaperAadbContract.id];
+    final alampRun = runs[mobileAlampV2Contract.id];
+    final icaaRun = runs[icaaColorAestheticContract.id];
 
     final normalizedWeights = AestheticEnsembleWeights(
       nimaWeight: effectiveWeights.nimaWeight,
       rgnetWeight: effectiveWeights.rgnetWeight,
       alampWeight: effectiveWeights.alampWeight,
+      icaaWeight: effectiveWeights.icaaWeight,
     );
 
     final nimaScore = nimaRun?.detail.normalizedScore;
     final rgnetScore = rgnetRun?.detail.normalizedScore;
     final alampScore = alampRun?.detail.normalizedScore;
+    final icaaScore = icaaRun?.detail.normalizedScore;
 
     double? finalAestheticScore;
 
-    if (nimaScore != null && rgnetScore != null && alampScore != null) {
+    if (nimaScore != null &&
+        rgnetScore != null &&
+        alampScore != null &&
+        icaaScore != null) {
       finalAestheticScore = normalizedWeights.weightedScore(
         nimaScore: nimaScore,
         rgnetScore: rgnetScore,
         alampScore: alampScore,
+        icaaScore: icaaScore,
       );
-    } else if (nimaScore != null || rgnetScore != null || alampScore != null) {
+    } else if (nimaScore != null ||
+        rgnetScore != null ||
+        alampScore != null ||
+        icaaScore != null) {
       var weightSum = 0.0;
       var scoreSum = 0.0;
       if (nimaScore != null) {
@@ -91,6 +101,10 @@ class AestheticEnsembleScoringService {
         weightSum += normalizedWeights.alampWeight;
         scoreSum += alampScore * normalizedWeights.alampWeight;
       }
+      if (icaaScore != null) {
+        weightSum += normalizedWeights.icaaWeight;
+        scoreSum += icaaScore * normalizedWeights.icaaWeight;
+      }
       if (weightSum > 0.0) {
         finalAestheticScore = scoreSum / weightSum;
       }
@@ -98,12 +112,13 @@ class AestheticEnsembleScoringService {
         if (nimaScore == null) 'nima',
         if (rgnetScore == null) 'rgnet',
         if (alampScore == null) 'alamp',
+        if (icaaScore == null) 'icaa',
       ];
       debugPrint(
         '[AestheticEnsembleScoringService] missingComponents=$missing',
       );
       debugPrint(
-        '[AestheticEnsembleScoringService] effectiveWeights=nima:${normalizedWeights.nimaWeight}, rgnet:${normalizedWeights.rgnetWeight}, alamp:${normalizedWeights.alampWeight}',
+        '[AestheticEnsembleScoringService] effectiveWeights=nima:${normalizedWeights.nimaWeight}, rgnet:${normalizedWeights.rgnetWeight}, alamp:${normalizedWeights.alampWeight}, icaa:${normalizedWeights.icaaWeight}',
       );
       debugPrint(
         '[AestheticEnsembleScoringService] finalWeightedScore=$finalAestheticScore',
@@ -115,7 +130,8 @@ class AestheticEnsembleScoringService {
       '[AestheticEnsembleScoringService] weights='
       'nima=${normalizedWeights.nimaWeight.toStringAsFixed(4)}, '
       'rgnet=${normalizedWeights.rgnetWeight.toStringAsFixed(4)}, '
-      'alamp=${normalizedWeights.alampWeight.toStringAsFixed(4)}',
+      'alamp=${normalizedWeights.alampWeight.toStringAsFixed(4)}, '
+      'icaa=${normalizedWeights.icaaWeight.toStringAsFixed(4)}',
     );
     debugPrint(
       '[AestheticEnsembleScoringService] finalWeightedScore='
@@ -126,6 +142,7 @@ class AestheticEnsembleScoringService {
       nimaScore: nimaScore,
       rgnetScore: rgnetScore,
       alampScore: alampScore,
+      icaaScore: icaaScore,
       finalAestheticScore: finalAestheticScore,
       weights: normalizedWeights,
       scoreDetails: [
@@ -135,12 +152,15 @@ class AestheticEnsembleScoringService {
           _detailWithWeight(rgnetRun.detail, normalizedWeights.rgnetWeight),
         if (alampRun != null)
           _detailWithWeight(alampRun.detail, normalizedWeights.alampWeight),
+        if (icaaRun != null)
+          _detailWithWeight(icaaRun.detail, normalizedWeights.icaaWeight),
       ],
       warnings: warnings,
       modelVersion: [
         if (nimaRun != null) nimaRun.model.id,
         if (rgnetRun != null) rgnetRun.model.id,
         if (alampRun != null) alampRun.model.id,
+        if (icaaRun != null) icaaRun.model.id,
       ].join('+'),
     );
   }

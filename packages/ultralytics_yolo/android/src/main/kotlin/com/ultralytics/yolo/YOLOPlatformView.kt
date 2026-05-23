@@ -55,11 +55,17 @@ class YOLOPlatformView(
     private var retryRunnable: Runnable? = null
     
     init {
+        Log.d("AcutCamera", "${System.currentTimeMillis()} YOLOPlatformView[$viewId] init start")
         Log.d(TAG, "YOLOPlatformView[$viewId] INIT BLOCK STARTING")
         val dartViewIdParam = creationParams?.get("viewId")
         viewUniqueId = dartViewIdParam as? String ?: viewId.toString().also {
             Log.w(TAG, "YOLOPlatformView[$viewId init]: Using platform int viewId '$it' as fallback")
         }
+        Log.d(
+            "AcutCamera",
+            "${System.currentTimeMillis()} YOLOPlatformView[$viewId] " +
+                "viewUniqueId=$viewUniqueId"
+        )
         Log.d(TAG, "YOLOPlatformView[$viewId init]: Initialized with viewUniqueId: $viewUniqueId")
 
         // Parse model path and task from creation params
@@ -96,14 +102,27 @@ class YOLOPlatformView(
         // This ensures lifecycle owner is set before camera tries to start
         if (context is LifecycleOwner) {
             Log.d(TAG, "Initial context is a LifecycleOwner, notifying YOLOView")
+            Log.d(
+                "AcutCamera",
+                "${System.currentTimeMillis()} YOLOPlatformView[$viewId] " +
+                    "onLifecycleOwnerAvailable before initCamera"
+            )
             yoloView.onLifecycleOwnerAvailable(context)
             // initCamera will be called by onLifecycleOwnerAvailable if permissions are granted
             // But we also call it here as a fallback
             Log.d(TAG, "Attempting camera initialization after lifecycle owner setup")
+            Log.d(
+                "AcutCamera",
+                "${System.currentTimeMillis()} YOLOPlatformView[$viewId] initCamera from init"
+            )
             yoloView.initCamera()
         } else {
             Log.w(TAG, "Context is not a LifecycleOwner, camera may not start")
             // Still try to initialize camera - it will request permissions if needed
+            Log.d(
+                "AcutCamera",
+                "${System.currentTimeMillis()} YOLOPlatformView[$viewId] initCamera without LifecycleOwner"
+            )
             yoloView.initCamera()
         }
         
@@ -141,7 +160,12 @@ class YOLOPlatformView(
                         ContextCompat.checkSelfPermission(context, permission)
                     }
                     if (hasPermissions) {
-                        yoloView.startCamera()
+                        Log.d(
+                            "AcutCamera",
+                            "${System.currentTimeMillis()} YOLOPlatformView[$viewId] " +
+                                "modelLoadCallback success -> startCamera"
+                        )
+                        yoloView.startCamera(reason = "platform.modelLoadCallback")
                     }
                 } else {
                     initialized = true
@@ -452,8 +476,19 @@ class YOLOPlatformView(
                     result.success(null)
                 }
                 "restartCamera" -> {
+                    val reason = call.argument<String>("reason") ?: "unspecified"
+                    Log.d(
+                        "AcutCamera",
+                        "${System.currentTimeMillis()} YOLOPlatformView[$viewId] " +
+                            "MethodChannel restartCamera received reason=$reason -> YOLOView.startCamera"
+                    )
                     Log.d(TAG, "Restarting camera (requested from Flutter)")
-                    yoloView.startCamera()
+                    yoloView.startCamera(forceRestart = true, reason = "methodChannel.restartCamera:$reason")
+                    Log.d(
+                        "AcutCamera",
+                        "${System.currentTimeMillis()} YOLOPlatformView[$viewId] " +
+                            "MethodChannel restartCamera completed reason=$reason"
+                    )
                     result.success(null)
                 }
                 "captureFrame" -> {
@@ -511,6 +546,11 @@ class YOLOPlatformView(
                 "setDeviceOrientation" -> {
                     val degrees = call.argument<Int>("degrees")
                     if (degrees != null) {
+                        Log.d(
+                            "AcutCamera",
+                            "${System.currentTimeMillis()} YOLOPlatformView[$viewId] " +
+                                "setDeviceOrientation degrees=$degrees"
+                        )
                         yoloView.setDeviceOrientation(degrees)
                         result.success(null)
                     } else {
@@ -539,6 +579,10 @@ class YOLOPlatformView(
     }
     
     override fun dispose() {
+        Log.d(
+            "AcutCamera",
+            "${System.currentTimeMillis()} YOLOPlatformView[$viewId] dispose start"
+        )
         Log.d(TAG, "Disposing YOLOPlatformView for viewId: $viewId")
         
         stopStreaming()
@@ -560,6 +604,10 @@ class YOLOPlatformView(
         factory.onPlatformViewDisposed(viewId)
         
         Log.d(TAG, "YOLOPlatformView disposed successfully")
+        Log.d(
+            "AcutCamera",
+            "${System.currentTimeMillis()} YOLOPlatformView[$viewId] dispose completed"
+        )
     }
     
     private fun resolveModelPath(context: Context, modelPath: String): String {

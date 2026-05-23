@@ -1,0 +1,28 @@
+{
+  "model_id": "rgnet_paper_aadb",
+  "model_name": "RGNet Paper AADB",
+  "source_model_path": "models/aesthetic/rgnet_paper_aadb_fp16.tflite",
+  "flutter_asset_path": "assets/models/rgnet_paper_aadb_fp16.tflite",
+  "input_type": "float32",
+  "input_shapes": {
+    "image": [
+      1,
+      256,
+      256,
+      3
+    ]
+  },
+  "color_order": "RGB",
+  "pixel_range": "0..1",
+  "normalization": "pixel_value / 255.0",
+  "output_shape": [
+    1,
+    1
+  ],
+  "output_mapping": {
+    "index_0": "Aesthetic score"
+  },
+  "score_range": "0..1",
+  "ensemble_weight": 0.4,
+  "notes": "Replaces older rgnet_aadb_gpu. Paper-oriented AADB full model."
+}
