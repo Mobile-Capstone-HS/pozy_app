@@ -465,6 +465,31 @@ class PortraitCoachEngine {
     }
 
     // ─── 구도 규칙 정렬 (전신/환경) ─────────────────────────
+    if (s.intent == PortraitIntent.environmental) {
+      final maxEnvironmentalRatio = switch (s.shotType) {
+        ShotType.fullBody => 0.35,
+        ShotType.kneeShot || ShotType.waistShot => 0.42,
+        ShotType.upperBody || ShotType.headShot => 0.48,
+        _ => 0.45,
+      };
+      if (s.personBboxRatio > maxEnvironmentalRatio) {
+        return const CoachingResult(
+          message: '장소가 더 읽히도록 한 걸음만 뒤로 가볼게요',
+          priority: CoachingPriority.composition,
+          confidence: 0.72,
+          reason: '환경샷은 인물과 배경이 함께 보여야 공간의 이야기가 살아나요',
+        );
+      }
+      if (s.personBboxRatio < 0.08) {
+        return const CoachingResult(
+          message: '인물이 너무 작아져서 표정이 약해졌어요',
+          priority: CoachingPriority.composition,
+          confidence: 0.62,
+          reason: '반 걸음만 가까이 가서 인물의 존재감을 살려보세요',
+        );
+      }
+    }
+
     if (s.shotType == ShotType.fullBody ||
         s.intent == PortraitIntent.environmental) {
       final ruleResult = _checkRuleAlignment(s);
@@ -490,31 +515,15 @@ class PortraitCoachEngine {
       if ((needsLeadingRoom || s.intent == PortraitIntent.environmental) &&
           ((s.faceYaw! > yawThreshold && s.personCenterX > posThreshold) ||
               (s.faceYaw! < -yawThreshold && s.personCenterX < negThreshold))) {
-        return const CoachingResult(
-          message: '바라보는 쪽에 공간을 더 두세요.',
+        return CoachingResult(
+          message: s.intent == PortraitIntent.environmental
+              ? '시선이 향하는 쪽에 장소의 여백을 남겨보세요'
+              : '바라보는 쪽에 공간을 더 두세요.',
           priority: CoachingPriority.composition,
           confidence: 0.68,
-          reason: '시선 앞쪽이 비어 있으면 더 자연스러워요',
-        );
-      }
-    }
-
-    // ─── 8. 환경 포트레이트 크기 ─────────────────────────────
-    if (s.intent == PortraitIntent.environmental) {
-      if (s.personBboxRatio > 0.65) {
-        return const CoachingResult(
-          message: '배경이 조금 더 보이면 좋아요',
-          priority: CoachingPriority.composition,
-          confidence: 0.62,
-          reason: '조금 뒤로 물러나 배경을 더 담아보세요',
-        );
-      }
-      if (s.personBboxRatio < 0.08) {
-        return const CoachingResult(
-          message: '인물이 너무 작게 보여요',
-          priority: CoachingPriority.composition,
-          confidence: 0.58,
-          reason: '살짝 가까이 가서 더 크게 담아보세요',
+          reason: s.intent == PortraitIntent.environmental
+              ? '인물이 바라보는 방향으로 공간이 열리면 장면이 더 자연스럽게 읽혀요'
+              : '시선 앞쪽이 비어 있으면 더 자연스러워요',
         );
       }
     }
@@ -547,6 +556,11 @@ class PortraitCoachEngine {
     if (!s.isBottomJointCut) return null;
     final joint = s.bottomJoint!;
     final y = s.bottomJointY!;
+
+    if (s.intent == PortraitIntent.environmental &&
+        (joint == 'wrist' || joint == 'elbow')) {
+      return null;
+    }
 
     if ((joint == 'knee' && !s.hasReliableKnees) ||
         (joint == 'ankle' && !s.hasReliableAnkles)) {

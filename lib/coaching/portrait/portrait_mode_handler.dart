@@ -2038,17 +2038,17 @@ class PortraitModeHandler {
   double? _targetEyeLineY(ShotType shot) {
     switch (shot) {
       case ShotType.extremeCloseUp:
-        return 0.38;
+        return 0.45;
       case ShotType.closeUp:
-        return 0.35;
+        return 0.33;
       case ShotType.headShot:
         return 0.35;
       case ShotType.upperBody:
-        return 0.33;
+        return 0.32;
       case ShotType.waistShot:
         return 0.30;
       case ShotType.kneeShot:
-        return 0.31;
+        return 0.28;
       case ShotType.fullBody:
         return 0.29;
       case ShotType.environmental:
@@ -2062,7 +2062,8 @@ class PortraitModeHandler {
   double? _targetHeadroomTop(ShotType shot) {
     switch (shot) {
       case ShotType.extremeCloseUp:
-        return 0.06;
+        // Keep the overlay line inside the engine's 0.00~0.05 headroom window.
+        return 0.03;
       case ShotType.closeUp:
         return 0.08;
       case ShotType.headShot:
@@ -2072,7 +2073,8 @@ class PortraitModeHandler {
       case ShotType.waistShot:
         return 0.09;
       case ShotType.kneeShot:
-        return 0.12;
+        // Engine allows 0.05~0.10, so keep the guide near the middle.
+        return 0.08;
       case ShotType.fullBody:
         return 0.08;
       case ShotType.environmental:
