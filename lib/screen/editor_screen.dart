@@ -14,7 +14,7 @@ import 'editor/editor_history.dart';
 import 'editor/editor_comparison.dart';
 
 const _kBg = Color(0xFFF6F7FB);
-const _kBlue = Color(0xFF3182F6);
+const _kBlue = Color(0xFF5BB8D4);
 const _kDark = Color(0xFF2F2F2F);
 const _kGrey600 = Color(0xFF6B7684);
 const _kGrey400 = Color(0xFFB0B8C1);
@@ -526,8 +526,6 @@ class _EditorScreenState extends State<EditorScreen> {
                     'assets/images/pozy_logo2.png',
                     height: 40,
                     fit: BoxFit.contain,
-                    filterQuality: FilterQuality.high,
-                    isAntiAlias: true,
                   ),
                   const Spacer(),
                   // Undo / Redo
@@ -1073,7 +1071,7 @@ class _EmptyPlaceholder extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            const Color(0xFFF0F6FF),
+            const Color(0xFFEEF6FB),
             const Color(0xFFF6F7FB),
           ],
         ),

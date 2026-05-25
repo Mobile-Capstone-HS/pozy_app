@@ -5,6 +5,7 @@ class AestheticEnsembleScoreResult {
   final double? nimaScore;
   final double? rgnetScore;
   final double? alampScore;
+  final double? icaaScore;
   final double? finalAestheticScore;
   final AestheticEnsembleWeights weights;
   final List<ModelScoreDetail> scoreDetails;
@@ -15,6 +16,7 @@ class AestheticEnsembleScoreResult {
     required this.nimaScore,
     required this.rgnetScore,
     required this.alampScore,
+    required this.icaaScore,
     required this.finalAestheticScore,
     required this.weights,
     this.scoreDetails = const [],
@@ -23,5 +25,8 @@ class AestheticEnsembleScoreResult {
   });
 
   bool get hasCompleteScores =>
-      nimaScore != null && rgnetScore != null && alampScore != null;
+      nimaScore != null &&
+      rgnetScore != null &&
+      alampScore != null &&
+      icaaScore != null;
 }

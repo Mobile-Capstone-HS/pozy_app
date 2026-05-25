@@ -243,12 +243,61 @@ class _YOLOViewState extends State<YOLOView> {
       });
     }
 
+    if (_platformViewId != null) {
+      if (oldWidget.confidenceThreshold != widget.confidenceThreshold ||
+          oldWidget.iouThreshold != widget.iouThreshold) {
+        _effectiveController.setThresholds(
+          confidenceThreshold: widget.confidenceThreshold,
+          iouThreshold: widget.iouThreshold,
+        );
+      }
+
+      if (!_streamingConfigEquals(
+        oldWidget.streamingConfig,
+        widget.streamingConfig,
+      )) {
+        if (widget.streamingConfig != null) {
+          _effectiveController.setStreamingConfig(widget.streamingConfig!);
+        }
+      }
+
+      if (oldWidget.showNativeUI != widget.showNativeUI) {
+        _effectiveController.setShowUIControls(widget.showNativeUI);
+      }
+
+      if (oldWidget.showOverlays != widget.showOverlays) {
+        _effectiveController.setShowOverlays(widget.showOverlays);
+      }
+    }
+
     // Handle model or task changes
     if (_platformViewId != null &&
         (oldWidget.modelPath != widget.modelPath ||
             oldWidget.task != widget.task)) {
       _effectiveController.switchModel(widget.modelPath, widget.task);
     }
+  }
+
+  bool _streamingConfigEquals(
+    YOLOStreamingConfig? oldConfig,
+    YOLOStreamingConfig? nextConfig,
+  ) {
+    if (identical(oldConfig, nextConfig)) return true;
+    if (oldConfig == null || nextConfig == null) return false;
+
+    return oldConfig.includeDetections == nextConfig.includeDetections &&
+        oldConfig.includeClassifications == nextConfig.includeClassifications &&
+        oldConfig.includeProcessingTimeMs ==
+            nextConfig.includeProcessingTimeMs &&
+        oldConfig.includeFps == nextConfig.includeFps &&
+        oldConfig.includeMasks == nextConfig.includeMasks &&
+        oldConfig.includePoses == nextConfig.includePoses &&
+        oldConfig.includeOBB == nextConfig.includeOBB &&
+        oldConfig.includeOriginalImage == nextConfig.includeOriginalImage &&
+        oldConfig.maxFPS == nextConfig.maxFPS &&
+        oldConfig.throttleInterval == nextConfig.throttleInterval &&
+        oldConfig.inferenceFrequency == nextConfig.inferenceFrequency &&
+        oldConfig.skipFrames == nextConfig.skipFrames;
   }
 
   @override
