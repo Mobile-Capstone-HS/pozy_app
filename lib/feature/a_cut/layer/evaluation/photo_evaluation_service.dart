@@ -1,9 +1,6 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show debugPrint;
-
-import '../../../../config/experimental_features.dart';
 import '../../model/aesthetic_ensemble_score_result.dart';
 import '../../model/aesthetic_ensemble_weights.dart';
 import '../../model/model_score_detail.dart';
@@ -11,7 +8,6 @@ import '../../model/photo_evaluation_result.dart';
 import '../inference/aesthetic_model_contract.dart';
 import '../inference/image_preprocessor.dart';
 import '../inference/tflite_aesthetic_service.dart';
-import '../inference/topiq_mixed112_technical_iqa_runner.dart';
 import 'aesthetic_ensemble_scoring_service.dart';
 
 abstract class PhotoEvaluationService {
@@ -73,7 +69,6 @@ class OnDevicePhotoEvaluationService implements PhotoEvaluationService {
     AestheticEnsembleScoringService? aestheticEnsembleService,
     AestheticEnsembleWeights? defaultAestheticWeights,
     ImagePreprocessor? preprocessor,
-    TopiqMixed112TechnicalIqaRunner? topiqMixed112Runner,
   }) : _technicalTfliteService =
            technicalTfliteService ??
            TfliteAestheticService(
@@ -84,15 +79,12 @@ class OnDevicePhotoEvaluationService implements PhotoEvaluationService {
            aestheticEnsembleService ?? AestheticEnsembleScoringService(),
        _defaultAestheticWeights =
            defaultAestheticWeights ?? AestheticEnsembleWeights.defaults,
-       _preprocessor = preprocessor ?? const ImagePreprocessor(),
-       _topiqMixed112Runner =
-           topiqMixed112Runner ?? TopiqMixed112TechnicalIqaRunner();
+       _preprocessor = preprocessor ?? const ImagePreprocessor();
 
   final TfliteAestheticService _technicalTfliteService;
   final AestheticEnsembleScoringService _aestheticEnsembleService;
   final AestheticEnsembleWeights _defaultAestheticWeights;
   final ImagePreprocessor _preprocessor;
-  final TopiqMixed112TechnicalIqaRunner _topiqMixed112Runner;
 
   @override
   Future<PhotoEvaluationResult> evaluate(
@@ -109,14 +101,6 @@ class OnDevicePhotoEvaluationService implements PhotoEvaluationService {
       imageIndex: batchImageIndex,
       preprocessBundle: preprocessBundle,
       sharedInputCache: inputCache,
-    );
-    await _runTopiqMixed112Comparison(
-      imageBytes: imageBytes,
-      fileName: fileName,
-      localImagePath: localImagePath,
-      batchImageIndex: batchImageIndex,
-      technicalSummary: technicalSummary,
-      preprocessBundle: preprocessBundle,
     );
     AestheticEnsembleScoreResult? aestheticSummary;
     final warnings = <String>[];
@@ -186,43 +170,6 @@ class OnDevicePhotoEvaluationService implements PhotoEvaluationService {
     return result;
   }
 
-  Future<void> _runTopiqMixed112Comparison({
-    required Uint8List imageBytes,
-    required TflitePhotoScoreSummary technicalSummary,
-    required AcutImagePreprocessBundle preprocessBundle,
-    String? fileName,
-    String? localImagePath,
-    int? batchImageIndex,
-  }) async {
-    if (!ExperimentalFeatures.technicalIqaMixed112Enabled) {
-      return;
-    }
-
-    final imageIdOrPath =
-        localImagePath ??
-        fileName ??
-        (batchImageIndex == null ? null : 'batch_index_$batchImageIndex');
-
-    try {
-      final mixed112 = await _topiqMixed112Runner.scoreImageBytes(
-        imageBytes,
-        imageIdOrPath: imageIdOrPath,
-        preprocessBundle: preprocessBundle,
-      );
-      logTopiqMixed112TechnicalIqaComparison(
-        scoreDetails: technicalSummary.scoreDetails,
-        existingCombinedScore: technicalSummary.technicalScore,
-        mixed112: mixed112,
-        imageIdOrPath: imageIdOrPath,
-      );
-    } catch (error) {
-      debugPrint(
-        '[TechnicalIqaCompare] image_id_path="${_logValue(imageIdOrPath)}" '
-        'mixed112_error=$error',
-      );
-    }
-  }
-
   List<String> _buildNotes({
     required TflitePhotoScoreSummary technicalSummary,
     required double? aestheticScore,
@@ -289,13 +236,5 @@ class OnDevicePhotoEvaluationService implements PhotoEvaluationService {
       }
     }
     return null;
-  }
-
-  String _logValue(String? value) {
-    final text = value?.trim();
-    if (text == null || text.isEmpty) {
-      return '-';
-    }
-    return text.replaceAll('"', "'");
   }
 }

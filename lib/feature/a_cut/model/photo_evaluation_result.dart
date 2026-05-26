@@ -457,6 +457,7 @@ class PhotoEvaluationResult {
               return detail.copyWith(weight: weights.nimaWeight);
             case 'rgnet_aadb_gpu':
             case 'rgnet_paper_aadb':
+            case 'rgnet_pil_resize_aadb':
               return detail.copyWith(weight: weights.rgnetWeight);
             case 'alamp_aadb_gpu':
             case 'mobile_alamp_v2':
