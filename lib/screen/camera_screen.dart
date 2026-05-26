@@ -187,6 +187,7 @@ class _CameraScreenState extends State<CameraScreen> {
   StreamSubscription<AccelerometerEvent>? _accelerometerSub;
   bool _loggedFirstBuild = false;
   String? _lastLoggedYoloPreviewSignature;
+  int _yoloViewEpoch = 0;
 
   bool get _isPortraitMode => _shootingMode == ShootingMode.person;
   bool get _isLandscapeMode => _shootingMode == ShootingMode.landscape;
@@ -1310,6 +1311,7 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   void _onModeChanged(ShootingMode mode) {
+    final wasLandscapeMode = _isLandscapeMode;
     _sceneCoach.reset();
     _cameraController.setLockedRoi();
     _resetPortraitState();
@@ -1349,7 +1351,43 @@ class _CameraScreenState extends State<CameraScreen> {
       _showSideToolSelector = false;
       _isRuleSelectorExpanded = false;
       _showPortraitIntentSelector = false;
+      if (wasLandscapeMode && mode != ShootingMode.landscape) {
+        _yoloViewEpoch++;
+      }
     });
+
+    if (wasLandscapeMode && mode != ShootingMode.landscape) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_restoreYoloPreviewAfterLandscape());
+      });
+    }
+  }
+
+  Future<void> _restoreYoloPreviewAfterLandscape() async {
+    await Future<void>.delayed(const Duration(milliseconds: 150));
+    if (!mounted || _isLandscapeMode) return;
+
+    try {
+      await _cameraController.restartCamera(
+        reason: 'mode_change_from_landscape',
+      );
+      await _cameraController.setZoomLevel(_selectedZoom);
+      await _cameraController.setPortraitFaceAnalysisThrottle(
+        intervalMs: _portraitNativeFaceIntervalMs,
+        intervalFrames: _portraitNativeFaceIntervalFrames,
+      );
+      await _configureZoomPresets();
+    } catch (error, stackTrace) {
+      _acutCameraLog(
+        'Failed to restore YOLO preview after landscape mode: $error',
+      );
+      if (DebugLogFlags.yoloDebug) {
+        debugPrint(
+          '[YOLO_DEBUG][mode] restore after landscape failed: $error',
+        );
+        debugPrintStack(stackTrace: stackTrace);
+      }
+    }
   }
 
   void _onTapFocus(Offset localPosition) {
@@ -1685,7 +1723,7 @@ class _CameraScreenState extends State<CameraScreen> {
       );
     }
 
-    const yoloViewKey = ValueKey<String>('acut_yolo_camera_view');
+    final yoloViewKey = ValueKey<String>('acut_yolo_camera_view_$_yoloViewEpoch');
     final yoloViewSignature =
         '${yoloViewKey.value}|mode=${_shootingMode.name}|front=$_isFrontCamera|'
         'orientation=$_deviceOrientationDeg|landscape=$_isLandscapeDeviceOrientation';
@@ -1710,6 +1748,7 @@ class _CameraScreenState extends State<CameraScreen> {
       useGpu: true,
       showNativeUI: false,
       showOverlays: false,
+      lensFacing: _isFrontCamera ? LensFacing.front : LensFacing.back,
       confidenceThreshold: _isGroupPortraitMode
           ? (_isLandscapeDeviceOrientation
                 ? groupPersonLandscapeConfidenceThreshold
@@ -1725,7 +1764,6 @@ class _CameraScreenState extends State<CameraScreen> {
       streamingConfig: _isPortraitMode && !_isGroupPortraitMode
           ? const YOLOStreamingConfig.withPoses()
           : const YOLOStreamingConfig.minimal(),
-      lensFacing: _isFrontCamera ? LensFacing.front : LensFacing.back,
       onResult: _isPortraitMode ? _handlePoseDetections : _handleDetections,
       onZoomChanged: (zoomLevel) {
         if (!mounted) return;

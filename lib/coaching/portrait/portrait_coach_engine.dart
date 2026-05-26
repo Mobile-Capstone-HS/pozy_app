@@ -1144,6 +1144,8 @@ class PortraitCoachEngine {
     final highPitchThreshold = relaxedSelfieLike ? 28.0 : 20.0;
     final midPitchThreshold = relaxedSelfieLike ? 16.0 : 10.0;
     final lowPitchThreshold = relaxedSelfieLike ? -22.0 : -15.0;
+    final rollThreshold = relaxedSelfieLike ? 28.0 : 20.0;
+
     if (!deferGenericFaceAngleToSelfie &&
         s.facePitch != null &&
         s.facePitch! > highPitchThreshold) {
