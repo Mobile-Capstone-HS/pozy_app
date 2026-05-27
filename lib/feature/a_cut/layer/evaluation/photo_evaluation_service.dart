@@ -1,6 +1,8 @@
 import 'dart:math' as math;
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
+
+import '../../../../config/experimental_features.dart';
 import '../../model/aesthetic_ensemble_score_result.dart';
 import '../../model/aesthetic_ensemble_weights.dart';
 import '../../model/model_score_detail.dart';
@@ -101,6 +103,14 @@ class OnDevicePhotoEvaluationService implements PhotoEvaluationService {
       imageIndex: batchImageIndex,
       preprocessBundle: preprocessBundle,
       sharedInputCache: inputCache,
+    );
+    await _logC6TopiqCandidate(
+      imageBytes,
+      technicalSummary: technicalSummary,
+      preprocessBundle: preprocessBundle,
+      inputCache: inputCache,
+      fileName: fileName,
+      batchImageIndex: batchImageIndex,
     );
     AestheticEnsembleScoreResult? aestheticSummary;
     final warnings = <String>[];
@@ -236,5 +246,70 @@ class OnDevicePhotoEvaluationService implements PhotoEvaluationService {
       }
     }
     return null;
+  }
+
+  Future<void> _logC6TopiqCandidate(
+    Uint8List imageBytes, {
+    required TflitePhotoScoreSummary technicalSummary,
+    required AcutImagePreprocessBundle preprocessBundle,
+    required Map<String, Future<Uint8List>> inputCache,
+    required String? fileName,
+    required int? batchImageIndex,
+  }) async {
+    if (!ExperimentalFeatures.enableC6TopiqKoniqCandidate) {
+      return;
+    }
+
+    final koniq = _detail(technicalSummary, koniqMobileContract.id);
+    if (koniq == null) {
+      debugPrint(
+        '[AcutC6Candidate] skipped reason=missing_koniq '
+        'image_index=${batchImageIndex ?? '-'} file="${fileName ?? 'unknown'}"',
+      );
+      return;
+    }
+
+    final sw = Stopwatch()..start();
+    try {
+      final topiqRun = await _technicalTfliteService.evaluateSingleModel(
+        imageBytes,
+        topiqLiteMixed112Contract,
+        imageIndex: batchImageIndex,
+        preprocessBundle: preprocessBundle,
+        inputCache: inputCache,
+      );
+      sw.stop();
+
+      final koniqScore100 = koniq.normalizedScore * 100.0;
+      final topiqScore100 = topiqRun.detail.normalizedScore * 100.0;
+      final existingTechnicalScore100 = technicalSummary.technicalScore * 100.0;
+      final candidateC6 = math.min(
+        (0.7 * topiqScore100) + (0.3 * koniqScore100),
+        koniqScore100 + 8.0,
+      );
+      final delta = candidateC6 - existingTechnicalScore100;
+
+      debugPrint(
+        '[AcutC6Candidate] image_index=${batchImageIndex ?? '-'} '
+        'file="${fileName ?? 'unknown'}" '
+        'koniq_score_100=${koniqScore100.toStringAsFixed(2)} '
+        'topiq_mixed112_score_100=${topiqScore100.toStringAsFixed(2)} '
+        'existing_technical_score_100=${existingTechnicalScore100.toStringAsFixed(2)} '
+        'candidate_c6_score=${candidateC6.toStringAsFixed(2)} '
+        'delta_c6_existing=${delta.toStringAsFixed(2)} '
+        'topiq_total_additional_ms=${sw.elapsedMilliseconds} '
+        'topiq_asset=${topiqRun.model.assetPath} '
+        'topiq_resize_mode=${topiqRun.model.resizeMode.name}',
+      );
+    } catch (error) {
+      sw.stop();
+      debugPrint(
+        '[AcutC6Candidate] failed image_index=${batchImageIndex ?? '-'} '
+        'file="${fileName ?? 'unknown'}" '
+        'koniq_score_100=${(koniq.normalizedScore * 100.0).toStringAsFixed(2)} '
+        'topiq_total_additional_ms=${sw.elapsedMilliseconds} '
+        'error="$error"',
+      );
+    }
   }
 }

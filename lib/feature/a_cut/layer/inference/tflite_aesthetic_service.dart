@@ -201,13 +201,16 @@ class TfliteAestheticService {
     );
     final resolved = contract.resolve(metadataResult: metadataResult);
     if (contract.id == 'nima_mobile' ||
-        contract.id == 'rgnet_pil_resize_aadb') {
+        contract.id == 'rgnet_pil_resize_aadb' ||
+        contract.id == 'topiq_lite_mixed112') {
       debugPrint(
         '[TfliteAestheticService] model_resolved '
         'id=${resolved.id} '
         'assetPath=${resolved.assetPath} '
         'metadataPath=${resolved.metadataAssetPath} '
         'metadataBacked=${resolved.metadataBacked} '
+        'resizeMode=${resolved.resizeMode.name} '
+        'normalization=${resolved.normalization.name} '
         'metadataWarning=${metadataResult.warning ?? 'none'}',
       );
     }
@@ -537,31 +540,29 @@ class TfliteAestheticService {
       final expectedBytes = runtimeHeight * runtimeWidth * 3 * 4;
       final cacheKey =
           '$index:$runtimeWidth:$runtimeHeight:${contract.normalization.name}:'
+          '${contract.resizeMode.name}:'
           '${contract.inputDtype}:${contract.colorFormat}:${contract.tensorLayout}';
 
       final preSw = Stopwatch()..start();
 
       final preprocessed = await inputCache.putIfAbsent(
         cacheKey,
-        () =>
-            bundle?.rgbFloat32(
-              width: runtimeWidth,
-              height: runtimeHeight,
-              normalization: contract.normalization,
-            ) ??
-            _preprocessor.preprocessToRgbFloat32(
-              imageBytes,
-              width: runtimeWidth,
-              height: runtimeHeight,
-              normalization: contract.normalization,
-            ),
+        () => _preprocessTensorInput(
+          imageBytes,
+          width: runtimeWidth,
+          height: runtimeHeight,
+          normalization: contract.normalization,
+          resizeMode: contract.resizeMode,
+          bundle: bundle,
+        ),
       );
       preSw.stop();
       final pMs = preSw.elapsedMilliseconds;
       preprocessMs += pMs;
       AcutPerfMetrics.totalPreprocessMs += pMs;
       debugPrint(
-        '[AcutPerf] preprocess_${runtimeWidth}_ms=$pMs model=${contract.id}',
+        '[AcutPerf] preprocess_${runtimeWidth}_ms=$pMs model=${contract.id} '
+        'resize_mode=${contract.resizeMode.name}',
       );
 
       if (preprocessed.lengthInBytes != expectedBytes) {
@@ -878,6 +879,42 @@ class TfliteAestheticService {
     final batch = shape[0] <= 0 ? 1 : shape[0];
     final bins = shape[1] <= 0 ? 10 : shape[1];
     return [batch, bins];
+  }
+
+  Future<Uint8List> _preprocessTensorInput(
+    Uint8List imageBytes, {
+    required int width,
+    required int height,
+    required ImageNormalization normalization,
+    required AestheticModelResizeMode resizeMode,
+    required AcutImagePreprocessBundle? bundle,
+  }) {
+    switch (resizeMode) {
+      case AestheticModelResizeMode.resize:
+        return bundle?.rgbFloat32(
+              width: width,
+              height: height,
+              normalization: normalization,
+            ) ??
+            _preprocessor.preprocessToRgbFloat32(
+              imageBytes,
+              width: width,
+              height: height,
+              normalization: normalization,
+            );
+      case AestheticModelResizeMode.resizeWithPad:
+        return bundle?.resizeWithPadRgbFloat32(
+              width: width,
+              height: height,
+              normalization: normalization,
+            ) ??
+            _preprocessor.preprocessResizeWithPadToRgbFloat32(
+              imageBytes,
+              width: width,
+              height: height,
+              normalization: normalization,
+            );
+    }
   }
 
   List<double> _extractNimaProbabilities(dynamic output) {

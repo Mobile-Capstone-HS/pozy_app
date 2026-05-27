@@ -13,6 +13,8 @@ enum AestheticModelOutputType {
 
 enum AestheticModelExecutionMode { tensor, signature }
 
+enum AestheticModelResizeMode { resize, resizeWithPad }
+
 class AestheticModelContract {
   final String id;
   final String label;
@@ -32,6 +34,7 @@ class AestheticModelContract {
   final String tensorLayout;
   final AestheticModelExecutionMode executionMode;
   final String? signatureKey;
+  final AestheticModelResizeMode resizeMode;
 
   const AestheticModelContract({
     required this.id,
@@ -52,6 +55,7 @@ class AestheticModelContract {
     this.tensorLayout = 'NHWC',
     this.executionMode = AestheticModelExecutionMode.tensor,
     this.signatureKey,
+    this.resizeMode = AestheticModelResizeMode.resize,
   });
 
   String get metadataAssetPath =>
@@ -88,6 +92,7 @@ class AestheticModelContract {
       resolutionNotes,
     );
     final resolvedDtype = _resolveDtype(metadata, resolutionNotes);
+    final resolvedResizeMode = _resolveResizeMode(metadata, resolutionNotes);
 
     return ResolvedAestheticModelConfig(
       id: id,
@@ -109,6 +114,7 @@ class AestheticModelContract {
       tensorLayout: resolvedTensorLayout,
       executionMode: executionMode,
       signatureKey: signatureKey,
+      resizeMode: resolvedResizeMode,
       metadata: metadata,
       metadataBacked: metadata != null,
       resolutionNotes: resolutionNotes,
@@ -135,6 +141,13 @@ class AestheticModelContract {
         hint.contains('div_255') ||
         hint.contains('pixel_value_div_255')) {
       return ImageNormalization.zeroToOne;
+    }
+    if (hint.contains('none') ||
+        hint.contains('0..255') ||
+        hint.contains('0.0, 255.0') ||
+        hint.contains('range=[0.0, 255.0]') ||
+        hint.contains('range=[0, 255]')) {
+      return ImageNormalization.rawZeroTo255;
     }
     if (hint.contains('127.5') ||
         hint.contains('-1.0') ||
@@ -245,6 +258,28 @@ class AestheticModelContract {
     return inputDtype;
   }
 
+  AestheticModelResizeMode _resolveResizeMode(
+    TfliteModelMetadata? metadata,
+    List<String> resolutionNotes,
+  ) {
+    final value = metadata?.input.resizing?.toLowerCase();
+    if (value == null || value.isEmpty) {
+      return resizeMode;
+    }
+    if (value.contains('resize_with_pad') ||
+        value.contains('resize-with-pad') ||
+        value.contains('letterbox')) {
+      return AestheticModelResizeMode.resizeWithPad;
+    }
+    if (value == 'resize' || value.contains('resize')) {
+      return AestheticModelResizeMode.resize;
+    }
+    resolutionNotes.add(
+      'Unsupported resizing "$value". Using ${resizeMode.name} fallback.',
+    );
+    return resizeMode;
+  }
+
   String _resolveScoreInterpretation({
     required TfliteModelMetadata? metadata,
     required AestheticModelOutputType outputType,
@@ -294,6 +329,7 @@ class ResolvedAestheticModelConfig {
   final String tensorLayout;
   final AestheticModelExecutionMode executionMode;
   final String? signatureKey;
+  final AestheticModelResizeMode resizeMode;
   final TfliteModelMetadata? metadata;
   final bool metadataBacked;
   final List<String> resolutionNotes;
@@ -318,6 +354,7 @@ class ResolvedAestheticModelConfig {
     required this.tensorLayout,
     required this.executionMode,
     required this.signatureKey,
+    required this.resizeMode,
     required this.metadata,
     required this.metadataBacked,
     required this.resolutionNotes,
@@ -325,7 +362,7 @@ class ResolvedAestheticModelConfig {
   });
 
   String get preprocessCacheKey =>
-      '$inputWidth:$inputHeight:${normalization.name}:$inputDtype:$colorFormat:$tensorLayout';
+      '$inputWidth:$inputHeight:${normalization.name}:${resizeMode.name}:$inputDtype:$colorFormat:$tensorLayout';
 
   String get displayLabel => label;
 
@@ -361,6 +398,7 @@ class ResolvedAestheticModelConfig {
       tensorLayout: tensorLayout,
       executionMode: executionMode,
       signatureKey: signatureKey,
+      resizeMode: resizeMode,
       metadata: metadata,
       metadataBacked: metadataBacked,
       resolutionNotes: resolutionNotes,
@@ -422,6 +460,21 @@ const AestheticModelContract fliveImageMobileContract = AestheticModelContract(
   normalization: ImageNormalization.zeroToOne,
   outputType: AestheticModelOutputType.scalarPercent,
   weight: 0.4,
+);
+
+const AestheticModelContract topiqLiteMixed112Contract = AestheticModelContract(
+  id: 'topiq_lite_mixed112',
+  label: 'TOPIQ mixed112',
+  assetPath: 'assets/models/topiq_lite_mixed112_frozen_fp16.tflite',
+  metadataAssetPathOverride: 'assets/models/topiq_lite_mixed112.metadata.json',
+  dimension: ModelScoreDimension.technical,
+  inputWidth: 384,
+  inputHeight: 384,
+  expectedOutputLength: 1,
+  normalization: ImageNormalization.rawZeroTo255,
+  outputType: AestheticModelOutputType.scalarUnitInterval,
+  weight: 0.0,
+  resizeMode: AestheticModelResizeMode.resizeWithPad,
 );
 
 const AestheticModelContract nimaMobileContract = AestheticModelContract(
