@@ -190,10 +190,14 @@ class PortraitCoachEngine {
   }
 
   bool _isLikelySeated(PortraitSceneState s) {
-    final hipY = _averageDefined([s.leftHipPosition?.dy, s.rightHipPosition?.dy]);
-    final kneeY = _averageDefined(
-      [s.leftKneePosition?.dy, s.rightKneePosition?.dy],
-    );
+    final hipY = _averageDefined([
+      s.leftHipPosition?.dy,
+      s.rightHipPosition?.dy,
+    ]);
+    final kneeY = _averageDefined([
+      s.leftKneePosition?.dy,
+      s.rightKneePosition?.dy,
+    ]);
     if (hipY == null || kneeY == null) return false;
     final compressedLeg = (kneeY - hipY) < 0.18;
     final upperBodyShot =
@@ -209,8 +213,7 @@ class PortraitCoachEngine {
     if (!dramaticFullBody) return false;
     final crossedOrTightFeet =
         s.ankleSpacingRatio != null && s.ankleSpacingRatio! < 0.45;
-    final wideFeet =
-        s.ankleSpacingRatio != null && s.ankleSpacingRatio! > 1.6;
+    final wideFeet = s.ankleSpacingRatio != null && s.ankleSpacingRatio! > 1.6;
     final offCenter = (s.personCenterX - 0.5).abs() > 0.14;
     return s.hasContrapposto || crossedOrTightFeet || wideFeet || offCenter;
   }
@@ -498,7 +501,10 @@ class PortraitCoachEngine {
     }
   }
 
-  CoachingResult? _evaluateComposition(PortraitSceneState s, _PoseIntent intent) {
+  CoachingResult? _evaluateComposition(
+    PortraitSceneState s,
+    _PoseIntent intent,
+  ) {
     final relaxedCropIntent =
         intent == _PoseIntent.seated ||
         intent == _PoseIntent.fashion ||
@@ -558,10 +564,10 @@ class PortraitCoachEngine {
 
     if (s.lowerBodyTouchesBottom && !relaxedCropIntent) {
       return const CoachingResult(
-        message: '아래쪽이 잘릴 수 있어요',
+        message: '발이 잘렸어요',
         priority: CoachingPriority.composition,
         confidence: 0.82,
-        reason: '발끝까지 담거나 허벅지 중간에서 맞춰보세요',
+        reason: '발끝에 맞춰 다시 담아보세요',
       );
     }
 
@@ -579,7 +585,8 @@ class PortraitCoachEngine {
     }
 
     // ─── 6. 전신 발 아래 공간 ─────────────────────────────────
-    if (s.shotType == ShotType.fullBody && intent == _PoseIntent.standingBasic) {
+    if (s.shotType == ShotType.fullBody &&
+        intent == _PoseIntent.standingBasic) {
       if (s.footSpaceRatio < 0.05) {
         return const CoachingResult(
           message: '발 아래 공간을 더 넣어주세요.',
@@ -587,11 +594,12 @@ class PortraitCoachEngine {
           confidence: 0.8,
         );
       }
-      if (s.footSpaceRatio > 0.10) {
+      if (s.footSpaceRatio > 0.20) {
         return const CoachingResult(
-          message: '인물이 조금 작게 보여요. 살짝 가까이 가보세요.',
+          message: '아래 여백이 넓어요',
           priority: CoachingPriority.composition,
           confidence: 0.68,
+          reason: '발끝을 화면 하단에 조금 더 맞춰보세요',
         );
       }
     }
@@ -696,7 +704,7 @@ class PortraitCoachEngine {
 
     // 관절이 프레임 하단 12% 안에 있는 경우만 (y > 0.85)
     // 매우 하단(y > 0.93)은 거의 프레임 밖이므로 더 강한 경고
-    final isVeryBottom = y > 0.93;
+    final isVeryBottom = y > 0.995;
     final relaxLegCrop =
         intent == _PoseIntent.seated ||
         intent == _PoseIntent.fashion ||
@@ -715,10 +723,10 @@ class PortraitCoachEngine {
         reason: isVeryBottom ? '허벅지 중간이나 종아리까지 담아보세요' : '무릎선보다 살짝 위나 아래로 맞춰보세요',
       ),
       'ankle' => CoachingResult(
-        message: isVeryBottom ? '발끝이 프레임에 걸려요' : '발목선에 걸려요',
+        message: isVeryBottom ? '발이 잘렸어요' : '발목선에 걸려요',
         priority: CoachingPriority.composition,
         confidence: 0.92,
-        reason: isVeryBottom ? '발끝 아래를 조금 더 담아보세요' : '발끝까지 담거나 종아리 중간에서 맞춰보세요',
+        reason: isVeryBottom ? '발끝에 맞춰 다시 담아보세요' : '발끝에 맞춰 조금만 아래로 내려보세요',
       ),
       'hip' when s.shotType == ShotType.waistShot => const CoachingResult(
         message: '허리선에 걸려요',
@@ -741,14 +749,14 @@ class PortraitCoachEngine {
     PortraitSceneState s,
     _PoseIntent intent,
   ) {
-    if (intent == _PoseIntent.seated ||
+    final relaxedFullBodyIntent =
+        intent == _PoseIntent.seated ||
         intent == _PoseIntent.fashion ||
-        intent == _PoseIntent.casualSnapshot) {
-      return null;
-    }
+        intent == _PoseIntent.casualSnapshot;
 
     // (1) 양발 가시성: 전신인데 한쪽 발만 보이면 경고
-    if (s.hasReliableAnkles &&
+    if (!relaxedFullBodyIntent &&
+        s.hasReliableAnkles &&
         !s.hasReliableBothAnkles &&
         s.personBboxRatio >= 0.16) {
       return const CoachingResult(
@@ -768,20 +776,27 @@ class PortraitCoachEngine {
         reason: '발끝 아래를 조금 더 담아보세요',
       );
     }
-    if (s.hasReliableAnkles && s.footSpaceRatio > 0.12) {
+    if (s.hasReliableAnkles && s.footSpaceRatio > 0.15) {
       return const CoachingResult(
-        message: '아래 여백이 넓어요. 살짝 가까이 가보세요.',
+        message: '아래 여백이 넓어요',
         priority: CoachingPriority.composition,
         confidence: 0.68,
+        reason: '발끝을 화면 하단에 조금 더 맞춰보세요',
       );
+    }
+
+    if (relaxedFullBodyIntent) {
+      return null;
     }
 
     // (3) 카메라 높이 가이드 (눈 위치로 추정)
     // 전신은 허리~가슴 높이에서 찍어야 다리가 길어 보임
     // 눈이 너무 높으면(eyeY < 0.22) 카메라가 너무 낮음
     // 눈이 너무 낮으면(eyeY > 0.38) 카메라가 너무 높음 (다리가 짧아 보임)
-    if (s.eyeMidpoint != null && s.eyeConfidence > _minConf) {
-      if (s.eyeMidpoint!.dy > 0.38) {
+    if (s.eyeMidpoint != null &&
+        s.eyeConfidence > _minConf &&
+        s.facePitch != null) {
+      if (s.eyeMidpoint!.dy > 0.44 && s.facePitch! < -8) {
         return const CoachingResult(
           message: '폰 높이를 조금 낮춰보세요',
           priority: CoachingPriority.composition,
@@ -848,15 +863,6 @@ class PortraitCoachEngine {
     final subjectY = s.eyeMidpoint?.dy ?? (s.hasFace ? s.faceCenterY : 0.5);
     final subject = Offset(s.personCenterX, subjectY);
     if (_rule.type == CompositionRuleType.none) {
-      // 기존 휴리스틱: 중앙(0.42~0.58) 안에 있으면 좌우 한쪽으로 이동 권장.
-      if (s.personCenterX > 0.42 && s.personCenterX < 0.58) {
-        return const CoachingResult(
-          message: '인물을 화면 한쪽에 살짝 배치해보세요.',
-          priority: CoachingPriority.composition,
-          confidence: 0.65,
-          reason: '중앙에서 살짝 벗어나면 더 자연스러워요',
-        );
-      }
       return null;
     }
     final score = _rule.scoreAlignment(subject);
@@ -958,7 +964,7 @@ class PortraitCoachEngine {
         maxH = 0.10;
       case ShotType.fullBody:
         minH = 0.05;
-        maxH = 0.10;
+        maxH = 0.50;
       case ShotType.environmental:
       case ShotType.groupShot:
       case ShotType.unknown:
@@ -1113,7 +1119,8 @@ class PortraitCoachEngine {
     }
 
     // fullBody: 콘트라포스토 체크
-    if (s.shotType == ShotType.fullBody &&
+    if (s.personCount < 0 &&
+        s.shotType == ShotType.fullBody &&
         intent == _PoseIntent.standingBasic &&
         s.hasReliableKnees &&
         !s.hasContrapposto &&
@@ -1141,8 +1148,8 @@ class PortraitCoachEngine {
         intent == _PoseIntent.selfie ||
         intent == _PoseIntent.fashion ||
         intent == _PoseIntent.casualSnapshot;
-    final highPitchThreshold = relaxedSelfieLike ? 28.0 : 20.0;
-    final midPitchThreshold = relaxedSelfieLike ? 16.0 : 10.0;
+    final highPitchThreshold = relaxedSelfieLike ? 32.0 : 24.0;
+    final midPitchThreshold = relaxedSelfieLike ? 20.0 : 14.0;
     final lowPitchThreshold = relaxedSelfieLike ? -22.0 : -15.0;
     final rollThreshold = relaxedSelfieLike ? 28.0 : 20.0;
 
@@ -1281,6 +1288,9 @@ class PortraitCoachEngine {
 
     // ── 5. 헤드룸 ────────────────────────────────────────
     if (s.hasPose || s.hasNose) {
+      final maxSelfieHeadroom = s.shotType == ShotType.fullBody
+          ? 0.50
+          : (relaxedSelfie ? 0.24 : 0.18);
       if (s.headroomRatio < (relaxedSelfie ? 0.025 : 0.04)) {
         return const CoachingResult(
           message: '머리가 잘려요',
@@ -1289,7 +1299,7 @@ class PortraitCoachEngine {
           reason: '폰을 살짝 내려 머리 위를 담아보세요',
         );
       }
-      if (s.headroomRatio > (relaxedSelfie ? 0.24 : 0.18)) {
+      if (s.headroomRatio > maxSelfieHeadroom) {
         return const CoachingResult(
           message: '머리 위가 많이 비었어요',
           priority: CoachingPriority.composition,

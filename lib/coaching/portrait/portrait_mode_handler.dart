@@ -1198,7 +1198,7 @@ class PortraitModeHandler {
         kneeConf >= 0.15) {
       if (_isAtEdge(lKnee) || _isAtEdge(rKnee)) croppedList.add('knee');
     }
-    if (shot == ShotType.fullBody && ankleConf >= 0.15) {
+    if (shot == ShotType.fullBody && ankleConf >= 0.12) {
       if (_isAtEdge(lAnkle) || _isAtEdge(rAnkle)) croppedList.add('ankle');
     }
 
@@ -1243,10 +1243,10 @@ class PortraitModeHandler {
     // 관절에서 자르면 어색 → 관절이 화면 하단 12% 안에 있으면 경고
     String? bottomJoint;
     double? bottomJointY;
-    const bottomZone = 0.85;
+    const bottomZone = 0.97;
     final jointCandidates = <String, double?>{
       'knee': kneeConf >= 0.15 ? _maxY(lKnee, rKnee) : null,
-      'ankle': ankleConf >= 0.15 ? _maxY(lAnkle, rAnkle) : null,
+      'ankle': ankleConf >= 0.12 ? _maxY(lAnkle, rAnkle) : null,
       'wrist': _maxY(lWrist, rWrist),
       'hip': _maxY(lHip, rHip),
     };

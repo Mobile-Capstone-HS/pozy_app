@@ -265,9 +265,9 @@ class PortraitSceneState {
       (leftKneePosition != null || rightKneePosition != null) &&
       kneeConfidence >= 0.15;
 
-  bool get hasReliableAnkles => hasAnyAnkle && ankleConfidence >= 0.15;
+  bool get hasReliableAnkles => hasAnyAnkle && ankleConfidence >= 0.12;
 
-  bool get hasReliableBothAnkles => hasBothAnkles && ankleConfidence >= 0.15;
+  bool get hasReliableBothAnkles => hasBothAnkles && ankleConfidence >= 0.12;
 
   /// 프레임 하단 근처에서 관절이 잘리고 있는지
   bool get isBottomJointCut => bottomJoint != null && bottomJointY != null;
