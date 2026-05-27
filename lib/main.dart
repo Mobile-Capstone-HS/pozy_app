@@ -13,7 +13,7 @@ import 'firebase/firebase_options.dart';
 List<CameraDescription> cameras = [];
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  WidgetsFlutterBinding.ensureInitialized(); 
   await _loadDotenv();
   await _initializeAppServices();
   runApp(const PozyApp());

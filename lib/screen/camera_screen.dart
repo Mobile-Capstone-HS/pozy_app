@@ -107,6 +107,7 @@ class _CameraScreenState extends State<CameraScreen> {
   final _landscapeResolver = const CompositionResolver();
   final _landscapeTemporalFilter = CompositionTemporalFilter();
   final _landscapeAnalyzer = LandscapeAnalyzer();
+  int _yoloPreviewGeneration = 0;
 
   List<double> _zoomPresets = [1.0, 2.0];
   Size _previewSize = Size.zero;
@@ -129,6 +130,7 @@ class _CameraScreenState extends State<CameraScreen> {
   double _currentZoom = 1.0;
   bool _isFrontCamera = false;
   bool _isSaving = false;
+  bool _isSwitchingShootingMode = false;
   bool _showFlash = false;
   bool _torchOn = false;
   bool _showPortraitDebugOverlay = false;
@@ -178,6 +180,79 @@ class _CameraScreenState extends State<CameraScreen> {
       confidence: 0.0,
     ),
   );
+
+  void _invalidateYoloPreviewResults() {
+    _yoloPreviewGeneration++;
+  }
+
+  bool _samePortraitCoaching(
+    portrait.CoachingResult a,
+    portrait.CoachingResult b,
+  ) {
+    return a.message == b.message &&
+        a.priority == b.priority &&
+        (a.confidence - b.confidence).abs() < 0.02 &&
+        a.reason == b.reason &&
+        a.signalKey == b.signalKey;
+  }
+
+  bool _sameNormalizedOffset(Offset? a, Offset? b) {
+    if (a == null || b == null) return a == b;
+    return (a.dx - b.dx).abs() < 0.004 && (a.dy - b.dy).abs() < 0.004;
+  }
+
+  bool _sameNormalizedRect(Rect? a, Rect? b) {
+    if (a == null || b == null) return a == b;
+    return (a.left - b.left).abs() < 0.004 &&
+        (a.top - b.top).abs() < 0.004 &&
+        (a.right - b.right).abs() < 0.004 &&
+        (a.bottom - b.bottom).abs() < 0.004;
+  }
+
+  bool _sameNormalizedRectList(List<Rect> a, List<Rect> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (!_sameNormalizedRect(a[i], b[i])) return false;
+    }
+    return true;
+  }
+
+  bool _sameNullableDouble(double? a, double? b, [double tolerance = 0.004]) {
+    if (a == null || b == null) return a == b;
+    return (a - b).abs() < tolerance;
+  }
+
+  bool _samePortraitOverlay(OverlayData a, OverlayData b) {
+    return _sameNormalizedRectList(a.closedFaceRects, b.closedFaceRects) &&
+        _sameNormalizedOffset(a.leftEye, b.leftEye) &&
+        _sameNormalizedOffset(a.rightEye, b.rightEye) &&
+        _sameNormalizedOffset(a.nose, b.nose) &&
+        _sameNormalizedOffset(a.leftShoulder, b.leftShoulder) &&
+        _sameNormalizedOffset(a.rightShoulder, b.rightShoulder) &&
+        _sameNormalizedOffset(a.leftElbow, b.leftElbow) &&
+        _sameNormalizedOffset(a.rightElbow, b.rightElbow) &&
+        _sameNormalizedOffset(a.leftWrist, b.leftWrist) &&
+        _sameNormalizedOffset(a.rightWrist, b.rightWrist) &&
+        _sameNormalizedOffset(a.leftHip, b.leftHip) &&
+        _sameNormalizedOffset(a.rightHip, b.rightHip) &&
+        _sameNormalizedOffset(a.leftKnee, b.leftKnee) &&
+        _sameNormalizedOffset(a.rightKnee, b.rightKnee) &&
+        _sameNormalizedOffset(a.leftAnkle, b.leftAnkle) &&
+        _sameNormalizedOffset(a.rightAnkle, b.rightAnkle) &&
+        _samePortraitCoaching(a.coaching, b.coaching) &&
+        a.shotType == b.shotType &&
+        _sameNullableDouble(a.eyeConfidence, b.eyeConfidence, 0.02) &&
+        _sameNullableDouble(a.shoulderConfidence, b.shoulderConfidence, 0.02) &&
+        _sameNormalizedRect(a.faceGuideRect, b.faceGuideRect) &&
+        _sameNormalizedRect(a.bodyGuideRect, b.bodyGuideRect) &&
+        _sameNullableDouble(a.targetEyeLineY, b.targetEyeLineY) &&
+        _sameNullableDouble(a.targetHeadroomTop, b.targetHeadroomTop) &&
+        a.groupPersonCount == b.groupPersonCount &&
+        a.groupFaceHiddenCount == b.groupFaceHiddenCount &&
+        a.groupClosedEyeCount == b.groupClosedEyeCount &&
+        a.activeRule == b.activeRule;
+  }
+
   int _portraitLostFrames = 0;
   static const int _portraitLostFrameTolerance = 8;
   CompositionDecision? _landscapeDecision;
@@ -1235,9 +1310,23 @@ class _CameraScreenState extends State<CameraScreen> {
       _portraitLostFrames = 0;
     }
 
+    final overlayChanged = !_samePortraitOverlay(
+      _portraitOverlayData,
+      analysis.overlayData,
+    );
+    final coachingChanged = !_samePortraitCoaching(
+      _portraitCoaching,
+      analysis.coaching,
+    );
+    if (!overlayChanged && !coachingChanged) return;
+
     setState(() {
-      _portraitOverlayData = analysis.overlayData;
-      _portraitCoaching = analysis.coaching;
+      if (overlayChanged) {
+        _portraitOverlayData = analysis.overlayData;
+      }
+      if (coachingChanged) {
+        _portraitCoaching = analysis.coaching;
+      }
     });
   }
 
@@ -1251,6 +1340,7 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<void> _switchCamera() async {
+    _invalidateYoloPreviewResults();
     if (_isLandscapeMode) {
       await _landscapeController.switchCamera();
     } else {
@@ -1311,55 +1401,74 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   void _onModeChanged(ShootingMode mode) {
-    final wasLandscapeMode = _isLandscapeMode;
-    _sceneCoach.reset();
-    _cameraController.setLockedRoi();
-    _resetPortraitState();
-    _landscapeCompositionEngine.reset();
-    _landscapeTemporalFilter.reset();
-    _landscapeAnalyzer.reset();
+    unawaited(_changeShootingMode(mode));
+  }
 
-    setState(() {
-      _shootingMode = mode;
-      if (mode == ShootingMode.person) {
-        _portraitIntent = portrait.PortraitIntent.single;
-      }
-      _applyIdleCoachingForMode(mode);
-      _coachingLevel = CoachingLevel.caution;
-      _coachingScore = null;
-      _directionHint = DirectionHint.none;
-      _lightDirection = LightDirection.unknown;
-      _focusPoint = null;
-      _showFocusIndicator = false;
-      _isDrawingRoi = false;
-      _roiDragStart = null;
-      _roiDragCurrent = null;
-      _lockedRoi = null;
-      _lockedRoiCamera = null;
-      _lockedRoiManual = false;
-      _lockedClassIndex = null;
-      _lockedAnchorRoiCamera = null;
-      _lockedAppearanceSignature = null;
-      _lockedRecentAppearanceSignature = null;
-      _lockedTrackingDetection = null;
-      _lockedLostFrames = 0;
-      _manualRoiTrackLossFrames = 0;
-      _lastSentOrientationDeg = -1;
-      _landscapeDecision = null;
-      _landscapeOverlayAdvice = const LandscapeOverlayAdvice.none();
-      _selectedSilhouette = SilhouetteType.none;
-      _showSideToolSelector = false;
-      _isRuleSelectorExpanded = false;
-      _showPortraitIntentSelector = false;
+  Future<void> _changeShootingMode(ShootingMode mode) async {
+    if (_isSwitchingShootingMode || mode == _shootingMode) return;
+    _isSwitchingShootingMode = true;
+    _invalidateYoloPreviewResults();
+
+    try {
+      final wasLandscapeMode = _isLandscapeMode;
       if (wasLandscapeMode && mode != ShootingMode.landscape) {
-        _yoloViewEpoch++;
+        await _landscapeController.stop();
+      } else if (!wasLandscapeMode && mode == ShootingMode.landscape) {
+        await _cameraController.stop();
       }
-    });
+      if (!mounted) return;
 
-    if (wasLandscapeMode && mode != ShootingMode.landscape) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        unawaited(_restoreYoloPreviewAfterLandscape());
+      _sceneCoach.reset();
+      _cameraController.setLockedRoi();
+      _resetPortraitState();
+      _landscapeCompositionEngine.reset();
+      _landscapeTemporalFilter.reset();
+      _landscapeAnalyzer.reset();
+
+      setState(() {
+        _shootingMode = mode;
+        if (mode == ShootingMode.person) {
+          _portraitIntent = portrait.PortraitIntent.single;
+        }
+        _applyIdleCoachingForMode(mode);
+        _coachingLevel = CoachingLevel.caution;
+        _coachingScore = null;
+        _directionHint = DirectionHint.none;
+        _lightDirection = LightDirection.unknown;
+        _focusPoint = null;
+        _showFocusIndicator = false;
+        _isDrawingRoi = false;
+        _roiDragStart = null;
+        _roiDragCurrent = null;
+        _lockedRoi = null;
+        _lockedRoiCamera = null;
+        _lockedRoiManual = false;
+        _lockedClassIndex = null;
+        _lockedAnchorRoiCamera = null;
+        _lockedAppearanceSignature = null;
+        _lockedRecentAppearanceSignature = null;
+        _lockedTrackingDetection = null;
+        _lockedLostFrames = 0;
+        _manualRoiTrackLossFrames = 0;
+        _lastSentOrientationDeg = -1;
+        _landscapeDecision = null;
+        _landscapeOverlayAdvice = const LandscapeOverlayAdvice.none();
+        _selectedSilhouette = SilhouetteType.none;
+        _showSideToolSelector = false;
+        _isRuleSelectorExpanded = false;
+        _showPortraitIntentSelector = false;
+        if (wasLandscapeMode && mode != ShootingMode.landscape) {
+          _yoloViewEpoch++;
+        }
       });
+
+      if (wasLandscapeMode && mode != ShootingMode.landscape) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          unawaited(_restoreYoloPreviewAfterLandscape());
+        });
+      }
+    } finally {
+      _isSwitchingShootingMode = false;
     }
   }
 
@@ -1732,6 +1841,9 @@ class _CameraScreenState extends State<CameraScreen> {
       _acutCameraLog('YOLOView build $yoloViewSignature');
     }
 
+    final yoloPreviewGeneration = _yoloPreviewGeneration;
+    final usePortraitPipeline = _isPortraitMode;
+
     return YOLOView(
       key: yoloViewKey,
       controller: _cameraController,
@@ -1764,7 +1876,14 @@ class _CameraScreenState extends State<CameraScreen> {
       streamingConfig: _isPortraitMode && !_isGroupPortraitMode
           ? const YOLOStreamingConfig.withPoses()
           : const YOLOStreamingConfig.minimal(),
-      onResult: _isPortraitMode ? _handlePoseDetections : _handleDetections,
+      onResult: (results) {
+        if (yoloPreviewGeneration != _yoloPreviewGeneration) return;
+        if (usePortraitPipeline) {
+          _handlePoseDetections(results);
+        } else {
+          _handleDetections(results);
+        }
+      },
       onZoomChanged: (zoomLevel) {
         if (!mounted) return;
         setState(() => _currentZoom = zoomLevel);
@@ -1782,6 +1901,9 @@ class _CameraScreenState extends State<CameraScreen> {
 
   String? _portraitSubGuidance() {
     if (_portraitCoaching.reason != null) return _portraitCoaching.reason;
+    if (_portraitCoaching.priority == portrait.CoachingPriority.perfect) {
+      return null;
+    }
 
     final lighting = _portraitHandler.lastLighting;
     final lightConf = _portraitHandler.lastLightingConf;
@@ -1880,6 +2002,7 @@ class _CameraScreenState extends State<CameraScreen> {
       return;
     }
 
+    _invalidateYoloPreviewResults();
     setState(() {
       _portraitIntent = intent;
       _showPortraitIntentSelector = false;
@@ -2211,10 +2334,7 @@ class _CameraScreenState extends State<CameraScreen> {
                     if (assetPath.isNotEmpty) {
                       content = Opacity(
                         opacity: 0.5,
-                        child: Image.asset(
-                          assetPath,
-                          fit: BoxFit.fitHeight,
-                        ),
+                        child: Image.asset(assetPath, fit: BoxFit.fitHeight),
                       );
                       if (targetBox != null) {
                         content = Stack(

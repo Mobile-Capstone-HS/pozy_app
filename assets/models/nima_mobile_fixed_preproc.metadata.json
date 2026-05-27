@@ -1,0 +1,37 @@
+{
+  "preset": "nima",
+  "display_name": "NIMA Distribution Model (Fixed Preprocessing)",
+  "task": "aesthetic_distribution_regression",
+  "input": {
+    "image_size": [
+      224,
+      224
+    ],
+    "dtype": "float32",
+    "color_format": "RGB",
+    "tensor_layout": "NHWC",
+    "normalization": "pixel_value / 255.0",
+    "note": "EfficientNetV2 include_preprocessing=False; feeds [0,1] directly."
+  },
+  "output": {
+    "shape": [
+      1,
+      10
+    ],
+    "summary": "10-bin aesthetic score distribution over scores 1..10.",
+    "interpretation": "Softmax distribution. Derive mean score with sum(prob[i] * (i + 1)).",
+    "postprocess": "Use distribution directly or compute mean_score = sum(distribution * [1..10])."
+  },
+  "source": {
+    "checkpoint_path": "checkpoints/nima_ava_gpu_fixed_preproc_20260525/final_model.keras",
+    "weights_path": "checkpoints/nima_ava_gpu_fixed_preproc_20260525/best.weights.h5",
+    "saved_model_dir": "checkpoints/nima_ava_gpu_fixed_preproc_20260525/saved_model"
+  },
+  "metrics_summary": {
+    "srcc": 0.5894,
+    "plcc": 0.5929,
+    "auc": 0.8018,
+    "accuracy_5.0": 0.6025,
+    "note": "Beats paper SRCC baseline. High discriminative power despite score bias."
+  }
+}
