@@ -6,6 +6,7 @@ import 'package:gal/gal.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'package:pose_camera_app/services/gemini_service.dart';
+import 'package:pose_camera_app/theme/app_colors.dart';
 import 'crop_screen.dart';
 import 'editor/editor_types.dart';
 import 'editor/editor_image_processing.dart';
@@ -14,7 +15,7 @@ import 'editor/editor_history.dart';
 import 'editor/editor_comparison.dart';
 
 const _kBg = Color(0xFFF6F7FB);
-const _kBlue = Color(0xFF5BB8D4);
+const _kBlue = AppColors.blue;
 const _kDark = Color(0xFF2F2F2F);
 const _kGrey600 = Color(0xFF6B7684);
 const _kGrey400 = Color(0xFFB0B8C1);
@@ -406,7 +407,10 @@ class _EditorScreenState extends State<EditorScreen> {
     if (_sourceBytes == null) return;
     setState(() => _isPreparingImage = true);
     try {
-      final prepared = await compute(flipImageHorizontalAndPrepare, _sourceBytes!);
+      final prepared = await compute(
+        flipImageHorizontalAndPrepare,
+        _sourceBytes!,
+      );
       if (!mounted) return;
       setState(() {
         _sourceBytes = prepared['source'];
@@ -547,7 +551,9 @@ class _EditorScreenState extends State<EditorScreen> {
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 200),
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 18, vertical: 9),
+                        horizontal: 18,
+                        vertical: 9,
+                      ),
                       decoration: BoxDecoration(
                         color: _hasImage && !_isSaving ? _kBlue : _kGrey100,
                         borderRadius: BorderRadius.circular(12),
@@ -639,7 +645,9 @@ class _EditorScreenState extends State<EditorScreen> {
                   child: Center(
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 16),
+                        horizontal: 20,
+                        vertical: 16,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.black.withValues(alpha: 0.7),
                         borderRadius: BorderRadius.circular(16),
@@ -719,12 +727,10 @@ class _EditorScreenState extends State<EditorScreen> {
                   fit: StackFit.expand,
                   children: [
                     // 사진 영역
-                    if (_comparisonMode &&
-                        _previewSourceBytes != null)
+                    if (_comparisonMode && _previewSourceBytes != null)
                       ComparisonView(
                         originalBytes: _previewSourceBytes!,
-                        editedBytes:
-                            _previewBytes ?? _previewSourceBytes!,
+                        editedBytes: _previewBytes ?? _previewSourceBytes!,
                         width: w,
                         height: h,
                       )
@@ -764,8 +770,7 @@ class _EditorScreenState extends State<EditorScreen> {
                         bottom: 12,
                         child: _ZoomBadge(
                           zoom: _currentZoom,
-                          onReset:
-                              _currentZoom != 1.0 ? _resetZoom : null,
+                          onReset: _currentZoom != 1.0 ? _resetZoom : null,
                         ),
                       ),
 
@@ -776,7 +781,9 @@ class _EditorScreenState extends State<EditorScreen> {
                         child: Center(
                           child: Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 20, vertical: 16),
+                              horizontal: 20,
+                              vertical: 16,
+                            ),
                             decoration: BoxDecoration(
                               color: Colors.black.withValues(alpha: 0.7),
                               borderRadius: BorderRadius.circular(16),
@@ -794,9 +801,7 @@ class _EditorScreenState extends State<EditorScreen> {
                                 ),
                                 const SizedBox(height: 10),
                                 Text(
-                                  _isSaving
-                                      ? '저장 중...'
-                                      : '미리보기 적용 중...',
+                                  _isSaving ? '저장 중...' : '미리보기 적용 중...',
                                   style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 13,
@@ -866,19 +871,22 @@ class _EditorScreenState extends State<EditorScreen> {
           if (_hasImage) ...[
             const SizedBox(width: 8),
             _ActionChip(
-                icon: Icons.crop_rounded,
-                label: '자르기',
-                onTap: _openCropScreen),
+              icon: Icons.crop_rounded,
+              label: '자르기',
+              onTap: _openCropScreen,
+            ),
             const SizedBox(width: 8),
             _ActionChip(
-                icon: Icons.rotate_right_rounded,
-                label: '회전',
-                onTap: _rotateImage),
+              icon: Icons.rotate_right_rounded,
+              label: '회전',
+              onTap: _rotateImage,
+            ),
             const SizedBox(width: 8),
             _ActionChip(
-                icon: Icons.flip_rounded,
-                label: '뒤집기',
-                onTap: _flipImage),
+              icon: Icons.flip_rounded,
+              label: '뒤집기',
+              onTap: _flipImage,
+            ),
             // 구분선
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -902,8 +910,7 @@ class _EditorScreenState extends State<EditorScreen> {
                     ? Icons.compare_rounded
                     : Icons.compare_outlined,
                 label: '비교',
-                onTap: () =>
-                    setState(() => _comparisonMode = !_comparisonMode),
+                onTap: () => setState(() => _comparisonMode = !_comparisonMode),
                 active: _comparisonMode,
               ),
               const SizedBox(width: 8),
@@ -955,8 +962,11 @@ class _EditorScreenState extends State<EditorScreen> {
                 const SizedBox(width: 6),
                 GestureDetector(
                   onTap: _resetActiveAdjustment,
-                  child: const Icon(Icons.refresh_rounded,
-                      size: 15, color: _kGrey400),
+                  child: const Icon(
+                    Icons.refresh_rounded,
+                    size: 15,
+                    color: _kGrey400,
+                  ),
                 ),
               ],
             ],
@@ -1005,10 +1015,7 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   Widget _buildPresetStrip() {
-    return PresetStrip(
-      activePreset: _activePreset,
-      onSelect: _applyPreset,
-    );
+    return PresetStrip(activePreset: _activePreset, onSelect: _applyPreset);
   }
 
   Widget _buildToolStrip() {
@@ -1026,8 +1033,7 @@ class _EditorScreenState extends State<EditorScreen> {
           return GestureDetector(
             onTap: () => setState(() => _activeAdjustment = adjustment),
             child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 color: selected ? _kBlue : _kGrey100,
                 borderRadius: BorderRadius.circular(10),
@@ -1070,10 +1076,7 @@ class _EmptyPlaceholder extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            const Color(0xFFEEF6FB),
-            const Color(0xFFF6F7FB),
-          ],
+          colors: [const Color(0xFFEEF6FB), const Color(0xFFF6F7FB)],
         ),
       ),
       child: Center(
@@ -1093,10 +1096,7 @@ class _EmptyPlaceholder extends StatelessWidget {
             const SizedBox(height: 6),
             const Text(
               '탭해서 갤러리에서 선택',
-              style: TextStyle(
-                fontSize: 13,
-                color: _kGrey600,
-              ),
+              style: TextStyle(fontSize: 13, color: _kGrey600),
             ),
           ],
         ),
@@ -1186,11 +1186,7 @@ class _HeaderIconBtn extends StatelessWidget {
           color: _kGrey100,
           borderRadius: BorderRadius.circular(10),
         ),
-        child: Icon(
-          icon,
-          size: 18,
-          color: enabled ? _kDark : _kGrey400,
-        ),
+        child: Icon(icon, size: 18, color: enabled ? _kDark : _kGrey400),
       ),
     );
   }
@@ -1217,18 +1213,18 @@ class _ActionChip extends StatelessWidget {
     final bg = active
         ? _kBlue
         : highlight
-            ? _kBlue.withValues(alpha: 0.12)
-            : _kGrey100;
+        ? _kBlue.withValues(alpha: 0.12)
+        : _kGrey100;
     final iconColor = active
         ? Colors.white
         : highlight
-            ? _kBlue
-            : _kDark;
+        ? _kBlue
+        : _kDark;
     final textColor = active
         ? Colors.white
         : highlight
-            ? _kBlue
-            : _kDark;
+        ? _kBlue
+        : _kDark;
 
     return GestureDetector(
       onTap: onTap,
@@ -1323,8 +1319,11 @@ class _ZoomBadge extends StatelessWidget {
             ),
             if (onReset != null) ...[
               const SizedBox(width: 4),
-              const Icon(Icons.refresh_rounded,
-                  size: 12, color: Colors.white70),
+              const Icon(
+                Icons.refresh_rounded,
+                size: 12,
+                color: Colors.white70,
+              ),
             ],
           ],
         ),
@@ -1457,8 +1456,7 @@ class _AiEditSheetState extends State<_AiEditSheet> {
                       setState(() => _isLoading = false);
                       messenger.showSnackBar(
                         const SnackBar(
-                          content:
-                              Text('이미지 생성에 실패했어요. 다시 시도해주세요.'),
+                          content: Text('이미지 생성에 실패했어요. 다시 시도해주세요.'),
                         ),
                       );
                     }

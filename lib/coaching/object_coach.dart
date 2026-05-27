@@ -20,12 +20,14 @@ class ObjectFeatures {
   final double brightness;
   final double subjectBrightness;
   final double backgroundBrightness;
+  final double nearBackgroundBrightness;
   final double globalBlurScore;
   final double subjectBlurScore;
   final double highlightRatio;
   final double shadowRatio;
   final double subjectHighlightRatio;
   final double subjectShadowRatio;
+  final double nearBackgroundHighlightRatio;
 
   /// 광원 방향 인덱스 (LightDirection enum 순서)
   final int lightDirectionIndex;
@@ -39,14 +41,38 @@ class ObjectFeatures {
     this.brightness = 0.5,
     this.subjectBrightness = 0.5,
     this.backgroundBrightness = 0.5,
+    this.nearBackgroundBrightness = 0.5,
     this.globalBlurScore = 999,
     this.subjectBlurScore = 999,
     this.highlightRatio = 0,
     this.shadowRatio = 0,
     this.subjectHighlightRatio = 0,
     this.subjectShadowRatio = 0,
+    this.nearBackgroundHighlightRatio = 0,
     this.lightDirectionIndex = 0,
   });
+
+  ObjectFeatures withNeutralImageQuality() {
+    return ObjectFeatures(
+      numObjects: numObjects,
+      areaRatio: areaRatio,
+      sceneCenterX: sceneCenterX,
+      sceneCenterY: sceneCenterY,
+      unionMarginMin: unionMarginMin,
+      brightness: 0.5,
+      subjectBrightness: 0.5,
+      backgroundBrightness: 0.5,
+      nearBackgroundBrightness: 0.5,
+      globalBlurScore: 999,
+      subjectBlurScore: 999,
+      highlightRatio: 0,
+      shadowRatio: 0,
+      subjectHighlightRatio: 0,
+      subjectShadowRatio: 0,
+      nearBackgroundHighlightRatio: 0,
+      lightDirectionIndex: 0,
+    );
+  }
 }
 
 class SceneGeometry {
@@ -160,12 +186,14 @@ class _EmaSmoother {
   double? _brightness;
   double? _subjectBrightness;
   double? _backgroundBrightness;
+  double? _nearBackgroundBrightness;
   double? _globalBlurScore;
   double? _subjectBlurScore;
   double? _highlightRatio;
   double? _shadowRatio;
   double? _subjectHighlightRatio;
   double? _subjectShadowRatio;
+  double? _nearBackgroundHighlightRatio;
   int _lightDirectionIndex = 0;
 
   ObjectFeatures _current = const ObjectFeatures();
@@ -192,6 +220,11 @@ class _EmaSmoother {
       m.backgroundBrightness,
       _alphaBrightness,
     );
+    _nearBackgroundBrightness = _ema(
+      _nearBackgroundBrightness,
+      m.nearBackgroundBrightness,
+      _alphaBrightness,
+    );
 
     _globalBlurScore = _ema(_globalBlurScore, m.globalBlurScore, _alphaBlur);
     _subjectBlurScore = _ema(_subjectBlurScore, m.subjectBlurScore, _alphaBlur);
@@ -206,6 +239,11 @@ class _EmaSmoother {
     _subjectShadowRatio = _ema(
       _subjectShadowRatio,
       m.subjectShadowRatio,
+      _alphaExposure,
+    );
+    _nearBackgroundHighlightRatio = _ema(
+      _nearBackgroundHighlightRatio,
+      m.nearBackgroundHighlightRatio,
       _alphaExposure,
     );
 
@@ -224,12 +262,14 @@ class _EmaSmoother {
     _brightness = null;
     _subjectBrightness = null;
     _backgroundBrightness = null;
+    _nearBackgroundBrightness = null;
     _globalBlurScore = null;
     _subjectBlurScore = null;
     _highlightRatio = null;
     _shadowRatio = null;
     _subjectHighlightRatio = null;
     _subjectShadowRatio = null;
+    _nearBackgroundHighlightRatio = null;
     _lightDirectionIndex = 0;
 
     _current = const ObjectFeatures();
@@ -244,12 +284,16 @@ class _EmaSmoother {
     brightness: _brightness ?? 0.5,
     subjectBrightness: _subjectBrightness ?? 0.5,
     backgroundBrightness: _backgroundBrightness ?? 0.5,
+    nearBackgroundBrightness:
+        _nearBackgroundBrightness ?? _backgroundBrightness ?? 0.5,
     globalBlurScore: _globalBlurScore ?? 999,
     subjectBlurScore: _subjectBlurScore ?? 999,
     highlightRatio: _highlightRatio ?? 0,
     shadowRatio: _shadowRatio ?? 0,
     subjectHighlightRatio: _subjectHighlightRatio ?? 0,
     subjectShadowRatio: _subjectShadowRatio ?? 0,
+    nearBackgroundHighlightRatio:
+        _nearBackgroundHighlightRatio ?? _highlightRatio ?? 0,
     lightDirectionIndex: _lightDirectionIndex,
   );
 
@@ -310,6 +354,13 @@ class _IssueAccumulator {
     }
   }
 
+  void decayImageQuality() {
+    _blur = _next(_blur, false, _riseStrong);
+    _dark = _next(_dark, false, _riseStrong);
+    _over = _next(_over, false, _riseStrong);
+    _backlight = _next(_backlight, false, _riseStrong);
+  }
+
   double get tiltStrong => _tiltStrong;
   double get tiltMild => _tiltMild;
   double get blur => _blur;
@@ -356,21 +407,30 @@ class _CoachingEngine {
   static const _blurCritical = 110.0;
   static const _blurWarning = 160.0;
 
-  static const _subjectDark = 0.20;
-  static const _globalDark = 0.18;
-  static const _shadowWarn = 0.34;
+  static const _subjectDark = 0.16;
+  static const _subjectVeryDark = 0.13;
+  static const _globalDark = 0.14;
+  static const _shadowWarn = 0.42;
+  static const _subjectShadowDark = 0.28;
 
   static const _overBright = 0.86;
   static const _highlightWarn = 0.18;
 
-  static const _backlightMinBg = 0.65;
-  static const _backlightDiff = 0.25;
+  static const _backlightMinNearBg = 0.62;
+  static const _backlightDiff = 0.28;
+  static const _backlightSubjectDark = 0.42;
+  static const _backlightSubjectShadow = 0.18;
+  static const _backlightNearHighlight = 0.06;
 
   static const _smallSubjectSingle = 0.045;
   static const _smallSubjectMulti = 0.030;
 
   final _IssueAccumulator _acc = _IssueAccumulator();
   double _shootReady = 0.0;
+
+  void decayStaleImageQuality() {
+    _acc.decayImageQuality();
+  }
 
   CoachingResult decide(
     ObjectFeatures s, {
@@ -380,9 +440,12 @@ class _CoachingEngine {
     bool updateImageQuality = true,
   }) {
     final dark = subjectLocked
-        ? (s.subjectBrightness < _subjectDark && s.subjectShadowRatio > 0.18) ||
-              s.subjectBrightness < (_subjectDark - 0.03)
-        : (s.subjectBrightness < _subjectDark && s.shadowRatio > 0.20) ||
+        ? (s.subjectBrightness < _subjectDark &&
+                  s.subjectShadowRatio > _subjectShadowDark) ||
+              s.subjectBrightness < _subjectVeryDark
+        : (s.subjectBrightness < _subjectDark &&
+                  s.subjectShadowRatio > _subjectShadowDark &&
+                  s.brightness < 0.26) ||
               (s.brightness < _globalDark && s.shadowRatio > _shadowWarn);
 
     final over = subjectLocked
@@ -392,9 +455,11 @@ class _CoachingEngine {
               (s.highlightRatio > _highlightWarn && s.subjectBrightness > 0.72);
 
     final backlight =
-        s.subjectBrightness < (s.backgroundBrightness - _backlightDiff) &&
-        s.backgroundBrightness > _backlightMinBg &&
-        s.subjectBrightness < 0.38;
+        s.subjectBrightness < _backlightSubjectDark &&
+        s.subjectShadowRatio > _backlightSubjectShadow &&
+        s.nearBackgroundBrightness > _backlightMinNearBg &&
+        s.subjectBrightness < (s.nearBackgroundBrightness - _backlightDiff) &&
+        s.nearBackgroundHighlightRatio > _backlightNearHighlight;
     final severeTilt = tiltDeg.abs() >= _tiltWarnDeg;
     final mildTilt = tiltDeg.abs() >= _tiltCautionDeg;
 
@@ -750,6 +815,8 @@ class _CoachingEngine {
 }
 
 class ObjectCoach {
+  static const int _imageMetricFreshnessMs = 1200;
+
   final _extractor = _FeatureExtractor();
   final _smoother = _EmaSmoother();
   final _engine = _CoachingEngine();
@@ -764,6 +831,7 @@ class ObjectCoach {
   );
 
   bool _imageAnalysisPending = false;
+  int _lastImageMetricsAtMs = 0;
   double _tiltDeg = 0.0;
   bool _subjectLocked = false;
   bool _subjectInFrame = true;
@@ -785,6 +853,12 @@ class ObjectCoach {
   /// 사용자가 상단 selector에서 선택한 구도 규칙을 반영.
   void setRule(CompositionRule rule) {
     _engine.setRule(rule);
+  }
+
+  bool get _hasFreshImageMetrics {
+    if (_lastImageMetricsAtMs <= 0) return false;
+    final ageMs = DateTime.now().millisecondsSinceEpoch - _lastImageMetricsAtMs;
+    return ageMs <= _imageMetricFreshnessMs;
   }
 
   Rect _rectFromNormalizedLTRB(
@@ -886,7 +960,13 @@ class ObjectCoach {
     // 거꾸로 든 경우(180°) 감지 좌표 반전 보정
     _latestGeometry = geometry;
     _smoother.updateGeometry(geometry);
-    final current = _smoother.current;
+    final hasFreshImageMetrics = _hasFreshImageMetrics;
+    if (!hasFreshImageMetrics) {
+      _engine.decayStaleImageQuality();
+    }
+    final current = hasFreshImageMetrics
+        ? _smoother.current
+        : _smoother.current.withNeutralImageQuality();
     _currentResult = _engine.decide(
       current,
       tiltDeg: _tiltDeg,
@@ -903,14 +983,23 @@ class ObjectCoach {
       brightness: metrics['brightness'] ?? 0.5,
       subjectBrightness: metrics['subjectBrightness'] ?? 0.5,
       backgroundBrightness: metrics['backgroundBrightness'] ?? 0.5,
+      nearBackgroundBrightness:
+          metrics['nearBackgroundBrightness'] ??
+          metrics['backgroundBrightness'] ??
+          0.5,
       highlightRatio: metrics['highlightRatio'] ?? 0.0,
       shadowRatio: metrics['shadowRatio'] ?? 0.0,
       subjectHighlightRatio: metrics['subjectHighlightRatio'] ?? 0.0,
       subjectShadowRatio: metrics['subjectShadowRatio'] ?? 0.0,
+      nearBackgroundHighlightRatio:
+          metrics['nearBackgroundHighlightRatio'] ??
+          metrics['highlightRatio'] ??
+          0.0,
       globalBlurScore: metrics['globalBlurScore'] ?? 999.0,
       subjectBlurScore: metrics['subjectBlurScore'] ?? 999.0,
       lightDirectionIndex: (metrics['lightDirectionIndex'] ?? 0).toInt(),
     );
+    _lastImageMetricsAtMs = DateTime.now().millisecondsSinceEpoch;
     _smoother.updateImageMetrics(m);
     if (_subjectLocked && !_subjectInFrame) {
       _currentResult = const CoachingResult(
@@ -930,8 +1019,8 @@ class ObjectCoach {
     return _currentResult;
   }
 
-  Future<void> analyzeImage(List<int> jpegBytes) async {
-    if (_imageAnalysisPending) return;
+  Future<CoachingResult?> analyzeImage(List<int> jpegBytes) async {
+    if (_imageAnalysisPending) return null;
     _imageAnalysisPending = true;
 
     try {
@@ -949,6 +1038,7 @@ class ObjectCoach {
         ),
       );
 
+      _lastImageMetricsAtMs = DateTime.now().millisecondsSinceEpoch;
       _smoother.updateImageMetrics(metrics);
       _currentResult = _engine.decide(
         _smoother.current,
@@ -957,6 +1047,7 @@ class ObjectCoach {
         updateGeometry: false,
         updateImageQuality: true,
       );
+      return _currentResult;
     } finally {
       _imageAnalysisPending = false;
     }
@@ -971,6 +1062,7 @@ class ObjectCoach {
     _tiltDeg = 0.0;
     _subjectLocked = false;
     _subjectInFrame = true;
+    _lastImageMetricsAtMs = 0;
 
     _latestGeometry = const SceneGeometry(
       numObjects: 0,

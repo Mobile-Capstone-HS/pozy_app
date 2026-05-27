@@ -107,6 +107,7 @@ class _CameraScreenState extends State<CameraScreen> {
   final _landscapeResolver = const CompositionResolver();
   final _landscapeTemporalFilter = CompositionTemporalFilter();
   final _landscapeAnalyzer = LandscapeAnalyzer();
+  int _yoloPreviewGeneration = 0;
 
   List<double> _zoomPresets = [1.0, 2.0];
   Size _previewSize = Size.zero;
@@ -179,6 +180,79 @@ class _CameraScreenState extends State<CameraScreen> {
       confidence: 0.0,
     ),
   );
+
+  void _invalidateYoloPreviewResults() {
+    _yoloPreviewGeneration++;
+  }
+
+  bool _samePortraitCoaching(
+    portrait.CoachingResult a,
+    portrait.CoachingResult b,
+  ) {
+    return a.message == b.message &&
+        a.priority == b.priority &&
+        (a.confidence - b.confidence).abs() < 0.02 &&
+        a.reason == b.reason &&
+        a.signalKey == b.signalKey;
+  }
+
+  bool _sameNormalizedOffset(Offset? a, Offset? b) {
+    if (a == null || b == null) return a == b;
+    return (a.dx - b.dx).abs() < 0.004 && (a.dy - b.dy).abs() < 0.004;
+  }
+
+  bool _sameNormalizedRect(Rect? a, Rect? b) {
+    if (a == null || b == null) return a == b;
+    return (a.left - b.left).abs() < 0.004 &&
+        (a.top - b.top).abs() < 0.004 &&
+        (a.right - b.right).abs() < 0.004 &&
+        (a.bottom - b.bottom).abs() < 0.004;
+  }
+
+  bool _sameNormalizedRectList(List<Rect> a, List<Rect> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (!_sameNormalizedRect(a[i], b[i])) return false;
+    }
+    return true;
+  }
+
+  bool _sameNullableDouble(double? a, double? b, [double tolerance = 0.004]) {
+    if (a == null || b == null) return a == b;
+    return (a - b).abs() < tolerance;
+  }
+
+  bool _samePortraitOverlay(OverlayData a, OverlayData b) {
+    return _sameNormalizedRectList(a.closedFaceRects, b.closedFaceRects) &&
+        _sameNormalizedOffset(a.leftEye, b.leftEye) &&
+        _sameNormalizedOffset(a.rightEye, b.rightEye) &&
+        _sameNormalizedOffset(a.nose, b.nose) &&
+        _sameNormalizedOffset(a.leftShoulder, b.leftShoulder) &&
+        _sameNormalizedOffset(a.rightShoulder, b.rightShoulder) &&
+        _sameNormalizedOffset(a.leftElbow, b.leftElbow) &&
+        _sameNormalizedOffset(a.rightElbow, b.rightElbow) &&
+        _sameNormalizedOffset(a.leftWrist, b.leftWrist) &&
+        _sameNormalizedOffset(a.rightWrist, b.rightWrist) &&
+        _sameNormalizedOffset(a.leftHip, b.leftHip) &&
+        _sameNormalizedOffset(a.rightHip, b.rightHip) &&
+        _sameNormalizedOffset(a.leftKnee, b.leftKnee) &&
+        _sameNormalizedOffset(a.rightKnee, b.rightKnee) &&
+        _sameNormalizedOffset(a.leftAnkle, b.leftAnkle) &&
+        _sameNormalizedOffset(a.rightAnkle, b.rightAnkle) &&
+        _samePortraitCoaching(a.coaching, b.coaching) &&
+        a.shotType == b.shotType &&
+        _sameNullableDouble(a.eyeConfidence, b.eyeConfidence, 0.02) &&
+        _sameNullableDouble(a.shoulderConfidence, b.shoulderConfidence, 0.02) &&
+        _sameNormalizedRect(a.faceGuideRect, b.faceGuideRect) &&
+        _sameNormalizedRect(a.bodyGuideRect, b.bodyGuideRect) &&
+        _sameNullableDouble(a.targetEyeLineY, b.targetEyeLineY) &&
+        _sameNullableDouble(a.targetHeadroomTop, b.targetHeadroomTop) &&
+        a.groupPersonCount == b.groupPersonCount &&
+        a.groupFaceHiddenCount == b.groupFaceHiddenCount &&
+        a.groupClosedEyeCount == b.groupClosedEyeCount &&
+        a.activeRule == b.activeRule;
+  }
+
   int _portraitLostFrames = 0;
   static const int _portraitLostFrameTolerance = 8;
   CompositionDecision? _landscapeDecision;
@@ -1235,9 +1309,23 @@ class _CameraScreenState extends State<CameraScreen> {
       _portraitLostFrames = 0;
     }
 
+    final overlayChanged = !_samePortraitOverlay(
+      _portraitOverlayData,
+      analysis.overlayData,
+    );
+    final coachingChanged = !_samePortraitCoaching(
+      _portraitCoaching,
+      analysis.coaching,
+    );
+    if (!overlayChanged && !coachingChanged) return;
+
     setState(() {
-      _portraitOverlayData = analysis.overlayData;
-      _portraitCoaching = analysis.coaching;
+      if (overlayChanged) {
+        _portraitOverlayData = analysis.overlayData;
+      }
+      if (coachingChanged) {
+        _portraitCoaching = analysis.coaching;
+      }
     });
   }
 
@@ -1251,6 +1339,7 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<void> _switchCamera() async {
+    _invalidateYoloPreviewResults();
     if (_isLandscapeMode) {
       await _landscapeController.switchCamera();
     } else {
@@ -1317,6 +1406,7 @@ class _CameraScreenState extends State<CameraScreen> {
   Future<void> _changeShootingMode(ShootingMode mode) async {
     if (_isSwitchingShootingMode || mode == _shootingMode) return;
     _isSwitchingShootingMode = true;
+    _invalidateYoloPreviewResults();
 
     try {
       final wasLandscapeMode = _isLandscapeMode;
@@ -1714,6 +1804,9 @@ class _CameraScreenState extends State<CameraScreen> {
       _acutCameraLog('YOLOView build $yoloViewSignature');
     }
 
+    final yoloPreviewGeneration = _yoloPreviewGeneration;
+    final usePortraitPipeline = _isPortraitMode;
+
     return YOLOView(
       key: yoloViewKey,
       controller: _cameraController,
@@ -1746,7 +1839,14 @@ class _CameraScreenState extends State<CameraScreen> {
           ? const YOLOStreamingConfig.withPoses()
           : const YOLOStreamingConfig.minimal(),
       lensFacing: _isFrontCamera ? LensFacing.front : LensFacing.back,
-      onResult: _isPortraitMode ? _handlePoseDetections : _handleDetections,
+      onResult: (results) {
+        if (yoloPreviewGeneration != _yoloPreviewGeneration) return;
+        if (usePortraitPipeline) {
+          _handlePoseDetections(results);
+        } else {
+          _handleDetections(results);
+        }
+      },
       onZoomChanged: (zoomLevel) {
         if (!mounted) return;
         setState(() => _currentZoom = zoomLevel);
@@ -1865,6 +1965,7 @@ class _CameraScreenState extends State<CameraScreen> {
       return;
     }
 
+    _invalidateYoloPreviewResults();
     setState(() {
       _portraitIntent = intent;
       _showPortraitIntentSelector = false;
@@ -2196,10 +2297,7 @@ class _CameraScreenState extends State<CameraScreen> {
                     if (assetPath.isNotEmpty) {
                       content = Opacity(
                         opacity: 0.5,
-                        child: Image.asset(
-                          assetPath,
-                          fit: BoxFit.fitHeight,
-                        ),
+                        child: Image.asset(assetPath, fit: BoxFit.fitHeight),
                       );
                       if (targetBox != null) {
                         content = Stack(

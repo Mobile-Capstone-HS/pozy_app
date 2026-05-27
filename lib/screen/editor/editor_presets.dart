@@ -119,7 +119,7 @@ class PresetStrip extends StatelessWidget {
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: editorPresets.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
           final preset = editorPresets[index];
           final selected = activePreset == preset;
@@ -130,7 +130,7 @@ class PresetStrip extends StatelessWidget {
               duration: const Duration(milliseconds: 180),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: selected ? const Color(0xFF5BB8D4) : const Color(0xFFF2F4F6),
+                color: selected ? AppColors.blue : const Color(0xFFF2F4F6),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Row(
