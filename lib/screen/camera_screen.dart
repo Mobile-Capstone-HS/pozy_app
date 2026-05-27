@@ -130,6 +130,7 @@ class _CameraScreenState extends State<CameraScreen> {
   double _currentZoom = 1.0;
   bool _isFrontCamera = false;
   bool _isSaving = false;
+  bool _isSwitchingShootingMode = false;
   bool _showFlash = false;
   bool _torchOn = false;
   bool _showPortraitDebugOverlay = false;
@@ -1399,47 +1400,66 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   void _onModeChanged(ShootingMode mode) {
-    _invalidateYoloPreviewResults();
-    _sceneCoach.reset();
-    _cameraController.setLockedRoi();
-    _resetPortraitState();
-    _landscapeCompositionEngine.reset();
-    _landscapeTemporalFilter.reset();
-    _landscapeAnalyzer.reset();
+    unawaited(_changeShootingMode(mode));
+  }
 
-    setState(() {
-      _shootingMode = mode;
-      if (mode == ShootingMode.person) {
-        _portraitIntent = portrait.PortraitIntent.single;
+  Future<void> _changeShootingMode(ShootingMode mode) async {
+    if (_isSwitchingShootingMode || mode == _shootingMode) return;
+    _isSwitchingShootingMode = true;
+    _invalidateYoloPreviewResults();
+
+    try {
+      final wasLandscapeMode = _isLandscapeMode;
+      if (wasLandscapeMode && mode != ShootingMode.landscape) {
+        await _landscapeController.stop();
+      } else if (!wasLandscapeMode && mode == ShootingMode.landscape) {
+        await _cameraController.stop();
       }
-      _applyIdleCoachingForMode(mode);
-      _coachingLevel = CoachingLevel.caution;
-      _coachingScore = null;
-      _directionHint = DirectionHint.none;
-      _lightDirection = LightDirection.unknown;
-      _focusPoint = null;
-      _showFocusIndicator = false;
-      _isDrawingRoi = false;
-      _roiDragStart = null;
-      _roiDragCurrent = null;
-      _lockedRoi = null;
-      _lockedRoiCamera = null;
-      _lockedRoiManual = false;
-      _lockedClassIndex = null;
-      _lockedAnchorRoiCamera = null;
-      _lockedAppearanceSignature = null;
-      _lockedRecentAppearanceSignature = null;
-      _lockedTrackingDetection = null;
-      _lockedLostFrames = 0;
-      _manualRoiTrackLossFrames = 0;
-      _lastSentOrientationDeg = -1;
-      _landscapeDecision = null;
-      _landscapeOverlayAdvice = const LandscapeOverlayAdvice.none();
-      _selectedSilhouette = SilhouetteType.none;
-      _showSideToolSelector = false;
-      _isRuleSelectorExpanded = false;
-      _showPortraitIntentSelector = false;
-    });
+      if (!mounted) return;
+
+      _sceneCoach.reset();
+      _cameraController.setLockedRoi();
+      _resetPortraitState();
+      _landscapeCompositionEngine.reset();
+      _landscapeTemporalFilter.reset();
+      _landscapeAnalyzer.reset();
+
+      setState(() {
+        _shootingMode = mode;
+        if (mode == ShootingMode.person) {
+          _portraitIntent = portrait.PortraitIntent.single;
+        }
+        _applyIdleCoachingForMode(mode);
+        _coachingLevel = CoachingLevel.caution;
+        _coachingScore = null;
+        _directionHint = DirectionHint.none;
+        _lightDirection = LightDirection.unknown;
+        _focusPoint = null;
+        _showFocusIndicator = false;
+        _isDrawingRoi = false;
+        _roiDragStart = null;
+        _roiDragCurrent = null;
+        _lockedRoi = null;
+        _lockedRoiCamera = null;
+        _lockedRoiManual = false;
+        _lockedClassIndex = null;
+        _lockedAnchorRoiCamera = null;
+        _lockedAppearanceSignature = null;
+        _lockedRecentAppearanceSignature = null;
+        _lockedTrackingDetection = null;
+        _lockedLostFrames = 0;
+        _manualRoiTrackLossFrames = 0;
+        _lastSentOrientationDeg = -1;
+        _landscapeDecision = null;
+        _landscapeOverlayAdvice = const LandscapeOverlayAdvice.none();
+        _selectedSilhouette = SilhouetteType.none;
+        _showSideToolSelector = false;
+        _isRuleSelectorExpanded = false;
+        _showPortraitIntentSelector = false;
+      });
+    } finally {
+      _isSwitchingShootingMode = false;
+    }
   }
 
   void _onTapFocus(Offset localPosition) {
@@ -1844,6 +1864,9 @@ class _CameraScreenState extends State<CameraScreen> {
 
   String? _portraitSubGuidance() {
     if (_portraitCoaching.reason != null) return _portraitCoaching.reason;
+    if (_portraitCoaching.priority == portrait.CoachingPriority.perfect) {
+      return null;
+    }
 
     final lighting = _portraitHandler.lastLighting;
     final lightConf = _portraitHandler.lastLightingConf;

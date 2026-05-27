@@ -38,12 +38,6 @@ abstract final class ExperimentalFeatures {
     'POZY_DISABLE_FLIVE_DURING_BATCH_SCORING',
     defaultValue: false,
   );
-  static const bool technicalIqaMixed112Enabled =
-      kDebugMode &&
-      bool.fromEnvironment(
-        'POZY_TECHNICAL_IQA_MIXED112_ENABLED',
-        defaultValue: false,
-      );
   static const bool disableNimaDuringBatchScoring = bool.fromEnvironment(
     'POZY_DISABLE_NIMA_DURING_BATCH_SCORING',
     defaultValue: false,
@@ -63,6 +57,10 @@ abstract final class ExperimentalFeatures {
   static const bool verboseModelLogs = bool.fromEnvironment(
     'POZY_ACUT_VERBOSE_MODEL_LOGS',
     defaultValue: false,
+  );
+  static const bool enableC6TopiqKoniqCandidate = bool.fromEnvironment(
+    'POZY_ENABLE_C6_TOPIQ_KONIQ_CANDIDATE',
+    defaultValue: kDebugMode,
   );
   static const bool useFreshInterpreterPerImageForDebug = bool.fromEnvironment(
     'POZY_USE_FRESH_INTERPRETER_PER_IMAGE_FOR_DEBUG',

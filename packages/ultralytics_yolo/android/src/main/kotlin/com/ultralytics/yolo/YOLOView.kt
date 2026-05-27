@@ -1741,6 +1741,10 @@ class YOLOView @JvmOverloads constructor(
                                 imageProxy = imageProxy,
                                 bitmap = bitmap,
                                 isFrontCamera = isFrontCamera,
+                                personRoiLeft = detectionRoi?.left,
+                                personRoiTop = detectionRoi?.top,
+                                personRoiRight = detectionRoi?.right,
+                                personRoiBottom = detectionRoi?.bottom,
                             )
                             metrics.putAll(portraitNativeAnalyzer.latestMetrics())
                             onPortraitFaceResults?.invoke(

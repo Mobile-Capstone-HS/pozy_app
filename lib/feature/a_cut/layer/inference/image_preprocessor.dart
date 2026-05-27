@@ -463,7 +463,8 @@ Uint8List _preprocessDecodedResizeWithPadToRgbFloat32Internal(
 
   debugPrint(
     '[AcutPerf] $debugLabel source=${decoded.width}x${decoded.height} '
-    'resized=${resizedWidth}x$resizedHeight target=${width}x$height',
+    'resized=${resizedWidth}x$resizedHeight target=${width}x$height '
+    'pad_value=$padValue',
   );
   return output.buffer.asUint8List();
 }

@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -6,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 
 import '../config/experimental_features.dart';
-import '../feature/a_cut/layer/inference/topiq_mixed112_technical_iqa_runner.dart';
 import '../feature/a_cut/model/photo_evaluation_result.dart';
 import '../services/gemini_photo_explanation_services.dart';
 import '../services/on_device_gemma_explanation_service.dart';
@@ -85,8 +83,6 @@ class _ExplanationBackendDebugScreenState
       GeminiTextOnlyPhotoExplanationService();
   final GeminiImageScoresPhotoExplanationService _geminiImageScoresService =
       GeminiImageScoresPhotoExplanationService();
-  final TopiqMixed112TechnicalIqaRunner _topiqMixed112Runner =
-      TopiqMixed112TechnicalIqaRunner();
 
   bool _loading = false;
   bool _gemmaLoaded = false;
@@ -152,7 +148,6 @@ class _ExplanationBackendDebugScreenState
 
   @override
   void dispose() {
-    unawaited(_topiqMixed112Runner.close());
     _visualImagePathController.dispose();
     _visualPromptController.dispose();
     super.dispose();
@@ -779,49 +774,6 @@ ${scoreLines.join('\n')}
     );
   }
 
-  Future<void> _runTopiqMixed112Smoke() async {
-    setState(() {
-      _loading = true;
-      _statusMessage = 'TOPIQ mixed112 comparison smoke 실행 중...';
-    });
-
-    final imageIdOrPath = widget.result.fileName ?? 'debug_selected_image';
-    try {
-      final mixed112 = await _topiqMixed112Runner.scoreImageBytes(
-        widget.imageBytes,
-        imageIdOrPath: imageIdOrPath,
-      );
-      logTopiqMixed112TechnicalIqaComparison(
-        scoreDetails: widget.result.scoreDetails,
-        existingCombinedScore: widget.result.technicalScore,
-        mixed112: mixed112,
-        imageIdOrPath: imageIdOrPath,
-      );
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _loading = false;
-        _statusMessage =
-            'TOPIQ mixed112 smoke 완료: ${mixed112.score100.toStringAsFixed(2)}/100 '
-            '(preprocess ${mixed112.preprocessMs}ms, inference ${mixed112.inferenceMs}ms). '
-            '기존 최종 점수는 변경하지 않았어요.';
-      });
-    } catch (error) {
-      debugPrint(
-        '[TechnicalIqaCompare] image_id_path="$imageIdOrPath" '
-        'mixed112_error=$error',
-      );
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _loading = false;
-        _statusMessage = 'TOPIQ mixed112 smoke 실패: $error';
-      });
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -880,7 +832,6 @@ ${scoreLines.join('\n')}
                       onRunComparison: _runComparison,
                       onDispose: _disposeGemma,
                       onRunBenchmark: _runBenchmark,
-                      onRunTopiqMixed112Smoke: _runTopiqMixed112Smoke,
                     ),
                     const SizedBox(height: 18),
                     _VisionProbeCard(
@@ -1156,7 +1107,6 @@ class _ActionRow extends StatelessWidget {
     required this.onRunComparison,
     required this.onDispose,
     required this.onRunBenchmark,
-    required this.onRunTopiqMixed112Smoke,
   });
 
   final bool loading;
@@ -1168,7 +1118,6 @@ class _ActionRow extends StatelessWidget {
   final VoidCallback onRunComparison;
   final VoidCallback onDispose;
   final VoidCallback onRunBenchmark;
-  final VoidCallback onRunTopiqMixed112Smoke;
 
   @override
   Widget build(BuildContext context) {
@@ -1229,13 +1178,6 @@ class _ActionRow extends StatelessWidget {
               child: _ActionButton(
                 label: loading ? '실행 중...' : 'Benchmark 5x',
                 onTap: gemmaActionDisabled ? null : onRunBenchmark,
-              ),
-            ),
-            SizedBox(
-              width: buttonWidth,
-              child: _ActionButton(
-                label: loading ? '실행 중...' : 'TOPIQ mixed112 smoke',
-                onTap: loading ? null : onRunTopiqMixed112Smoke,
               ),
             ),
           ],

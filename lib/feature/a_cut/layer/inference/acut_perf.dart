@@ -33,7 +33,7 @@ abstract final class AcutPerfCollector {
     _modelTotalMs[modelId] = (_modelTotalMs[modelId] ?? 0) + totalMs;
     _modelInferenceMs[modelId] =
         (_modelInferenceMs[modelId] ?? 0) + inferenceMs;
-    if (modelId == 'alamp_aadb_gpu') {
+    if (modelId == 'mobile_alamp_v2') {
       _totalAlampMs += totalMs;
     }
   }
@@ -74,7 +74,7 @@ class AcutPerfSnapshot {
     required int totalMs,
     required double avgMs,
   }) {
-    final alampMs = modelMs('alamp_aadb_gpu');
+    final alampMs = modelMs('mobile_alamp_v2');
     final avgAlampMs = images == 0 ? 0.0 : alampMs / images;
 
     return '[AcutPerf] batch_summary '
@@ -87,7 +87,7 @@ class AcutPerfSnapshot {
         'total_koniq_ms=${modelMs('koniq_mobile')} '
         'total_flive_ms=${modelMs('flive_image_mobile')} '
         'total_nima_ms=${modelMs('nima_mobile')} '
-        'total_rgnet_ms=${modelMs('rgnet_aadb_gpu')} '
+        'total_rgnet_ms=${modelMs('rgnet_pil_resize_aadb')} '
         'avg_alamp_ms=${avgAlampMs.toStringAsFixed(1)}';
   }
 }
