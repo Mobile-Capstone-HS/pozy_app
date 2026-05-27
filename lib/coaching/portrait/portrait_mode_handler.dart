@@ -721,7 +721,7 @@ class PortraitModeHandler {
 
     if (effectiveResults.isNotEmpty) {
       _markFaceSignalUpdated(
-        frameId: _nativeFaceFrameNumber >= 0 ? _nativeFaceFrameNumber : _frameCount,
+        frameId: _frameCount,
         timestampMs: _nativeFaceTimestampMs > 0 ? _nativeFaceTimestampMs : nowMs,
       );
       final mainFace = _selectPrimaryNativeFace(effectiveResults);
@@ -893,7 +893,19 @@ class PortraitModeHandler {
           ..sort((a, b) => b.compareTo(a));
     final mainArea = main.normalizedBox.width * main.normalizedBox.height;
     final secondArea = areas.length > 1 ? areas[1] : 0.0;
-    double secondPersonSizeRatio = mainArea > 0 ? secondArea / mainArea : 0.0;
+    final thirdArea = areas.length > 2 ? areas[2] : 0.0;
+    final secondPersonSizeRatio = mainArea > 0 ? secondArea / mainArea : 0.0;
+    final thirdPersonSizeRatio = mainArea > 0 ? thirdArea / mainArea : 0.0;
+    final avgPersonArea = areas.isEmpty
+        ? 0.0
+        : areas.reduce((a, b) => a + b) / areas.length;
+    final significantPersonCount = mainArea > 0
+        ? persons.where((p) {
+            final area = p.normalizedBox.width * p.normalizedBox.height;
+            final ratio = area / mainArea;
+            return ratio >= 0.14 || area >= 0.018;
+          }).length
+        : persons.length;
 
     double groupLeft = double.infinity;
     double groupTop = double.infinity;
@@ -915,7 +927,15 @@ class PortraitModeHandler {
         : mainArea;
 
     final groupShotCandidate =
-        intent == PortraitIntent.group && persons.length >= 2;
+        intent == PortraitIntent.group &&
+        _shouldTreatAsGroupShot(
+          persons,
+          secondPersonSizeRatio,
+          thirdPersonSizeRatio,
+          groupBboxRatio,
+          avgPersonArea,
+          significantPersonCount,
+        );
 
     // ─── 다중 인물 메트릭 ─────────────────────────────
     // 그룹샷 안정화: 진입은 빠르게, 이탈은 느리게 (깜빡임 방지)
@@ -1140,7 +1160,8 @@ class PortraitModeHandler {
 
     final hasReliableAnkle =
         (lAnkle != null || rAnkle != null) && ankleConf >= 0.12 && maxY > 0.50;
-    final hasKnee = lKnee != null || rKnee != null;
+    final kneeY = _maxY(lKnee, rKnee);
+    final hasKneeInsideFrame = kneeY != null && kneeY <= 0.84;
     final hasHip = lHip != null || rHip != null;
     final hasShoulder = lShoulder != null || rShoulder != null;
 
@@ -1164,9 +1185,9 @@ class PortraitModeHandler {
 
       if (hasReliableAnkle) {
         shot = ShotType.fullBody;
-      } else if (hasKnee) {
+      } else if (hasKneeInsideFrame) {
         shot = ShotType.kneeShot;
-      } else if (hasHip && !hasKnee && h > 0.45) {
+      } else if (hasHip && h > 0.45) {
         shot = ShotType.waistShot;
       } else if (hasShoulder && !hasHip && h > 0.3) {
         shot = ShotType.headShot;
@@ -2242,17 +2263,17 @@ class PortraitModeHandler {
   double? _targetEyeLineY(ShotType shot) {
     switch (shot) {
       case ShotType.extremeCloseUp:
-        return 0.38;
+        return 0.45;
       case ShotType.closeUp:
-        return 0.35;
+        return 0.33;
       case ShotType.headShot:
         return 0.35;
       case ShotType.upperBody:
-        return 0.33;
+        return 0.32;
       case ShotType.waistShot:
         return 0.30;
       case ShotType.kneeShot:
-        return 0.31;
+        return 0.28;
       case ShotType.fullBody:
         return 0.29;
       case ShotType.environmental:
@@ -2266,7 +2287,8 @@ class PortraitModeHandler {
   double? _targetHeadroomTop(ShotType shot) {
     switch (shot) {
       case ShotType.extremeCloseUp:
-        return 0.06;
+        // Keep the overlay line inside the engine's 0.00~0.05 headroom window.
+        return 0.03;
       case ShotType.closeUp:
         return 0.08;
       case ShotType.headShot:
@@ -2276,7 +2298,8 @@ class PortraitModeHandler {
       case ShotType.waistShot:
         return 0.09;
       case ShotType.kneeShot:
-        return 0.12;
+        // Engine allows 0.05~0.10, so keep the guide near the middle.
+        return 0.08;
       case ShotType.fullBody:
         return 0.08;
       case ShotType.environmental:
