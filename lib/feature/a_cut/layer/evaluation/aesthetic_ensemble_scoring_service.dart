@@ -55,7 +55,7 @@ class AestheticEnsembleScoringService {
     }
 
     final nimaRun = runs[nimaMobileContract.id];
-    final rgnetRun = runs[rgnetPaperAadbContract.id];
+    final rgnetRun = runs[rgnetPilResizeAadbContract.id];
     final alampRun = runs[mobileAlampV2Contract.id];
     final icaaRun = runs[icaaColorAestheticContract.id];
 

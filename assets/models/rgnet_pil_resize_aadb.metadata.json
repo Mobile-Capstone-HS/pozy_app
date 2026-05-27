@@ -1,8 +1,8 @@
 {
-  "model_id": "rgnet_paper_aadb",
-  "model_name": "RGNet Paper AADB",
-  "source_model_path": "models/aesthetic/rgnet_paper_aadb_fp16.tflite",
-  "flutter_asset_path": "assets/models/rgnet_paper_aadb_fp16.tflite",
+  "model_id": "rgnet_pil_resize_aadb",
+  "model_name": "RGNet PIL Resize AADB",
+  "source_model_path": "models/aesthetic/rgnet_pil_resize_aadb_fp16.tflite",
+  "flutter_asset_path": "assets/models/rgnet_pil_resize_aadb_fp16.tflite",
   "input_type": "float32",
   "input_shapes": {
     "image": [
@@ -24,5 +24,5 @@
   },
   "score_range": "0..1",
   "ensemble_weight": 0.4,
-  "notes": "Replaces older rgnet_aadb_gpu. Paper-oriented AADB full model."
+  "notes": "RGNet AADB retrain exported as a separate PIL/mobile-like resize FP16 model."
 }
