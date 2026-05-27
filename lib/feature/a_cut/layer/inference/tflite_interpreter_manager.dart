@@ -90,7 +90,12 @@ class TfliteInterpreterManager {
         options.addDelegate(flexDelegate);
       }
 
+      debugPrint(
+        '[TfliteInterpreterManager] Loading $assetPath '
+        '(flex=$useFlexDelegate)',
+      );
       interpreter = await Interpreter.fromAsset(assetPath, options: options);
+      interpreter.allocateTensors();
       debugPrint(
         '[TfliteInterpreterManager] Loaded $assetPath '
         '(flex=$useFlexDelegate)',
@@ -117,7 +122,8 @@ class TfliteInterpreterManager {
       interpreter?.close();
       flexDelegate?.delete();
       throw Exception(
-        'Failed to initialize interpreter (flex=$useFlexDelegate): $error',
+        'Failed to initialize interpreter for $assetPath '
+        '(flex=$useFlexDelegate): $error',
       );
     }
   }
