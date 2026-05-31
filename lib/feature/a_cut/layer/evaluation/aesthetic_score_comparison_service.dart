@@ -56,6 +56,7 @@ class AestheticScoreComparisonService {
       final run = await _tfliteService.evaluateSingleModel(
         imageBytes,
         contract,
+        debugImageLabel: fileName,
       );
       debugPrint(
         '[AestheticScoreComparisonService] ${run.model.id} '
