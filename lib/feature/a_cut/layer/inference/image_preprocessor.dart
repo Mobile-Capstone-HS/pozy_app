@@ -16,7 +16,18 @@ class ImagePreprocessor {
     int? imageIndex,
   }) async {
     final sw = Stopwatch()..start();
-    final decoded = img.decodeImage(imageBytes);
+    var decodePath = 'isolate';
+    img.Image? decoded;
+    try {
+      decoded = await compute(
+        _decodeImageForBundle,
+        imageBytes,
+        debugLabel: 'acut_image_decode',
+      );
+    } catch (_) {
+      decodePath = 'sync_fallback';
+      decoded = img.decodeImage(imageBytes);
+    }
     sw.stop();
     if (decoded == null) {
       throw Exception('Cannot decode image bytes.');
@@ -40,7 +51,10 @@ class ImagePreprocessor {
       phase: 'image_decode',
       elapsedMs: sw.elapsedMilliseconds,
       imageDimensions: '${decoded.width}x${decoded.height}',
-      fields: <String, Object?>{'bytes': imageBytes.lengthInBytes},
+      fields: <String, Object?>{
+        'bytes': imageBytes.lengthInBytes,
+        'decode_path': decodePath,
+      },
     );
     return bundle;
   }
@@ -347,6 +361,10 @@ class AcutImagePreprocessBundle {
   }) {
     return 'rgb_pad_${width}x$height:${normalization.name}';
   }
+}
+
+img.Image? _decodeImageForBundle(Uint8List imageBytes) {
+  return img.decodeImage(imageBytes);
 }
 
 class _PreprocessRequest {
