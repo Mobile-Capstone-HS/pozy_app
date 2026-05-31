@@ -349,6 +349,9 @@ class PortraitModeHandler {
   double? _rightEyeOpen;
   double? _smileProb;
   Rect? _trackedMainBox;
+  Offset? _manualMainPersonPoint;
+  Rect? _manualMainPersonBox;
+  int _manualMainPersonMisses = 0;
   Rect? _smoothedFaceRect;
   Rect? _smoothedBodyRect;
   final Map<int, Offset> _smoothedPosePoints = <int, Offset>{};
@@ -389,6 +392,7 @@ class PortraitModeHandler {
 
   // ─── 눈 감김 정밀 추적 ────────────────────────────
   int _eyeClosedStreak = 0; // 연속 눈 감김 프레임 수 (네이티브 raw 기반)
+  int _oneEyeClosedStreak = 0; // 연속 한쪽 눈 감김 프레임 수 (네이티브 raw 기반)
   int _anyEyeClosedStreak = 0; // 그룹 눈 감김 연속 프레임
   static const int _eyeConfirmFrames = 2; // 확정에 필요한 연속 프레임
 
@@ -405,6 +409,15 @@ class PortraitModeHandler {
   static const double _faceMetricAlpha = 0.3;
   static const double _faceRectAlpha = 0.35;
   static const double _bodyRectAlpha = 0.2;
+  static const int _manualMainPersonMissLimit = 12;
+  static const double _manualMainPersonMaxTapDistance = 0.08;
+  static const double _manualMainPersonMaxTrackDistance = 0.18;
+  static const double _manualMainPersonMinTrackIoU = 0.02;
+  static const double _portraitPersonMinConfidence = 0.20;
+  static const double _portraitPersonMinArea = 0.004;
+  static const double _portraitPersonKeypointMinConfidence = 0.12;
+  static const int _portraitPersonMinVisibleKeypoints = 5;
+  static const int _portraitPersonMinCoreKeypoints = 2;
 
   // ─── 외부 설정 ────────────────────────────────────
   bool isFrontCamera = false;
@@ -454,6 +467,7 @@ class PortraitModeHandler {
   void setIntent(PortraitIntent nextIntent) {
     if (intent == nextIntent) return;
     intent = nextIntent;
+    _clearManualMainPerson();
     _isGroupShotStable = false;
     _groupStreak = 0;
     _stablePersonCount = 1;
@@ -475,6 +489,19 @@ class PortraitModeHandler {
   void setBitmapCaptureForFaceEnabled(bool enabled) =>
       _enableBitmapCaptureForFace = enabled;
   bool get isBitmapCaptureForFaceEnabled => _enableBitmapCaptureForFace;
+
+  void lockMainPersonAt(Offset normalizedDisplayPoint) {
+    if (intent == PortraitIntent.group) {
+      _clearManualMainPerson();
+      return;
+    }
+
+    final x = normalizedDisplayPoint.dx.clamp(0.0, 1.0).toDouble();
+    final y = normalizedDisplayPoint.dy.clamp(0.0, 1.0).toDouble();
+    _manualMainPersonPoint = Offset(isFrontCamera ? 1.0 - x : x, y);
+    _manualMainPersonBox = null;
+    _manualMainPersonMisses = 0;
+  }
 
   void dispose() {
     _lightingClassifier.dispose();
@@ -501,6 +528,7 @@ class PortraitModeHandler {
     _rightEyeOpen = null;
     _smileProb = null;
     _trackedMainBox = null;
+    _clearManualMainPerson();
     _smoothedFaceRect = null;
     _smoothedBodyRect = null;
     _smoothedPosePoints.clear();
@@ -519,6 +547,7 @@ class PortraitModeHandler {
     _closedFaceCount = 0;
     _closedFaceRects = const [];
     _eyeClosedStreak = 0;
+    _oneEyeClosedStreak = 0;
     _anyEyeClosedStreak = 0;
     _cameraStability = 1.0;
     _recentDeltas.clear();
@@ -599,10 +628,15 @@ class PortraitModeHandler {
         metrics['portraitSmileProbability'] != null) {
       _markFaceSignalUpdated(frameId: _frameCount, timestampMs: nowMs);
     }
-    if (rawL != null && rawR != null && rawL < 0.35 && rawR < 0.35) {
+    if (_isRawEyesClosed(rawL, rawR)) {
       _eyeClosedStreak++;
+      _oneEyeClosedStreak = 0;
+    } else if (_isRawOneEyeClosed(rawL, rawR)) {
+      _eyeClosedStreak = 0;
+      _oneEyeClosedStreak++;
     } else {
       _eyeClosedStreak = 0;
+      _oneEyeClosedStreak = 0;
     }
     _smileProb = _smoothMetric(_smileProb, metrics['portraitSmileProbability']);
 
@@ -712,8 +746,13 @@ class PortraitModeHandler {
 
       if (canUseMainEyeProb && _isNativeFaceLikelyEyesClosed(mainFace)) {
         _eyeClosedStreak++;
+        _oneEyeClosedStreak = 0;
+      } else if (canUseMainEyeProb && _isNativeFaceLikelyOneEyeClosed(mainFace)) {
+        _eyeClosedStreak = 0;
+        _oneEyeClosedStreak++;
       } else {
         _eyeClosedStreak = 0;
+        _oneEyeClosedStreak = 0;
       }
 
       final visibleFaces = effectiveResults
@@ -748,7 +787,7 @@ class PortraitModeHandler {
           _closedFaceRects = const [];
         }
       }
-      _anyFaceEyesClosed = _anyEyeClosedStreak >= 1;
+      _anyFaceEyesClosed = _anyEyeClosedStreak >= _eyeConfirmFrames;
     } else if (_stablePersonCount <= 1) {
       _anyFaceEyesClosed = false;
       _closedFaceCount = 0;
@@ -791,6 +830,9 @@ class PortraitModeHandler {
         .where((r) => r.className.toLowerCase() == 'person')
         .toList();
     final persons = _dedupePersons(rawPersons);
+    if (persons.isEmpty) {
+      _markNoUsablePersonCandidate();
+    }
 
     // 사람 안정화
     _personStreak = (persons.isNotEmpty ? _personStreak + 1 : _personStreak - 1)
@@ -1097,8 +1139,11 @@ class PortraitModeHandler {
     final hasReliableAnkle =
         (lAnkle != null || rAnkle != null) && ankleConf >= 0.12 && maxY > 0.50;
     final hasKnee = lKnee != null || rKnee != null;
+    final kneeY = _maxY(lKnee, rKnee);
+    final hasKneeInsideFrame = kneeY != null && kneeY <= 0.84;
     final hasHip = lHip != null || rHip != null;
     final hasShoulder = lShoulder != null || rShoulder != null;
+    final hasUpperBodyAnchor = nose != null || hasShoulder || hasHip;
 
     if (isGroupShot) {
       shot = ShotType.groupShot;
@@ -1118,9 +1163,9 @@ class PortraitModeHandler {
     } else if (maxY > minY) {
       final h = maxY - minY;
 
-      if (hasReliableAnkle) {
+      if (hasReliableAnkle && hasUpperBodyAnchor) {
         shot = ShotType.fullBody;
-      } else if (hasKnee) {
+      } else if (hasKneeInsideFrame && hasUpperBodyAnchor) {
         shot = ShotType.kneeShot;
       } else if (hasHip && !hasKnee && h > 0.45) {
         shot = ShotType.waistShot;
@@ -1302,6 +1347,8 @@ class PortraitModeHandler {
       cameraStability: _cameraStability,
       eyeClosedConfirmed:
           faceEyeUsable && _eyeClosedStreak >= _eyeConfirmFrames,
+      oneEyeClosedConfirmed:
+          faceEyeUsable && _oneEyeClosedStreak >= _eyeConfirmFrames,
       faceHiddenCount: faceHiddenCount,
       spacingUnevenness: spacingUnevenness,
       heightVariation: heightVariation,
@@ -1720,7 +1767,7 @@ class PortraitModeHandler {
             _closedFaceRects = const [];
           }
         }
-        _anyFaceEyesClosed = _anyEyeClosedStreak >= 1;
+        _anyFaceEyesClosed = _anyEyeClosedStreak >= _eyeConfirmFrames;
       } else if (_stablePersonCount <= 1) {
         _anyFaceEyesClosed = false;
         _closedFaceCount = 0;
@@ -1852,7 +1899,7 @@ class PortraitModeHandler {
   }
 
   List<YOLOResult> _dedupePersons(List<YOLOResult> persons) {
-    if (persons.length <= 1) return persons;
+    if (persons.isEmpty) return const [];
 
     final isLandscapeGroup =
         intent == PortraitIntent.group &&
@@ -1872,6 +1919,9 @@ class PortraitModeHandler {
     final kept = <YOLOResult>[];
     for (final person in sorted) {
       if (person.confidence < minConfidence) continue;
+      if (intent != PortraitIntent.group && !_isUsablePortraitPerson(person)) {
+        continue;
+      }
 
       final isDuplicate = kept.any(
         (other) => _looksLikeSamePerson(other, person),
@@ -1881,7 +1931,55 @@ class PortraitModeHandler {
       }
     }
 
-    return kept.isEmpty ? [sorted.first] : kept;
+    return kept;
+  }
+
+  bool _isUsablePortraitPerson(YOLOResult person) {
+    final box = person.normalizedBox;
+    final area = box.width * box.height;
+    if (person.confidence < _portraitPersonMinConfidence ||
+        area < _portraitPersonMinArea) {
+      return false;
+    }
+
+    final visibleKeypoints = _visibleKeypointCount(
+      person,
+      minConf: _portraitPersonKeypointMinConfidence,
+    );
+    final coreKeypoints = _corePortraitKeypointCount(
+      person,
+      minConf: _portraitPersonKeypointMinConfidence,
+    );
+    return visibleKeypoints >= _portraitPersonMinVisibleKeypoints &&
+        coreKeypoints >= _portraitPersonMinCoreKeypoints;
+  }
+
+  int _visibleKeypointCount(YOLOResult person, {required double minConf}) {
+    final dynamic confs = person.keypointConfidences;
+    final list = confs is List ? confs : const <dynamic>[];
+    var count = 0;
+    for (final value in list) {
+      if (value is num && value.toDouble() >= minConf) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  int _corePortraitKeypointCount(YOLOResult person, {required double minConf}) {
+    var count = 0;
+    for (final idx in const <int>[
+      PoseKeypointIndex.nose,
+      PoseKeypointIndex.leftEye,
+      PoseKeypointIndex.rightEye,
+      PoseKeypointIndex.leftShoulder,
+      PoseKeypointIndex.rightShoulder,
+      PoseKeypointIndex.leftHip,
+      PoseKeypointIndex.rightHip,
+    ]) {
+      if (_conf(person, idx) >= minConf) count++;
+    }
+    return count;
   }
 
   bool _looksLikeSamePerson(YOLOResult a, YOLOResult b) {
@@ -1939,6 +2037,20 @@ class PortraitModeHandler {
     return intersection.width * intersection.height;
   }
 
+  bool _isRawEyesClosed(double? leftEyeOpen, double? rightEyeOpen) {
+    return leftEyeOpen != null &&
+        rightEyeOpen != null &&
+        leftEyeOpen < 0.35 &&
+        rightEyeOpen < 0.35;
+  }
+
+  bool _isRawOneEyeClosed(double? leftEyeOpen, double? rightEyeOpen) {
+    return leftEyeOpen != null &&
+        rightEyeOpen != null &&
+        !_isRawEyesClosed(leftEyeOpen, rightEyeOpen) &&
+        (leftEyeOpen < 0.35 || rightEyeOpen < 0.35);
+  }
+
   bool _hasUsableEyeData(Face face) {
     return face.leftEyeOpenProbability != null ||
         face.rightEyeOpenProbability != null;
@@ -1971,7 +2083,14 @@ class PortraitModeHandler {
     final l = face.leftEyeOpenProbability;
     final r = face.rightEyeOpenProbability;
     if (l == null || r == null) return false;
-    return _isNativeFaceFrontalForEyes(face) && l < 0.35 && r < 0.35;
+    return _isNativeFaceFrontalForEyes(face) && _isRawEyesClosed(l, r);
+  }
+
+  bool _isNativeFaceLikelyOneEyeClosed(NativeFaceResult face) {
+    final l = face.leftEyeOpenProbability;
+    final r = face.rightEyeOpenProbability;
+    if (l == null || r == null) return false;
+    return _isNativeFaceFrontalForEyes(face) && _isRawOneEyeClosed(l, r);
   }
 
   bool _isNativeFaceFrontalForEyes(NativeFaceResult face) {
@@ -2101,6 +2220,9 @@ class PortraitModeHandler {
   // ─── 유틸리티 ─────────────────────────────────────
 
   YOLOResult _selectMainPerson(List<YOLOResult> persons) {
+    final manualSelection = _selectManualMainPerson(persons);
+    if (manualSelection != null) return manualSelection;
+
     if (persons.length == 1) {
       _trackedMainBox = persons.first.normalizedBox;
       return persons.first;
@@ -2128,6 +2250,128 @@ class PortraitModeHandler {
 
     _trackedMainBox = selected.normalizedBox;
     return selected;
+  }
+
+  YOLOResult? _selectManualMainPerson(List<YOLOResult> persons) {
+    if (intent == PortraitIntent.group ||
+        (_manualMainPersonPoint == null && _manualMainPersonBox == null)) {
+      return null;
+    }
+
+    final previousBox = _manualMainPersonBox;
+    if (previousBox != null) {
+      YOLOResult? selected;
+      double bestIou = 0.0;
+      double bestDistance = double.infinity;
+
+      for (final person in persons) {
+        final box = person.normalizedBox;
+        final iou = _intersectionOverUnion(previousBox, box);
+        final distance = (box.center - previousBox.center).distance;
+        if (iou > bestIou || (iou == bestIou && distance < bestDistance)) {
+          selected = person;
+          bestIou = iou;
+          bestDistance = distance;
+        }
+      }
+
+      if (selected != null &&
+          (bestIou >= _manualMainPersonMinTrackIoU ||
+              bestDistance <= _manualMainPersonMaxTrackDistance)) {
+        _acceptManualMainPerson(selected);
+        return selected;
+      }
+
+      _recordManualMainPersonMiss();
+      return null;
+    }
+
+    final point = _manualMainPersonPoint;
+    if (point == null) return null;
+
+    YOLOResult? selected;
+    double bestDistance = double.infinity;
+    for (final person in persons) {
+      final box = person.normalizedBox;
+      if (!box.contains(point)) continue;
+
+      final distance = (box.center - point).distance;
+      if (distance < bestDistance) {
+        selected = person;
+        bestDistance = distance;
+      }
+    }
+
+    if (selected == null) {
+      for (final person in persons) {
+        final distance = _distanceToRect(point, person.normalizedBox);
+        if (distance < bestDistance) {
+          selected = person;
+          bestDistance = distance;
+        }
+      }
+      if (bestDistance > _manualMainPersonMaxTapDistance) {
+        selected = null;
+      }
+    }
+
+    if (selected != null) {
+      _acceptManualMainPerson(selected);
+      return selected;
+    }
+
+    _recordManualMainPersonMiss();
+    return null;
+  }
+
+  void _acceptManualMainPerson(YOLOResult selected) {
+    _manualMainPersonBox = selected.normalizedBox;
+    _manualMainPersonMisses = 0;
+    _trackedMainBox = selected.normalizedBox;
+  }
+
+  void _recordManualMainPersonMiss() {
+    _manualMainPersonBox = null;
+    _manualMainPersonMisses++;
+    if (_manualMainPersonMisses >= _manualMainPersonMissLimit) {
+      _clearManualMainPerson();
+    }
+  }
+
+  void _markNoUsablePersonCandidate() {
+    _trackedMainBox = null;
+    _manualMainPersonBox = null;
+    if (_manualMainPersonPoint != null) {
+      _manualMainPersonMisses++;
+      if (_manualMainPersonMisses >= _manualMainPersonMissLimit) {
+        _clearManualMainPerson();
+      }
+    } else {
+      _manualMainPersonMisses = 0;
+    }
+    _smoothedFaceRect = null;
+    _smoothedBodyRect = null;
+    _smoothedPosePoints.clear();
+  }
+
+  void _clearManualMainPerson() {
+    _manualMainPersonPoint = null;
+    _manualMainPersonBox = null;
+    _manualMainPersonMisses = 0;
+  }
+
+  double _distanceToRect(Offset point, Rect rect) {
+    final dx = point.dx < rect.left
+        ? rect.left - point.dx
+        : point.dx > rect.right
+        ? point.dx - rect.right
+        : 0.0;
+    final dy = point.dy < rect.top
+        ? rect.top - point.dy
+        : point.dy > rect.bottom
+        ? point.dy - rect.bottom
+        : 0.0;
+    return math.sqrt(dx * dx + dy * dy);
   }
 
   double _intersectionOverUnion(Rect a, Rect b) {

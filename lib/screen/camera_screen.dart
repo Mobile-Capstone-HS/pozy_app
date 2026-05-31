@@ -179,7 +179,7 @@ class _CameraScreenState extends State<CameraScreen> {
     ),
   );
   int _portraitLostFrames = 0;
-  static const int _portraitLostFrameTolerance = 8;
+  static const int _portraitLostFrameTolerance = 0;
   CompositionDecision? _landscapeDecision;
   LandscapeOverlayAdvice _landscapeOverlayAdvice =
       const LandscapeOverlayAdvice.none();
@@ -1357,6 +1357,10 @@ class _CameraScreenState extends State<CameraScreen> {
 
     final nx = (localPosition.dx / _previewSize.width).clamp(0.0, 1.0);
     final ny = (localPosition.dy / _previewSize.height).clamp(0.0, 1.0);
+
+    if (_isPortraitMode && _portraitIntent != portrait.PortraitIntent.group) {
+      _portraitHandler.lockMainPersonAt(Offset(nx.toDouble(), ny.toDouble()));
+    }
 
     unawaited(_cameraController.setFocusPoint(nx, ny));
     _focusIndicatorTimer?.cancel();

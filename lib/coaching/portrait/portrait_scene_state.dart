@@ -145,6 +145,7 @@ class PortraitSceneState {
 
   // 눈 감김 정밀 추적
   final bool eyeClosedConfirmed; // 네이티브 raw 기반 연속 프레임 확정
+  final bool oneEyeClosedConfirmed; // 네이티브 raw 기반 한쪽 눈 감김 연속 프레임 확정
 
   // 그룹샷 상세 데이터
   final int faceHiddenCount; // 얼굴 안 보이는 인원 수 (코 키포인트 없음)
@@ -209,6 +210,7 @@ class PortraitSceneState {
     this.lowerBodyTouchesBottom = false,
     this.cameraStability = 0.0,
     this.eyeClosedConfirmed = false,
+    this.oneEyeClosedConfirmed = false,
     this.faceHiddenCount = 0,
     this.spacingUnevenness = 0.0,
     this.heightVariation = 0.0,
@@ -216,18 +218,9 @@ class PortraitSceneState {
 
   bool get isJointCropped => croppedJoints.isNotEmpty;
 
-  bool get areEyesClosed =>
-      eyeClosedConfirmed ||
-      (leftEyeOpenProb != null &&
-          rightEyeOpenProb != null &&
-          leftEyeOpenProb! < 0.35 &&
-          rightEyeOpenProb! < 0.35);
+  bool get areEyesClosed => eyeClosedConfirmed;
 
-  bool get isOneEyeClosed =>
-      leftEyeOpenProb != null &&
-      rightEyeOpenProb != null &&
-      !areEyesClosed &&
-      (leftEyeOpenProb! < 0.35 || rightEyeOpenProb! < 0.35);
+  bool get isOneEyeClosed => !areEyesClosed && oneEyeClosedConfirmed;
 
   bool get isSmiling => smileProbability != null && smileProbability! >= 0.65;
 
