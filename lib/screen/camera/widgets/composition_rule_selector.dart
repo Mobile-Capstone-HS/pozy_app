@@ -159,14 +159,48 @@ class _CompositionRuleSelectorState extends State<CompositionRuleSelector> {
                 : const Color(0xFFE5EEF8),
           ),
         ),
-        child: Text(
-          _tabTitle(tab),
-          style: TextStyle(
-            color:
-                isSelected ? const Color(0xFF1D4ED8) : const Color(0xFF6B7280),
-            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-            fontSize: 11,
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              _tabTitle(tab),
+              style: TextStyle(
+                color:
+                    isSelected ? const Color(0xFF1D4ED8) : const Color(0xFF6B7280),
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                fontSize: 11,
+              ),
+            ),
+            if (tab == _Tab.silhouette) ...[
+              const SizedBox(width: 4),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFF43F5E), Color(0xFFE11D48)],
+                  ),
+                  borderRadius: BorderRadius.circular(6),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFE11D48).withValues(alpha: 0.3),
+                      blurRadius: 4,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
+                ),
+                child: const Text(
+                  'BETA',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 7,
+                    fontWeight: FontWeight.w900,
+                    height: 1.0,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+            ],
+          ],
         ),
       ),
     );
