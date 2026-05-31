@@ -166,7 +166,17 @@ class TfliteAestheticService {
       throw Exception('No technical quality model could be executed.');
     }
 
+    final technicalMergeSw = AcutAestheticTimingDebug.start();
     final technicalScore = _blend(technicalDetails);
+    _logTimingElapsedUs(
+      stopwatch: technicalMergeSw,
+      modelId: 'technical_ensemble',
+      phase: 'technical_score_merge',
+      fields: <String, Object?>{
+        'model_count': technicalDetails.length,
+        'timing_tag': 'AcutTimingTechnicalModel',
+      },
+    );
     final aestheticScore = aestheticDetails.isEmpty
         ? null
         : _blend(aestheticDetails);
@@ -281,6 +291,7 @@ class TfliteAestheticService {
     return _interpreterManager.evict(
       contract.assetPath,
       useFlexDelegate: contract.useFlexDelegate,
+      modelId: contract.id,
     );
   }
 
@@ -303,6 +314,7 @@ class TfliteAestheticService {
         .withInterpreter(
           contract.assetPath,
           useFlexDelegate: contract.useFlexDelegate,
+          modelId: contract.id,
           action: (interpreter, descriptor) async {
             if (contract.inputDtype != 'float32') {
               throw Exception(
@@ -667,6 +679,21 @@ class TfliteAestheticService {
     final iMs = inferSw.elapsedMilliseconds;
     AcutPerfMetrics.totalInferenceMs += iMs;
     debugPrint('[AcutPerf] model_inference_only_ms=$iMs model=${contract.id}');
+    final technicalInferencePhase = _technicalInferencePhase(contract.id);
+    if (technicalInferencePhase != null) {
+      AcutAestheticTimingDebug.log(
+        imageLabel: debugImageLabel,
+        imageIndex: imageIndex,
+        modelId: contract.id,
+        phase: technicalInferencePhase,
+        elapsedMs: iMs,
+        tensorShape: _shapeString(outputDescriptors.first.shape),
+        fields: <String, Object?>{
+          'elapsedUs': inferSw.elapsedMicroseconds,
+          'timing_tag': 'AcutTimingTechnicalModel',
+        },
+      );
+    }
     if (contract.id == 'icaa_color_aesthetic') {
       AcutAestheticTimingDebug.log(
         imageLabel: debugImageLabel,
@@ -1581,6 +1608,45 @@ class TfliteAestheticService {
     );
 
     return (weightedSum / totalWeight).clamp(0.0, 1.0).toDouble();
+  }
+
+  String? _technicalInferencePhase(String modelId) {
+    return switch (modelId) {
+      'koniq_mobile' => 'koniq_inference',
+      'flive_image_mobile' => 'flive_inference',
+      _ => null,
+    };
+  }
+
+  void _logTimingElapsedUs({
+    required Stopwatch? stopwatch,
+    required String modelId,
+    required String phase,
+    String? imageLabel,
+    int? imageIndex,
+    String? tensorShape,
+    String? imageDimensions,
+    Map<String, Object?> fields = const <String, Object?>{},
+  }) {
+    if (stopwatch == null) {
+      return;
+    }
+    if (stopwatch.isRunning) {
+      stopwatch.stop();
+    }
+    AcutAestheticTimingDebug.log(
+      imageLabel: imageLabel,
+      imageIndex: imageIndex,
+      modelId: modelId,
+      phase: phase,
+      elapsedMs: stopwatch.elapsedMilliseconds,
+      tensorShape: tensorShape,
+      imageDimensions: imageDimensions,
+      fields: <String, Object?>{
+        'elapsedUs': stopwatch.elapsedMicroseconds,
+        ...fields,
+      },
+    );
   }
 }
 

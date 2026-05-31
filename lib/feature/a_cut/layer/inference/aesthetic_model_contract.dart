@@ -446,7 +446,7 @@ const AestheticModelContract koniqMobileContract = AestheticModelContract(
   expectedOutputLength: 1,
   normalization: ImageNormalization.zeroToOne,
   outputType: AestheticModelOutputType.scalarPercent,
-  weight: 0.6,
+  weight: 4 / 7,
 );
 
 const AestheticModelContract fliveImageMobileContract = AestheticModelContract(
@@ -459,7 +459,7 @@ const AestheticModelContract fliveImageMobileContract = AestheticModelContract(
   expectedOutputLength: 1,
   normalization: ImageNormalization.zeroToOne,
   outputType: AestheticModelOutputType.scalarPercent,
-  weight: 0.4,
+  weight: 3 / 7,
 );
 
 const AestheticModelContract nimaMobileContract = AestheticModelContract(

@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
+import '../../../../config/experimental_features.dart';
 import '../../model/aesthetic_ensemble_score_result.dart';
 import '../../model/aesthetic_ensemble_weights.dart';
 import '../../model/model_score_detail.dart';
@@ -103,11 +104,25 @@ class OnDevicePhotoEvaluationService implements PhotoEvaluationService {
       imageIndex: batchImageIndex,
     );
     final inputCache = <String, Future<Uint8List>>{};
+    final technicalScoringSw = AcutAestheticTimingDebug.start();
     final technicalSummary = await _technicalTfliteService.evaluate(
       imageBytes,
       imageIndex: batchImageIndex,
       preprocessBundle: preprocessBundle,
       sharedInputCache: inputCache,
+    );
+    _logTimingElapsedUs(
+      stopwatch: technicalScoringSw,
+      imageLabel: fileName,
+      imageIndex: batchImageIndex,
+      modelId: 'technical_ensemble',
+      phase: 'total_technical_scoring',
+      imageDimensions:
+          '${preprocessBundle.sourceWidth}x${preprocessBundle.sourceHeight}',
+      fields: <String, Object?>{
+        'bytes': imageBytes.lengthInBytes,
+        'timing_tag': 'AcutTimingTechnicalTotal',
+      },
     );
     AestheticEnsembleScoreResult? aestheticSummary;
     final warnings = <String>[];
@@ -154,9 +169,18 @@ class OnDevicePhotoEvaluationService implements PhotoEvaluationService {
       throw StateError('aesthetic_score_unavailable');
     }
     const usesTechnicalScoreAsFinal = false;
+    final finalScoreMergeSw = AcutAestheticTimingDebug.start();
     final finalScore = ((technicalSummary.technicalScore + aestheticScore) / 2)
         .clamp(0.0, 1.0)
         .toDouble();
+    _logTimingElapsedUs(
+      stopwatch: finalScoreMergeSw,
+      imageLabel: fileName,
+      imageIndex: batchImageIndex,
+      modelId: 'score_merge',
+      phase: 'final_score_merge',
+      fields: <String, Object?>{'timing_tag': 'AcutTimingScoreMerge'},
+    );
     final notes = _buildNotes(
       technicalSummary: technicalSummary,
       aestheticScore: aestheticScore,
@@ -193,6 +217,12 @@ class OnDevicePhotoEvaluationService implements PhotoEvaluationService {
       ].where((value) => value.trim().isNotEmpty).join('+'),
       fileName: fileName,
       usesTechnicalScoreAsFinal: usesTechnicalScoreAsFinal,
+    );
+    _logImageFinalScoreParity(
+      result: result,
+      technicalSummary: technicalSummary,
+      fileName: fileName,
+      batchImageIndex: batchImageIndex,
     );
     preprocessBundle.logTotal();
     AcutAestheticTimingDebug.logElapsed(
@@ -288,4 +318,72 @@ class OnDevicePhotoEvaluationService implements PhotoEvaluationService {
     }
     return null;
   }
+}
+
+void _logImageFinalScoreParity({
+  required PhotoEvaluationResult result,
+  required TflitePhotoScoreSummary technicalSummary,
+  required String? fileName,
+  required int? batchImageIndex,
+}) {
+  if (!ExperimentalFeatures.enableAcutParityDebug) {
+    return;
+  }
+
+  debugPrint(
+    '[AcutParity] image_final_score '
+    'image="${_escapeAcutParityValue(fileName ?? 'unknown')}" '
+    'batch_index=${batchImageIndex ?? '-'} '
+    'technical_score=${result.technicalScore} '
+    'aesthetic_score=${result.aestheticScore ?? '-'} '
+    'final_score=${result.finalScore} '
+    'koniq=${_detailScore(technicalSummary, 'koniq_mobile') ?? '-'} '
+    'flive=${_detailScore(technicalSummary, 'flive_image_mobile') ?? '-'} '
+    'nima=${result.nimaScore ?? '-'} '
+    'rgnet=${result.rgnetScore ?? '-'} '
+    'alamp=${result.alampScore ?? '-'} '
+    'icaa=${result.icaaScore ?? '-'}',
+  );
+}
+
+double? _detailScore(TflitePhotoScoreSummary summary, String id) {
+  for (final detail in summary.scoreDetails) {
+    if (detail.id == id) {
+      return detail.normalizedScore;
+    }
+  }
+  return null;
+}
+
+void _logTimingElapsedUs({
+  required Stopwatch? stopwatch,
+  required String modelId,
+  required String phase,
+  String? imageLabel,
+  int? imageIndex,
+  String? imageDimensions,
+  Map<String, Object?> fields = const <String, Object?>{},
+}) {
+  if (stopwatch == null) {
+    return;
+  }
+  if (stopwatch.isRunning) {
+    stopwatch.stop();
+  }
+  AcutAestheticTimingDebug.log(
+    imageLabel: imageLabel,
+    imageIndex: imageIndex,
+    modelId: modelId,
+    phase: phase,
+    elapsedMs: stopwatch.elapsedMilliseconds,
+    imageDimensions: imageDimensions,
+    fields: <String, Object?>{
+      'elapsedUs': stopwatch.elapsedMicroseconds,
+      ...fields,
+    },
+  );
+}
+
+String _escapeAcutParityValue(String value) {
+  return value.replaceAll('"', r'\"');
 }
