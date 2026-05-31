@@ -318,30 +318,13 @@ class AcutImagePreprocessBundle {
       },
     );
     final tensorSw = AcutAestheticTimingDebug.start();
-    var patchPreprocessPath = 'isolate';
-    Uint8List buffer;
-    try {
-      buffer = await compute(
-        _preprocessAlampPatchBoxesForBundle,
-        _AlampPatchTensorRequest(
-          decoded: decoded,
-          boxes: selection.boxes,
-          patchWidth: patchWidth,
-          patchHeight: patchHeight,
-          normalization: normalization,
-        ),
-        debugLabel: 'acut_alamp_patch_tensor',
-      );
-    } catch (_) {
-      patchPreprocessPath = 'sync_fallback';
-      buffer = _preprocessDecodedPatchBoxesToRgbFloat32(
-        decoded,
-        boxes: selection.boxes,
-        patchWidth: patchWidth,
-        patchHeight: patchHeight,
-        normalization: normalization,
-      );
-    }
+    final buffer = _preprocessDecodedPatchBoxesToRgbFloat32(
+      decoded,
+      boxes: selection.boxes,
+      patchWidth: patchWidth,
+      patchHeight: patchHeight,
+      normalization: normalization,
+    );
     AcutAestheticTimingDebug.logElapsed(
       stopwatch: tensorSw,
       imageLabel: debugImageLabel,
@@ -350,10 +333,7 @@ class AcutImagePreprocessBundle {
       phase: 'alamp_patch_tensor_generation',
       tensorShape: '[1,$patchCount,$patchHeight,$patchWidth,3]',
       imageDimensions: '${decoded.width}x${decoded.height}',
-      fields: <String, Object?>{
-        'normalization': normalization.name,
-        'alamp_patch_preprocess_path': patchPreprocessPath,
-      },
+      fields: <String, Object?>{'normalization': normalization.name},
     );
     sw.stop();
     _tensorCache[key] = buffer;
@@ -417,22 +397,6 @@ class _PatchBatchPreprocessRequest {
   });
 }
 
-class _AlampPatchTensorRequest {
-  final img.Image decoded;
-  final List<_PatchBox> boxes;
-  final int patchWidth;
-  final int patchHeight;
-  final ImageNormalization normalization;
-
-  const _AlampPatchTensorRequest({
-    required this.decoded,
-    required this.boxes,
-    required this.patchWidth,
-    required this.patchHeight,
-    required this.normalization,
-  });
-}
-
 Uint8List _preprocessToRgbFloat32(_PreprocessRequest request) {
   final decoded = img.decodeImage(request.imageBytes);
   if (decoded == null) {
@@ -471,18 +435,6 @@ Uint8List _preprocessAlampGlobalViewFloat32(_PreprocessRequest request) {
     decoded,
     width: request.width,
     height: request.height,
-    normalization: request.normalization,
-  );
-}
-
-Uint8List _preprocessAlampPatchBoxesForBundle(
-  _AlampPatchTensorRequest request,
-) {
-  return _preprocessDecodedPatchBoxesToRgbFloat32(
-    request.decoded,
-    boxes: request.boxes,
-    patchWidth: request.patchWidth,
-    patchHeight: request.patchHeight,
     normalization: request.normalization,
   );
 }
