@@ -99,7 +99,11 @@ class OnDeviceImageScoreService implements ImageScoreService {
       );
 
       try {
-        final analysisBytes = await _readAnalysisBytes(current.asset);
+        final analysisBytes = await _readAnalysisBytes(
+          current.asset,
+          fileName: current.fileName,
+          imageIndex: oneBasedIndex,
+        );
         if (analysisBytes == null || analysisBytes.isEmpty) {
           throw Exception('Cannot read analysis image bytes.');
         }
@@ -161,10 +165,39 @@ class OnDeviceImageScoreService implements ImageScoreService {
     );
   }
 
-  Future<Uint8List?> _readAnalysisBytes(AssetEntity asset) async {
+  Future<Uint8List?> _readAnalysisBytes(
+    AssetEntity asset, {
+    String? fileName,
+    int? imageIndex,
+  }) async {
+    final timingSw = AcutAestheticTimingDebug.start();
+    var timingLogged = false;
+
+    void logLoad({required bool success, int bytes = 0, Object? error}) {
+      if (timingLogged) {
+        return;
+      }
+      timingLogged = true;
+      AcutAestheticTimingDebug.logElapsed(
+        stopwatch: timingSw,
+        imageLabel: fileName ?? asset.id,
+        imageIndex: imageIndex,
+        modelId: 'aesthetic_pipeline',
+        phase: 'image_bytes_load',
+        fields: <String, Object?>{
+          'asset_id': asset.id,
+          'bytes': bytes,
+          'source': 'thumbnailDataWithSize',
+          'success': success,
+          if (error != null) 'error': error.toString(),
+        },
+      );
+    }
+
     try {
       final resized = await asset.thumbnailDataWithSize(_analysisImageSize);
       if (resized != null && resized.isNotEmpty) {
+        logLoad(success: true, bytes: resized.length);
         debugPrint(
           '[AcutPerf] analysis_image_resized asset_id=${asset.id} '
           'bytes=${resized.length}',
@@ -176,8 +209,12 @@ class OnDeviceImageScoreService implements ImageScoreService {
         '[AcutPerf] analysis_image_resized_failed asset_id=${asset.id} '
         'error=$error',
       );
+      logLoad(success: false, error: error);
     }
 
+    if (!timingLogged) {
+      logLoad(success: false);
+    }
     debugPrint('[AcutPerf] analysis_image_unavailable asset_id=${asset.id}');
     return null;
   }

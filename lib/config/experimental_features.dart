@@ -58,10 +58,20 @@ abstract final class ExperimentalFeatures {
     'POZY_ACUT_VERBOSE_MODEL_LOGS',
     defaultValue: false,
   );
-  static const bool enableC6TopiqKoniqCandidate = bool.fromEnvironment(
-    'POZY_ENABLE_C6_TOPIQ_KONIQ_CANDIDATE',
-    defaultValue: kDebugMode,
-  );
+  // Diagnostic-only timing logs for A-cut aesthetic preprocessing/inference.
+  static const bool enableAcutAestheticTimingDebug =
+      kDebugMode &&
+      bool.fromEnvironment(
+        'POZY_ENABLE_ACUT_AESTHETIC_TIMING_DEBUG',
+        defaultValue: false,
+      );
+  // Diagnostic-only baseline score logs before A-cut aesthetic optimizations.
+  static const bool enableAcutAestheticParityDebug =
+      kDebugMode &&
+      bool.fromEnvironment(
+        'POZY_ENABLE_ACUT_AESTHETIC_PARITY_DEBUG',
+        defaultValue: false,
+      );
   static const bool useFreshInterpreterPerImageForDebug = bool.fromEnvironment(
     'POZY_USE_FRESH_INTERPRETER_PER_IMAGE_FOR_DEBUG',
     defaultValue: false,

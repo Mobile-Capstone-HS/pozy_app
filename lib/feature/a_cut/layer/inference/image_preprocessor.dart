@@ -10,7 +10,11 @@ enum ImageNormalization { zeroToOne, minusOneToOne, rawZeroTo255, imageNet }
 class ImagePreprocessor {
   const ImagePreprocessor();
 
-  Future<AcutImagePreprocessBundle> createBundle(Uint8List imageBytes) async {
+  Future<AcutImagePreprocessBundle> createBundle(
+    Uint8List imageBytes, {
+    String? debugImageLabel,
+    int? imageIndex,
+  }) async {
     final sw = Stopwatch()..start();
     final decoded = img.decodeImage(imageBytes);
     sw.stop();
@@ -28,6 +32,15 @@ class ImagePreprocessor {
     debugPrint(
       '[AcutPerf] preprocess_decode_ms=${sw.elapsedMilliseconds} '
       'source=${decoded.width}x${decoded.height}',
+    );
+    AcutAestheticTimingDebug.log(
+      imageLabel: debugImageLabel,
+      imageIndex: imageIndex,
+      modelId: 'aesthetic_pipeline',
+      phase: 'image_decode',
+      elapsedMs: sw.elapsedMilliseconds,
+      imageDimensions: '${decoded.width}x${decoded.height}',
+      fields: <String, Object?>{'bytes': imageBytes.lengthInBytes},
     );
     return bundle;
   }
@@ -175,18 +188,23 @@ class AcutImagePreprocessBundle {
     required int height,
     ImageNormalization normalization = ImageNormalization.zeroToOne,
   }) async {
-    final key = 'rgb_pad_${width}x$height:${normalization.name}';
+    final key = _resizeWithPadCacheKey(
+      width: width,
+      height: height,
+      normalization: normalization,
+    );
     final existing = _tensorCache[key];
     if (existing != null) {
       return existing;
     }
 
     final sw = Stopwatch()..start();
-    final buffer = _preprocessDecodedResizeWithPadToRgbFloat32(
+    final buffer = _preprocessDecodedResizeWithPadToRgbFloat32Internal(
       decoded,
       width: width,
       height: height,
       normalization: normalization,
+      debugLabel: 'resize_with_pad',
     );
     sw.stop();
     _tensorCache[key] = buffer;
@@ -260,6 +278,8 @@ class AcutImagePreprocessBundle {
     required int patchHeight,
     required int patchCount,
     ImageNormalization normalization = ImageNormalization.zeroToOne,
+    String? debugImageLabel,
+    int? imageIndex,
   }) async {
     final key =
         'alamp_adaptive_patches_${patchWidth}x$patchHeight:$patchCount:${normalization.name}';
@@ -269,13 +289,37 @@ class AcutImagePreprocessBundle {
     }
 
     final sw = Stopwatch()..start();
+    final selectionSw = AcutAestheticTimingDebug.start();
     final selection = _selectAlampAdaptivePatchBoxes(decoded, patchCount);
+    AcutAestheticTimingDebug.logElapsed(
+      stopwatch: selectionSw,
+      imageLabel: debugImageLabel,
+      imageIndex: imageIndex,
+      modelId: 'mobile_alamp_v2',
+      phase: 'alamp_patch_selection',
+      imageDimensions: '${decoded.width}x${decoded.height}',
+      fields: <String, Object?>{
+        'patch_count': patchCount,
+        'selected_count': selection.boxes.length,
+      },
+    );
+    final tensorSw = AcutAestheticTimingDebug.start();
     final buffer = _preprocessDecodedPatchBoxesToRgbFloat32(
       decoded,
       boxes: selection.boxes,
       patchWidth: patchWidth,
       patchHeight: patchHeight,
       normalization: normalization,
+    );
+    AcutAestheticTimingDebug.logElapsed(
+      stopwatch: tensorSw,
+      imageLabel: debugImageLabel,
+      imageIndex: imageIndex,
+      modelId: 'mobile_alamp_v2',
+      phase: 'alamp_patch_tensor_generation',
+      tensorShape: '[1,$patchCount,$patchHeight,$patchWidth,3]',
+      imageDimensions: '${decoded.width}x${decoded.height}',
+      fields: <String, Object?>{'normalization': normalization.name},
     );
     sw.stop();
     _tensorCache[key] = buffer;
@@ -294,6 +338,14 @@ class AcutImagePreprocessBundle {
   void _recordTiming(String key, int ms) {
     _timings[key] = (_timings[key] ?? 0) + ms;
     AcutPerfCollector.recordPreprocess(ms);
+  }
+
+  String _resizeWithPadCacheKey({
+    required int width,
+    required int height,
+    required ImageNormalization normalization,
+  }) {
+    return 'rgb_pad_${width}x$height:${normalization.name}';
   }
 }
 

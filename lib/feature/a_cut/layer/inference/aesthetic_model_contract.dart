@@ -462,21 +462,6 @@ const AestheticModelContract fliveImageMobileContract = AestheticModelContract(
   weight: 0.4,
 );
 
-const AestheticModelContract topiqLiteMixed112Contract = AestheticModelContract(
-  id: 'topiq_lite_mixed112',
-  label: 'TOPIQ mixed112',
-  assetPath: 'assets/models/topiq_lite_mixed112_frozen_fp16.tflite',
-  metadataAssetPathOverride: 'assets/models/topiq_lite_mixed112.metadata.json',
-  dimension: ModelScoreDimension.technical,
-  inputWidth: 384,
-  inputHeight: 384,
-  expectedOutputLength: 1,
-  normalization: ImageNormalization.rawZeroTo255,
-  outputType: AestheticModelOutputType.scalarUnitInterval,
-  weight: 0.0,
-  resizeMode: AestheticModelResizeMode.resizeWithPad,
-);
-
 const AestheticModelContract nimaMobileContract = AestheticModelContract(
   id: 'nima_mobile',
   label: 'NIMA',

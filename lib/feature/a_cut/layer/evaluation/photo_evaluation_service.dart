@@ -2,12 +2,12 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
-import '../../../../config/experimental_features.dart';
 import '../../model/aesthetic_ensemble_score_result.dart';
 import '../../model/aesthetic_ensemble_weights.dart';
 import '../../model/model_score_detail.dart';
 import '../../model/photo_evaluation_result.dart';
 import '../inference/aesthetic_model_contract.dart';
+import '../inference/acut_perf.dart';
 import '../inference/image_preprocessor.dart';
 import '../inference/tflite_aesthetic_service.dart';
 import 'aesthetic_ensemble_scoring_service.dart';
@@ -96,7 +96,12 @@ class OnDevicePhotoEvaluationService implements PhotoEvaluationService {
     bool skipExplanation = false,
     int? batchImageIndex,
   }) async {
-    final preprocessBundle = await _preprocessor.createBundle(imageBytes);
+    final totalScoringSw = AcutAestheticTimingDebug.start();
+    final preprocessBundle = await _preprocessor.createBundle(
+      imageBytes,
+      debugImageLabel: fileName,
+      imageIndex: batchImageIndex,
+    );
     final inputCache = <String, Future<Uint8List>>{};
     final technicalSummary = await _technicalTfliteService.evaluate(
       imageBytes,
@@ -104,35 +109,48 @@ class OnDevicePhotoEvaluationService implements PhotoEvaluationService {
       preprocessBundle: preprocessBundle,
       sharedInputCache: inputCache,
     );
-    await _logC6TopiqCandidate(
-      imageBytes,
-      technicalSummary: technicalSummary,
-      preprocessBundle: preprocessBundle,
-      inputCache: inputCache,
-      fileName: fileName,
-      batchImageIndex: batchImageIndex,
-    );
     AestheticEnsembleScoreResult? aestheticSummary;
     final warnings = <String>[];
+    String? aestheticError;
 
+    final aestheticParitySw = AcutAestheticParityDebug.start();
     try {
       aestheticSummary = await _aestheticEnsembleService.evaluate(
         imageBytes,
         weights: _defaultAestheticWeights,
         imageIndex: batchImageIndex,
+        debugImageLabel: fileName,
         preprocessBundle: preprocessBundle,
         sharedInputCache: inputCache,
       );
     } catch (error) {
+      aestheticError = error.toString();
       warnings.add('미적 앙상블 모델을 실행하지 못했습니다: $error');
     }
+    final aestheticElapsedMs = AcutAestheticParityDebug.stopElapsedMs(
+      aestheticParitySw,
+    );
 
     if (aestheticSummary != null) {
       warnings.addAll(aestheticSummary.warnings);
     }
 
+    final modelErrors = warnings.toList(growable: false);
     final aestheticScore = aestheticSummary?.finalAestheticScore;
     if (aestheticScore == null) {
+      AcutAestheticParityDebug.log(
+        imageLabel: fileName,
+        imageIndex: batchImageIndex,
+        nimaScore: aestheticSummary?.nimaScore,
+        rgnetScore: aestheticSummary?.rgnetScore,
+        alampScore: aestheticSummary?.alampScore,
+        icaaScore: aestheticSummary?.icaaScore,
+        finalAestheticScore: aestheticScore,
+        technicalScore: technicalSummary.technicalScore,
+        elapsedTotalAestheticMs: aestheticElapsedMs,
+        modelErrors: modelErrors,
+        error: aestheticError ?? 'aesthetic_score_unavailable',
+      );
       throw StateError('aesthetic_score_unavailable');
     }
     const usesTechnicalScoreAsFinal = false;
@@ -177,6 +195,29 @@ class OnDevicePhotoEvaluationService implements PhotoEvaluationService {
       usesTechnicalScoreAsFinal: usesTechnicalScoreAsFinal,
     );
     preprocessBundle.logTotal();
+    AcutAestheticTimingDebug.logElapsed(
+      stopwatch: totalScoringSw,
+      imageLabel: fileName,
+      imageIndex: batchImageIndex,
+      modelId: 'aesthetic_pipeline',
+      phase: 'per_image_total_scoring',
+      imageDimensions:
+          '${preprocessBundle.sourceWidth}x${preprocessBundle.sourceHeight}',
+      fields: <String, Object?>{'bytes': imageBytes.lengthInBytes},
+    );
+    AcutAestheticParityDebug.log(
+      imageLabel: fileName,
+      imageIndex: batchImageIndex,
+      nimaScore: result.nimaScore,
+      rgnetScore: result.rgnetScore,
+      alampScore: result.alampScore,
+      icaaScore: result.icaaScore,
+      finalAestheticScore: result.finalAestheticScore,
+      technicalScore: result.technicalScore,
+      elapsedTotalAestheticMs: aestheticElapsedMs,
+      modelErrors: modelErrors,
+      error: aestheticError,
+    );
     return result;
   }
 
@@ -246,70 +287,5 @@ class OnDevicePhotoEvaluationService implements PhotoEvaluationService {
       }
     }
     return null;
-  }
-
-  Future<void> _logC6TopiqCandidate(
-    Uint8List imageBytes, {
-    required TflitePhotoScoreSummary technicalSummary,
-    required AcutImagePreprocessBundle preprocessBundle,
-    required Map<String, Future<Uint8List>> inputCache,
-    required String? fileName,
-    required int? batchImageIndex,
-  }) async {
-    if (!ExperimentalFeatures.enableC6TopiqKoniqCandidate) {
-      return;
-    }
-
-    final koniq = _detail(technicalSummary, koniqMobileContract.id);
-    if (koniq == null) {
-      debugPrint(
-        '[AcutC6Candidate] skipped reason=missing_koniq '
-        'image_index=${batchImageIndex ?? '-'} file="${fileName ?? 'unknown'}"',
-      );
-      return;
-    }
-
-    final sw = Stopwatch()..start();
-    try {
-      final topiqRun = await _technicalTfliteService.evaluateSingleModel(
-        imageBytes,
-        topiqLiteMixed112Contract,
-        imageIndex: batchImageIndex,
-        preprocessBundle: preprocessBundle,
-        inputCache: inputCache,
-      );
-      sw.stop();
-
-      final koniqScore100 = koniq.normalizedScore * 100.0;
-      final topiqScore100 = topiqRun.detail.normalizedScore * 100.0;
-      final existingTechnicalScore100 = technicalSummary.technicalScore * 100.0;
-      final candidateC6 = math.min(
-        (0.7 * topiqScore100) + (0.3 * koniqScore100),
-        koniqScore100 + 8.0,
-      );
-      final delta = candidateC6 - existingTechnicalScore100;
-
-      debugPrint(
-        '[AcutC6Candidate] image_index=${batchImageIndex ?? '-'} '
-        'file="${fileName ?? 'unknown'}" '
-        'koniq_score_100=${koniqScore100.toStringAsFixed(2)} '
-        'topiq_mixed112_score_100=${topiqScore100.toStringAsFixed(2)} '
-        'existing_technical_score_100=${existingTechnicalScore100.toStringAsFixed(2)} '
-        'candidate_c6_score=${candidateC6.toStringAsFixed(2)} '
-        'delta_c6_existing=${delta.toStringAsFixed(2)} '
-        'topiq_total_additional_ms=${sw.elapsedMilliseconds} '
-        'topiq_asset=${topiqRun.model.assetPath} '
-        'topiq_resize_mode=${topiqRun.model.resizeMode.name}',
-      );
-    } catch (error) {
-      sw.stop();
-      debugPrint(
-        '[AcutC6Candidate] failed image_index=${batchImageIndex ?? '-'} '
-        'file="${fileName ?? 'unknown'}" '
-        'koniq_score_100=${(koniq.normalizedScore * 100.0).toStringAsFixed(2)} '
-        'topiq_total_additional_ms=${sw.elapsedMilliseconds} '
-        'error="$error"',
-      );
-    }
   }
 }
