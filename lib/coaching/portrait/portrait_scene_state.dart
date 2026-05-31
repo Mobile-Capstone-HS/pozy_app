@@ -51,12 +51,14 @@ class CoachingResult {
   final CoachingPriority priority;
   final double confidence;
   final String? reason;
+  final String? signalKey;
 
   const CoachingResult({
     required this.message,
     required this.priority,
     required this.confidence,
     this.reason,
+    this.signalKey,
   });
 }
 
@@ -117,6 +119,10 @@ class PortraitSceneState {
   final LightingCondition lightingCondition;
   final double lightingConfidence;
   final List<double> faceQualityScores;
+  final int faceSignalAgeFrames;
+  final int lightingSignalAgeFrames;
+  final double faceSignalFreshness;
+  final double lightingSignalFreshness;
 
   // 추가 키포인트 위치
   final Offset? leftWristPosition;
@@ -185,6 +191,10 @@ class PortraitSceneState {
     this.lightingCondition = LightingCondition.unknown,
     this.lightingConfidence = 0.0,
     this.faceQualityScores = const [],
+    this.faceSignalAgeFrames = 999999,
+    this.lightingSignalAgeFrames = 999999,
+    this.faceSignalFreshness = 0.0,
+    this.lightingSignalFreshness = 0.0,
     this.leftWristPosition,
     this.rightWristPosition,
     this.leftAnklePosition,
@@ -255,9 +265,9 @@ class PortraitSceneState {
       (leftKneePosition != null || rightKneePosition != null) &&
       kneeConfidence >= 0.15;
 
-  bool get hasReliableAnkles => hasAnyAnkle && ankleConfidence >= 0.15;
+  bool get hasReliableAnkles => hasAnyAnkle && ankleConfidence >= 0.12;
 
-  bool get hasReliableBothAnkles => hasBothAnkles && ankleConfidence >= 0.15;
+  bool get hasReliableBothAnkles => hasBothAnkles && ankleConfidence >= 0.12;
 
   /// 프레임 하단 근처에서 관절이 잘리고 있는지
   bool get isBottomJointCut => bottomJoint != null && bottomJointY != null;

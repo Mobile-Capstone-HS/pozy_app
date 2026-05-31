@@ -116,6 +116,10 @@ class PortraitNativeAnalyzer(
         imageProxy: ImageProxy,
         bitmap: Bitmap,
         isFrontCamera: Boolean,
+        personRoiLeft: Float? = null,
+        personRoiTop: Float? = null,
+        personRoiRight: Float? = null,
+        personRoiBottom: Float? = null,
     ) {
         ensureReady()
         analyzerFrameCounter += 1L
@@ -135,7 +139,16 @@ class PortraitNativeAnalyzer(
         }
         if (lightingFrameCounter >= LIGHTING_INTERVAL) {
             lightingFrameCounter = 0
-            scheduleLightingAnalysis(bitmap)
+            scheduleLightingAnalysis(
+                bitmap,
+                normalizedRectToBitmapRect(
+                    bitmap = bitmap,
+                    left = personRoiLeft,
+                    top = personRoiTop,
+                    right = personRoiRight,
+                    bottom = personRoiBottom,
+                ),
+            )
         }
     }
 
@@ -231,14 +244,14 @@ class PortraitNativeAnalyzer(
         }
     }
 
-    private fun scheduleLightingAnalysis(bitmap: Bitmap) {
-        if (!lightingLoaded || !lightingBusy.compareAndSet(false, true)) return
+    private fun scheduleLightingAnalysis(bitmap: Bitmap, personBounds: Rect?) {
+        if (!lightingBusy.compareAndSet(false, true)) return
 
         scope.launch {
             try {
                 val bestFace = latestFaceMetrics.bounds
                 if (bestFace == null) {
-                    latestLightingMetrics = PortraitLightingMetrics()
+                    latestLightingMetrics = estimateBacklightFallback(bitmap, personBounds)
                 } else {
                     latestLightingMetrics = runLighting(bitmap, bestFace)
                 }
@@ -249,6 +262,84 @@ class PortraitNativeAnalyzer(
                 lightingBusy.set(false)
             }
         }
+    }
+
+    private fun normalizedRectToBitmapRect(
+        bitmap: Bitmap,
+        left: Float?,
+        top: Float?,
+        right: Float?,
+        bottom: Float?,
+    ): Rect? {
+        if (left == null || top == null || right == null || bottom == null) return null
+        val safeLeft = left.coerceIn(0f, 1f)
+        val safeTop = top.coerceIn(0f, 1f)
+        val safeRight = right.coerceIn(0f, 1f)
+        val safeBottom = bottom.coerceIn(0f, 1f)
+        if (safeRight <= safeLeft || safeBottom <= safeTop) return null
+        val rect = Rect(
+            (safeLeft * bitmap.width).toInt(),
+            (safeTop * bitmap.height).toInt(),
+            (safeRight * bitmap.width).toInt(),
+            (safeBottom * bitmap.height).toInt(),
+        )
+        return if (rect.width() > 2 && rect.height() > 2) rect else null
+    }
+
+    private fun estimateBacklightFallback(bitmap: Bitmap, personBounds: Rect?): PortraitLightingMetrics {
+        val subjectBounds = personBounds ?: return PortraitLightingMetrics()
+        val subjectArea = subjectBounds.width().toDouble() * subjectBounds.height().toDouble()
+        val frameArea = bitmap.width.toDouble() * bitmap.height.toDouble()
+        if (frameArea <= 0.0 || subjectArea / frameArea < 0.06) return PortraitLightingMetrics()
+
+        val upperSubject = Rect(
+            subjectBounds.left + (subjectBounds.width() * 0.20f).toInt(),
+            subjectBounds.top + (subjectBounds.height() * 0.08f).toInt(),
+            subjectBounds.right - (subjectBounds.width() * 0.20f).toInt(),
+            subjectBounds.top + (subjectBounds.height() * 0.55f).toInt(),
+        )
+        val subjectLum = averageLuminance(bitmap, upperSubject) ?: return PortraitLightingMetrics()
+        val topBand = Rect(
+            0,
+            0,
+            bitmap.width,
+            max(1, (bitmap.height * 0.35f).toInt()),
+        )
+        val backgroundLum = averageLuminance(bitmap, topBand) ?: return PortraitLightingMetrics()
+        val contrast = backgroundLum - subjectLum
+
+        return if (backgroundLum >= 165.0 && subjectLum <= 95.0 && contrast >= 75.0) {
+            val confidence = min(0.76, 0.62 + ((contrast - 75.0) / 220.0))
+            PortraitLightingMetrics(code = 4.0, confidence = confidence)
+        } else {
+            PortraitLightingMetrics()
+        }
+    }
+
+    private fun averageLuminance(bitmap: Bitmap, rect: Rect): Double? {
+        val safeLeft = rect.left.coerceIn(0, bitmap.width - 1)
+        val safeTop = rect.top.coerceIn(0, bitmap.height - 1)
+        val safeRight = rect.right.coerceIn(safeLeft + 1, bitmap.width)
+        val safeBottom = rect.bottom.coerceIn(safeTop + 1, bitmap.height)
+        var sum = 0.0
+        var count = 0
+        val stepX = max(1, (safeRight - safeLeft) / 24)
+        val stepY = max(1, (safeBottom - safeTop) / 24)
+        var y = safeTop
+        while (y < safeBottom) {
+            var x = safeLeft
+            while (x < safeRight) {
+                val pixel = bitmap.getPixel(x, y)
+                val r = (pixel shr 16) and 0xFF
+                val g = (pixel shr 8) and 0xFF
+                val b = pixel and 0xFF
+                sum += 0.299 * r + 0.587 * g + 0.114 * b
+                count++
+                x += stepX
+            }
+            y += stepY
+        }
+        return if (count > 0) sum / count else null
     }
 
     private fun runLighting(bitmap: Bitmap, faceBounds: Rect): PortraitLightingMetrics {

@@ -213,6 +213,7 @@ class PortraitAnalysisResult {
   final ShotType shotType;
   final int personCount;
   final bool hasPersonStable;
+  final PortraitSceneState? sceneState;
 
   const PortraitAnalysisResult({
     required this.coaching,
@@ -220,6 +221,51 @@ class PortraitAnalysisResult {
     required this.shotType,
     required this.personCount,
     required this.hasPersonStable,
+    this.sceneState,
+  });
+}
+
+class _SignalFreshness {
+  final int ageFrames;
+  final int ageMs;
+  final double freshness;
+
+  const _SignalFreshness({
+    required this.ageFrames,
+    required this.ageMs,
+    required this.freshness,
+  });
+}
+
+class _PortraitTraceSnapshot {
+  final int frameId;
+  final int personCount;
+  final ShotType shotType;
+  final String signalKey;
+  final String displayedSignalKey;
+  final CoachingPriority priority;
+  final int faceAgeFrames;
+  final int lightingAgeFrames;
+  final double faceFreshness;
+  final double lightingFreshness;
+  final int pendingCount;
+  final bool groupShot;
+  final int eyeClosedStreak;
+
+  const _PortraitTraceSnapshot({
+    required this.frameId,
+    required this.personCount,
+    required this.shotType,
+    required this.signalKey,
+    required this.displayedSignalKey,
+    required this.priority,
+    required this.faceAgeFrames,
+    required this.lightingAgeFrames,
+    required this.faceFreshness,
+    required this.lightingFreshness,
+    required this.pendingCount,
+    required this.groupShot,
+    required this.eyeClosedStreak,
   });
 }
 
@@ -261,6 +307,7 @@ class PortraitModeHandler {
   static const int _stabilityThreshold = 5;
   String stableMessage = '\uC778\uBB3C\uC744 \uD654\uBA74 \uC548\uC5D0 \uB2F4\uC544\uBCF4\uC138\uC694';
   String _pendingMessage = '';
+  String _pendingSignalKey = '';
   int _pendingCount = 0;
   CoachingResult _stableCoaching = const CoachingResult(
     message: '\uC778\uBB3C\uC744 \uD654\uBA74 \uC548\uC5D0 \uB2F4\uC544\uBCF4\uC138\uC694',
@@ -268,6 +315,7 @@ class PortraitModeHandler {
     confidence: 1.0,
     reason:
         '\uC5BC\uAD74\uACFC \uC790\uC138\uAC00 \uBCF4\uC774\uBA74 \uAD6C\uB3C4\uB97C \uC548\uB0B4\uD560\uAC8C\uC694',
+    signalKey: 'critical:no_person',
   );
 
   // ─── 사람 감지 안정화 ──────────────────────────────
@@ -320,6 +368,21 @@ class PortraitModeHandler {
   static const int _nativeFaceGraceMs = 400;
   static const int _nativeFaceGraceFrames = 8;
   static const int _maxGroupNativeFaces = 6;
+  static const int _faceFreshSoftFrames = 2;
+  static const int _faceFreshHardFrames = 6;
+  static const int _faceFreshSoftMs = 160;
+  static const int _faceFreshHardMs = 420;
+  static const int _lightingFreshSoftFrames = 4;
+  static const int _lightingFreshHardFrames = 10;
+  static const int _lightingFreshSoftMs = 220;
+  static const int _lightingFreshHardMs = 650;
+  static const int _traceBufferLimit = 40;
+  int _faceSignalFrame = -1;
+  int _faceSignalTimestampMs = 0;
+  int _lightingSignalFrame = -1;
+  int _lightingSignalTimestampMs = 0;
+  final List<_PortraitTraceSnapshot> _traceSnapshots =
+      <_PortraitTraceSnapshot>[];
 
   /// 그룹샷 전용: ML Kit으로 감지한 모든 얼굴 중 눈 감긴 사람이 있는지 여부
   bool _anyFaceEyesClosed = false;
@@ -469,17 +532,65 @@ class PortraitModeHandler {
     _faceQualityScores = const [];
     stableMessage = '\uC778\uBB3C\uC744 \uD654\uBA74 \uC548\uC5D0 \uB2F4\uC544\uBCF4\uC138\uC694';
     _pendingMessage = '';
+    _pendingSignalKey = '';
     _pendingCount = 0;
+    _faceSignalFrame = -1;
+    _faceSignalTimestampMs = 0;
+    _lightingSignalFrame = -1;
+    _lightingSignalTimestampMs = 0;
+    _traceSnapshots.clear();
     _stableCoaching = const CoachingResult(
       message: '\uC778\uBB3C\uC744 \uD654\uBA74 \uC548\uC5D0 \uB2F4\uC544\uBCF4\uC138\uC694',
       priority: CoachingPriority.critical,
       confidence: 1.0,
       reason:
           '\uC5BC\uAD74\uACFC \uC790\uC138\uAC00 \uBCF4\uC774\uBA74 \uAD6C\uB3C4\uB97C \uC548\uB0B4\uD560\uAC8C\uC694',
+      signalKey: 'critical:no_person',
     );
   }
 
+  Future<void> analyzeStillImage(
+    Uint8List bytes,
+    List<YOLOResult> results, {
+    bool analyzeFace = true,
+    bool analyzeLighting = true,
+    bool analyzeFaceQuality = true,
+  }) async {
+    final rawPersons = results
+        .where((r) => r.className.toLowerCase() == 'person')
+        .toList();
+    final persons = _dedupePersons(rawPersons);
+    if (persons.isEmpty) return;
+
+    final main = _selectMainPerson(persons);
+    final nose = _kp(main, PoseKeypointIndex.nose);
+    final lEye = _kp(main, PoseKeypointIndex.leftEye);
+    final rEye = _kp(main, PoseKeypointIndex.rightEye);
+    final lShoulder = _kp(main, PoseKeypointIndex.leftShoulder);
+    final rShoulder = _kp(main, PoseKeypointIndex.rightShoulder);
+
+    if (analyzeFace) {
+      await _analyzeFaceFromPreviewCapture(
+        bytes,
+        analyzeQuality: analyzeFaceQuality,
+      );
+    }
+
+    if (analyzeLighting) {
+      await _analyzeLight(
+        bytes,
+        main,
+        nose,
+        lEye,
+        rEye,
+        lShoulder,
+        rShoulder,
+      );
+    }
+  }
+
   void updateNativeMetrics(Map<String, double> metrics) {
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
     double? rawYaw = metrics['portraitFaceYaw'];
     double? rawPitch = metrics['portraitFacePitch'];
     double? rawRoll = metrics['portraitFaceRoll'];
@@ -522,6 +633,14 @@ class PortraitModeHandler {
     // 눈 감김 스트릭 추적 (원본 값 기반, 스무딩 무관)
     final rawL = metrics['portraitLeftEyeOpen'];
     final rawR = metrics['portraitRightEyeOpen'];
+    if (rawYaw != null ||
+        rawPitch != null ||
+        rawRoll != null ||
+        rawL != null ||
+        rawR != null ||
+        metrics['portraitSmileProbability'] != null) {
+      _markFaceSignalUpdated(frameId: _frameCount, timestampMs: nowMs);
+    }
     if (rawL != null && rawR != null && rawL < 0.35 && rawR < 0.35) {
       _eyeClosedStreak++;
     } else {
@@ -537,6 +656,9 @@ class PortraitModeHandler {
           metrics['portraitLightingConfidence'],
         ) ??
         0.0;
+    if (lightingCode != null || metrics['portraitLightingConfidence'] != null) {
+      _markLightingSignalUpdated(frameId: _frameCount, timestampMs: nowMs);
+    }
   }
 
   void updateNativeFaceResults(
@@ -598,6 +720,10 @@ class PortraitModeHandler {
     if (_faceAnalysisSource != FaceAnalysisSource.imageAnalysis) return;
 
     if (effectiveResults.isNotEmpty) {
+      _markFaceSignalUpdated(
+        frameId: _frameCount,
+        timestampMs: _nativeFaceTimestampMs > 0 ? _nativeFaceTimestampMs : nowMs,
+      );
       final mainFace = _selectPrimaryNativeFace(effectiveResults);
       _faceYaw = _smoothMetric(_faceYaw, mainFace.headEulerAngleY);
       _facePitch = _smoothMetric(_facePitch, mainFace.headEulerAngleX);
@@ -736,6 +862,7 @@ class PortraitModeHandler {
         shotType: ShotType.unknown,
         personCount: 0,
         hasPersonStable: false,
+        sceneState: const PortraitSceneState(personCount: 0),
       );
     }
 
@@ -753,6 +880,7 @@ class PortraitModeHandler {
         shotType: ShotType.unknown,
         personCount: 0,
         hasPersonStable: false,
+        sceneState: const PortraitSceneState(personCount: 0),
       );
     }
 
@@ -765,7 +893,19 @@ class PortraitModeHandler {
           ..sort((a, b) => b.compareTo(a));
     final mainArea = main.normalizedBox.width * main.normalizedBox.height;
     final secondArea = areas.length > 1 ? areas[1] : 0.0;
-    double secondPersonSizeRatio = mainArea > 0 ? secondArea / mainArea : 0.0;
+    final thirdArea = areas.length > 2 ? areas[2] : 0.0;
+    final secondPersonSizeRatio = mainArea > 0 ? secondArea / mainArea : 0.0;
+    final thirdPersonSizeRatio = mainArea > 0 ? thirdArea / mainArea : 0.0;
+    final avgPersonArea = areas.isEmpty
+        ? 0.0
+        : areas.reduce((a, b) => a + b) / areas.length;
+    final significantPersonCount = mainArea > 0
+        ? persons.where((p) {
+            final area = p.normalizedBox.width * p.normalizedBox.height;
+            final ratio = area / mainArea;
+            return ratio >= 0.14 || area >= 0.018;
+          }).length
+        : persons.length;
 
     double groupLeft = double.infinity;
     double groupTop = double.infinity;
@@ -787,7 +927,15 @@ class PortraitModeHandler {
         : mainArea;
 
     final groupShotCandidate =
-        intent == PortraitIntent.group && persons.length >= 2;
+        intent == PortraitIntent.group &&
+        _shouldTreatAsGroupShot(
+          persons,
+          secondPersonSizeRatio,
+          thirdPersonSizeRatio,
+          groupBboxRatio,
+          avgPersonArea,
+          significantPersonCount,
+        );
 
     // ─── 다중 인물 메트릭 ─────────────────────────────
     // 그룹샷 안정화: 진입은 빠르게, 이탈은 느리게 (깜빡임 방지)
@@ -1012,7 +1160,8 @@ class PortraitModeHandler {
 
     final hasReliableAnkle =
         (lAnkle != null || rAnkle != null) && ankleConf >= 0.12 && maxY > 0.50;
-    final hasKnee = lKnee != null || rKnee != null;
+    final kneeY = _maxY(lKnee, rKnee);
+    final hasKneeInsideFrame = kneeY != null && kneeY <= 0.84;
     final hasHip = lHip != null || rHip != null;
     final hasShoulder = lShoulder != null || rShoulder != null;
 
@@ -1036,9 +1185,9 @@ class PortraitModeHandler {
 
       if (hasReliableAnkle) {
         shot = ShotType.fullBody;
-      } else if (hasKnee) {
+      } else if (hasKneeInsideFrame) {
         shot = ShotType.kneeShot;
-      } else if (hasHip && !hasKnee && h > 0.45) {
+      } else if (hasHip && h > 0.45) {
         shot = ShotType.waistShot;
       } else if (hasShoulder && !hasHip && h > 0.3) {
         shot = ShotType.headShot;
@@ -1070,7 +1219,7 @@ class PortraitModeHandler {
         kneeConf >= 0.15) {
       if (_isAtEdge(lKnee) || _isAtEdge(rKnee)) croppedList.add('knee');
     }
-    if (shot == ShotType.fullBody && ankleConf >= 0.15) {
+    if (shot == ShotType.fullBody && ankleConf >= 0.12) {
       if (_isAtEdge(lAnkle) || _isAtEdge(rAnkle)) croppedList.add('ankle');
     }
 
@@ -1090,6 +1239,12 @@ class PortraitModeHandler {
     );
     _smoothedFaceRect = _smoothRect(_smoothedFaceRect, rawFaceRect);
     final faceRect = _smoothedFaceRect ?? rawFaceRect;
+    headroom = _adjustHeadroomForFraming(
+      shot: shot,
+      personBox: mainBox,
+      currentHeadroom: headroom,
+      faceRect: faceRect,
+    );
 
     // ─── 발 간격 비율 (어깨 너비 대비) ──────────────────────
     double? ankleSpacing;
@@ -1109,10 +1264,10 @@ class PortraitModeHandler {
     // 관절에서 자르면 어색 → 관절이 화면 하단 12% 안에 있으면 경고
     String? bottomJoint;
     double? bottomJointY;
-    const bottomZone = 0.85;
+    const bottomZone = 0.97;
     final jointCandidates = <String, double?>{
       'knee': kneeConf >= 0.15 ? _maxY(lKnee, rKnee) : null,
-      'ankle': ankleConf >= 0.15 ? _maxY(lAnkle, rAnkle) : null,
+      'ankle': ankleConf >= 0.12 ? _maxY(lAnkle, rAnkle) : null,
       'wrist': _maxY(lWrist, rWrist),
       'hip': _maxY(lHip, rHip),
     };
@@ -1126,16 +1281,44 @@ class PortraitModeHandler {
       }
     }
 
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final faceFreshness = _signalFreshness(
+      nowFrame: _frameCount,
+      nowMs: nowMs,
+      signalFrame: _faceSignalFrame,
+      signalTimestampMs: _faceSignalTimestampMs,
+      softFrames: _faceFreshSoftFrames,
+      hardFrames: _faceFreshHardFrames,
+      softMs: _faceFreshSoftMs,
+      hardMs: _faceFreshHardMs,
+    );
+    final lightingFreshness = _signalFreshness(
+      nowFrame: _frameCount,
+      nowMs: nowMs,
+      signalFrame: _lightingSignalFrame,
+      signalTimestampMs: _lightingSignalTimestampMs,
+      softFrames: _lightingFreshSoftFrames,
+      hardFrames: _lightingFreshHardFrames,
+      softMs: _lightingFreshSoftMs,
+      hardMs: _lightingFreshHardMs,
+    );
+    final faceMetricsUsable = faceFreshness.freshness > 0.0;
+    final faceEyeUsable = faceFreshness.freshness >= 0.45;
+    final lightingUsable = lightingFreshness.freshness > 0.0;
+    final effectiveLightingConf = lightingUsable
+        ? lastLightingConf * lightingFreshness.freshness
+        : 0.0;
+
     final state = PortraitSceneState(
       personCount: _stablePersonCount,
       shotType: shot,
       intent: intent,
-      faceYaw: _faceYaw,
-      facePitch: _facePitch,
-      faceRoll: _faceRoll,
-      smileProbability: _smileProb,
-      leftEyeOpenProb: _leftEyeOpen,
-      rightEyeOpenProb: _rightEyeOpen,
+      faceYaw: faceMetricsUsable ? _faceYaw : null,
+      facePitch: faceMetricsUsable ? _facePitch : null,
+      faceRoll: faceMetricsUsable ? _faceRoll : null,
+      smileProbability: faceMetricsUsable ? _smileProb : null,
+      leftEyeOpenProb: faceEyeUsable ? _leftEyeOpen : null,
+      rightEyeOpenProb: faceEyeUsable ? _rightEyeOpen : null,
       faceCenterX: faceRect.center.dx,
       faceCenterY: faceRect.center.dy,
       faceBoxRatio: faceRect.width * faceRect.height,
@@ -1156,11 +1339,17 @@ class PortraitModeHandler {
       isGroupShot: isGroupShot,
       secondPersonSizeRatio: secondPersonSizeRatio,
       groupCroppedCount: groupCroppedCount,
-      anyFaceEyesClosed: _anyFaceEyesClosed,
-      closedFaceCount: _closedFaceCount,
-      lightingCondition: lastLighting,
-      lightingConfidence: lastLightingConf,
+      anyFaceEyesClosed: faceEyeUsable ? _anyFaceEyesClosed : false,
+      closedFaceCount: faceEyeUsable ? _closedFaceCount : 0,
+      lightingCondition: lightingUsable
+          ? lastLighting
+          : LightingCondition.unknown,
+      lightingConfidence: effectiveLightingConf,
       faceQualityScores: _faceQualityScores,
+      faceSignalAgeFrames: faceFreshness.ageFrames,
+      lightingSignalAgeFrames: lightingFreshness.ageFrames,
+      faceSignalFreshness: faceFreshness.freshness,
+      lightingSignalFreshness: lightingFreshness.freshness,
       visibleKeypointCount: all.where((p) => p != null).length,
       hasNose: nose != null,
       hasEyes: lEye != null && rEye != null,
@@ -1182,7 +1371,8 @@ class PortraitModeHandler {
           (shot == ShotType.fullBody || shot == ShotType.kneeShot),
       isFrontCamera: isFrontCamera,
       cameraStability: _cameraStability,
-      eyeClosedConfirmed: _eyeClosedStreak >= _eyeConfirmFrames,
+      eyeClosedConfirmed:
+          faceEyeUsable && _eyeClosedStreak >= _eyeConfirmFrames,
       faceHiddenCount: faceHiddenCount,
       spacingUnevenness: spacingUnevenness,
       heightVariation: heightVariation,
@@ -1213,6 +1403,7 @@ class PortraitModeHandler {
     }
 
     final coaching = _stabilize(_coachEngine.evaluate(state));
+    _appendTraceSnapshot(state: state, coaching: coaching);
 
     final overlay = OverlayData(
       closedFaceRects: _closedFaceRects,
@@ -1259,6 +1450,7 @@ class PortraitModeHandler {
       shotType: shot,
       personCount: _stablePersonCount,
       hasPersonStable: true,
+      sceneState: state,
     );
   }
 
@@ -1443,6 +1635,10 @@ class PortraitModeHandler {
           : LightingCondition.unknown;
       lastLighting = cond;
       lastLightingConf = cond == LightingCondition.unknown ? 0.0 : r.confidence;
+      _markLightingSignalUpdated(
+        frameId: _frameCount,
+        timestampMs: DateTime.now().millisecondsSinceEpoch,
+      );
     } catch (e) {
       if (DebugLogFlags.portraitMode) {
         debugPrint('[PORTRAIT_MODE] light error=$e');
@@ -1492,6 +1688,7 @@ class PortraitModeHandler {
       final faces = await _faceDetector.processImage(input);
 
       if (faces.isNotEmpty) {
+        _markFaceSignalUpdated(frameId: _frameCount, timestampMs: startedAt);
         if (analyzeQuality) {
           // 얼굴 영역을 crop -> 112x112 RGB 바이트로 변환
           final crops = <Uint8List>[];
@@ -1973,6 +2170,34 @@ class PortraitModeHandler {
     return Rect.fromLTWH(l, t, w.clamp(0.05, 1.0 - l), h.clamp(0.05, 1.0 - t));
   }
 
+  double _adjustHeadroomForFraming({
+    required ShotType shot,
+    required Rect personBox,
+    required double currentHeadroom,
+    required Rect faceRect,
+  }) {
+    switch (shot) {
+      case ShotType.extremeCloseUp:
+      case ShotType.closeUp:
+      case ShotType.headShot:
+        // Close framing often misses the true hairline in pose keypoints.
+        // Clamp headroom against the detector's person box top so "too close"
+        // and "too much headroom" do not alternate on the same framing.
+        return math.min(currentHeadroom, personBox.top.clamp(0.0, 1.0));
+      case ShotType.upperBody:
+        // Upper-body shots benefit from a softer correction using the estimated
+        // face guide instead of the full person box.
+        return math.min(currentHeadroom, faceRect.top.clamp(0.0, 1.0));
+      case ShotType.waistShot:
+      case ShotType.kneeShot:
+      case ShotType.fullBody:
+      case ShotType.environmental:
+      case ShotType.groupShot:
+      case ShotType.unknown:
+        return currentHeadroom;
+    }
+  }
+
   // ─── 유틸리티 ─────────────────────────────────────
 
   YOLOResult _selectMainPerson(List<YOLOResult> persons) {
@@ -2038,17 +2263,17 @@ class PortraitModeHandler {
   double? _targetEyeLineY(ShotType shot) {
     switch (shot) {
       case ShotType.extremeCloseUp:
-        return 0.38;
+        return 0.45;
       case ShotType.closeUp:
-        return 0.35;
+        return 0.33;
       case ShotType.headShot:
         return 0.35;
       case ShotType.upperBody:
-        return 0.33;
+        return 0.32;
       case ShotType.waistShot:
         return 0.30;
       case ShotType.kneeShot:
-        return 0.31;
+        return 0.28;
       case ShotType.fullBody:
         return 0.29;
       case ShotType.environmental:
@@ -2062,7 +2287,8 @@ class PortraitModeHandler {
   double? _targetHeadroomTop(ShotType shot) {
     switch (shot) {
       case ShotType.extremeCloseUp:
-        return 0.06;
+        // Keep the overlay line inside the engine's 0.00~0.05 headroom window.
+        return 0.03;
       case ShotType.closeUp:
         return 0.08;
       case ShotType.headShot:
@@ -2072,7 +2298,8 @@ class PortraitModeHandler {
       case ShotType.waistShot:
         return 0.09;
       case ShotType.kneeShot:
-        return 0.12;
+        // Engine allows 0.05~0.10, so keep the guide near the middle.
+        return 0.08;
       case ShotType.fullBody:
         return 0.08;
       case ShotType.environmental:
@@ -2098,19 +2325,124 @@ class PortraitModeHandler {
     return out;
   }
 
+  List<_PortraitTraceSnapshot> get recentTraceSnapshots =>
+      List<_PortraitTraceSnapshot>.unmodifiable(_traceSnapshots);
+
+  void _markFaceSignalUpdated({
+    required int frameId,
+    required int timestampMs,
+  }) {
+    _faceSignalFrame = frameId;
+    _faceSignalTimestampMs = timestampMs;
+  }
+
+  void _markLightingSignalUpdated({
+    required int frameId,
+    required int timestampMs,
+  }) {
+    _lightingSignalFrame = frameId;
+    _lightingSignalTimestampMs = timestampMs;
+  }
+
+  _SignalFreshness _signalFreshness({
+    required int nowFrame,
+    required int nowMs,
+    required int signalFrame,
+    required int signalTimestampMs,
+    required int softFrames,
+    required int hardFrames,
+    required int softMs,
+    required int hardMs,
+  }) {
+    if (signalFrame < 0 || signalTimestampMs <= 0) {
+      return const _SignalFreshness(
+        ageFrames: 999999,
+        ageMs: 999999,
+        freshness: 0.0,
+      );
+    }
+    final ageFrames = math.max(0, nowFrame - signalFrame);
+    final ageMs = math.max(0, nowMs - signalTimestampMs);
+    final framePenalty = _freshnessPenalty(ageFrames, softFrames, hardFrames);
+    final msPenalty = _freshnessPenalty(ageMs, softMs, hardMs);
+    return _SignalFreshness(
+      ageFrames: ageFrames,
+      ageMs: ageMs,
+      freshness: math.min(framePenalty, msPenalty),
+    );
+  }
+
+  double _freshnessPenalty(int age, int softLimit, int hardLimit) {
+    if (age <= softLimit) return 1.0;
+    if (age >= hardLimit) return 0.0;
+    final span = hardLimit - softLimit;
+    if (span <= 0) return 0.0;
+    return 1.0 - ((age - softLimit) / span);
+  }
+
+  String _signalKeyOf(CoachingResult c) {
+    if (c.signalKey != null && c.signalKey!.isNotEmpty) {
+      return c.signalKey!;
+    }
+    final normalizedMessage = _canonicalizeSignalText(c.message);
+    final normalizedReason = _canonicalizeSignalText(c.reason ?? '');
+    return '${c.priority.name}|$normalizedMessage|$normalizedReason';
+  }
+
+  String _canonicalizeSignalText(String input) {
+    if (input.isEmpty) return '';
+    final collapsedWhitespace = input.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return collapsedWhitespace.replaceAll(RegExp(r'\d+'), '#');
+  }
+
+  void _appendTraceSnapshot({
+    required PortraitSceneState state,
+    required CoachingResult coaching,
+  }) {
+    _traceSnapshots.add(
+      _PortraitTraceSnapshot(
+        frameId: _frameCount,
+        personCount: state.personCount,
+        shotType: state.shotType,
+        signalKey: _signalKeyOf(coaching),
+        displayedSignalKey: _signalKeyOf(_stableCoaching),
+        priority: coaching.priority,
+        faceAgeFrames: state.faceSignalAgeFrames,
+        lightingAgeFrames: state.lightingSignalAgeFrames,
+        faceFreshness: state.faceSignalFreshness,
+        lightingFreshness: state.lightingSignalFreshness,
+        pendingCount: _pendingCount,
+        groupShot: state.isGroupShot,
+        eyeClosedStreak: _eyeClosedStreak,
+      ),
+    );
+    if (_traceSnapshots.length > _traceBufferLimit) {
+      _traceSnapshots.removeAt(0);
+    }
+  }
+
   CoachingResult _stabilize(CoachingResult c) {
+    final signalKey = _signalKeyOf(c);
     if (c.priority == CoachingPriority.critical) {
       stableMessage = c.message;
       _pendingMessage = c.message;
+      _pendingSignalKey = signalKey;
       _pendingCount = 0;
-      _stableCoaching = c;
+      _stableCoaching = CoachingResult(
+        message: c.message,
+        priority: c.priority,
+        confidence: c.confidence,
+        reason: c.reason,
+        signalKey: signalKey,
+      );
       return c;
     }
 
-    if (c.message == _pendingMessage) {
+    if (signalKey == _pendingSignalKey) {
       _pendingCount++;
     } else {
       _pendingMessage = c.message;
+      _pendingSignalKey = signalKey;
       _pendingCount = 1;
     }
     final threshold = _stableCoaching.priority == CoachingPriority.perfect
@@ -2123,6 +2455,7 @@ class PortraitModeHandler {
         priority: c.priority,
         confidence: c.confidence,
         reason: c.reason,
+        signalKey: signalKey,
       );
     }
     return _stableCoaching;

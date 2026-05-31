@@ -23,22 +23,29 @@ class TfliteModelMetadata {
     Map<String, dynamic> json, {
     String? metadataAssetPath,
   }) {
+    final inputJson = _readJsonMap(json['input']);
+    final inputContractJson = _readJsonMap(json['input_contract']);
+    final outputJson = _readJsonMap(json['output']);
+    final outputContractJson = _readJsonMap(json['output_contract']);
+
     return TfliteModelMetadata(
       metadataAssetPath: metadataAssetPath,
       preset: _readString(json['preset']),
       displayName: _readString(json['display_name']),
       task: _readString(json['task']),
       input: TfliteModelInputMetadata.fromJson(
-        _readJsonMap(json['input']),
+        inputJson.isNotEmpty ? inputJson : inputContractJson,
       ),
       output: TfliteModelOutputMetadata.fromJson(
-        _readJsonMap(json['output']),
+        outputJson.isNotEmpty ? outputJson : outputContractJson,
       ),
       export: json['export'] is Map
           ? TfliteModelExportMetadata.fromJson(_readJsonMap(json['export']))
           : null,
       exportModelIo: json['export_model_io'] is Map
-          ? TfliteModelIoMetadata.fromJson(_readJsonMap(json['export_model_io']))
+          ? TfliteModelIoMetadata.fromJson(
+              _readJsonMap(json['export_model_io']),
+            )
           : null,
     );
   }
@@ -67,38 +74,56 @@ class TfliteModelMetadata {
 
 class TfliteModelInputMetadata {
   final List<int>? imageSize;
+  final List<int?>? shape;
   final String? dtype;
   final String? colorFormat;
   final String? tensorLayout;
   final String? normalization;
+  final String? resizing;
 
   const TfliteModelInputMetadata({
     this.imageSize,
+    this.shape,
     this.dtype,
     this.colorFormat,
     this.tensorLayout,
     this.normalization,
+    this.resizing,
   });
 
   factory TfliteModelInputMetadata.fromJson(Map<String, dynamic> json) {
     final decode = _readJsonMap(json['decode']);
+    final preprocessing = _readJsonMap(json['preprocessing']);
     return TfliteModelInputMetadata(
       imageSize: _readIntList(json['image_size']),
+      shape: _readNullableIntList(json['shape']),
       dtype: _readString(json['dtype']),
       colorFormat:
-          _readString(json['color_format']) ?? _readString(decode['color_format']),
+          _readString(json['color_format']) ??
+          _readString(json['color_space']) ??
+          _readString(decode['color_format']),
       tensorLayout:
           _readString(json['tensor_layout']) ?? _readString(json['layout']),
-      normalization: _readNormalizationHint(json['normalization']),
+      normalization:
+          _readNormalizationHint(json['normalization']) ??
+          _readNormalizationHint(preprocessing['normalization']) ??
+          _readNormalizationHint(preprocessing['value_range']),
+      resizing:
+          _readString(json['resizing']) ??
+          _readString(preprocessing['resizing']),
     );
   }
 
   int? get imageWidth => imageSize != null && imageSize!.length >= 2
       ? imageSize![0]
+      : shape != null && shape!.length >= 4
+      ? shape![2]
       : null;
 
   int? get imageHeight => imageSize != null && imageSize!.length >= 2
       ? imageSize![1]
+      : shape != null && shape!.length >= 4
+      ? shape![1]
       : null;
 }
 
@@ -120,7 +145,9 @@ class TfliteModelOutputMetadata {
       shape: _readNullableIntList(json['shape']),
       summary: _readString(json['summary']),
       interpretation: _readString(json['interpretation']),
-      postprocess: _readString(json['postprocess']),
+      postprocess:
+          _readString(json['postprocess']) ??
+          _readString(json['score_mapping']),
     );
   }
 
@@ -139,10 +166,7 @@ class TfliteModelExportMetadata {
   final bool? requiresSelectTfOps;
   final String? tflitePath;
 
-  const TfliteModelExportMetadata({
-    this.requiresSelectTfOps,
-    this.tflitePath,
-  });
+  const TfliteModelExportMetadata({this.requiresSelectTfOps, this.tflitePath});
 
   factory TfliteModelExportMetadata.fromJson(Map<String, dynamic> json) {
     return TfliteModelExportMetadata(
@@ -181,11 +205,7 @@ class TfliteTensorSpec {
   final List<int?>? shape;
   final String? dtype;
 
-  const TfliteTensorSpec({
-    this.name,
-    this.shape,
-    this.dtype,
-  });
+  const TfliteTensorSpec({this.name, this.shape, this.dtype});
 
   factory TfliteTensorSpec.fromJson(Map<String, dynamic> json) {
     return TfliteTensorSpec(
@@ -249,9 +269,7 @@ Map<String, dynamic> _readJsonMap(Object? value) {
     return value;
   }
   if (value is Map) {
-    return value.map(
-      (key, entryValue) => MapEntry(key.toString(), entryValue),
-    );
+    return value.map((key, entryValue) => MapEntry(key.toString(), entryValue));
   }
   return const <String, dynamic>{};
 }

@@ -124,6 +124,11 @@ class _FastScnnViewState extends State<FastScnnView> {
         (camera) => camera.lensDirection == CameraLensDirection.back,
       );
       if (back != -1) index = back;
+    } else {
+      final front = _cameras.indexWhere(
+        (camera) => camera.lensDirection == CameraLensDirection.front,
+      );
+      if (front != -1) index = front;
     }
     await _startCamera(index);
   }
@@ -156,6 +161,7 @@ class _FastScnnViewState extends State<FastScnnView> {
         await controller.dispose();
         return;
       }
+      _cameraIndex = index;
       _minZoom = await controller.getMinZoomLevel();
       _maxZoom = await controller.getMaxZoomLevel();
       _zoom = _zoom.clamp(_minZoom, _maxZoom);
@@ -166,7 +172,6 @@ class _FastScnnViewState extends State<FastScnnView> {
         return;
       }
 
-      _cameraIndex = index;
       _camera = controller;
       _isInitialized = controller.value.isInitialized;
       widget.onZoomChanged?.call(_zoom);
@@ -215,7 +220,7 @@ class _FastScnnViewState extends State<FastScnnView> {
           camera.value.deviceOrientation;
       final inferenceTurns = _orientationToInferenceQuarterTurns(orientation);
       final isFront =
-          _cameras[_cameraIndex].lensDirection == CameraLensDirection.front;
+          camera.description.lensDirection == CameraLensDirection.front;
       debugPrint(
         '[FastSCNN][View] frame received size=${image.width}x${image.height} '
         'turns=$inferenceTurns front=$isFront',

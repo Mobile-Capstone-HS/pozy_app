@@ -10,8 +10,8 @@ class AestheticScoreComparisonService {
     AestheticModelContract? baselineModel,
     AestheticModelContract? candidateModel,
   }) : _tfliteService = tfliteService ?? TfliteAestheticService(),
-       _baselineModel = baselineModel ?? stage5StudentAadbBaselineContract,
-       _candidateModel = candidateModel ?? conservativeStudentAadbContract;
+       _baselineModel = baselineModel ?? nimaMobileContract,
+       _candidateModel = candidateModel ?? rgnetPilResizeAadbContract;
 
   final TfliteAestheticService _tfliteService;
   final AestheticModelContract _baselineModel;
@@ -53,7 +53,10 @@ class AestheticScoreComparisonService {
     );
 
     try {
-      final run = await _tfliteService.evaluateSingleModel(imageBytes, contract);
+      final run = await _tfliteService.evaluateSingleModel(
+        imageBytes,
+        contract,
+      );
       debugPrint(
         '[AestheticScoreComparisonService] ${run.model.id} '
         'score=${run.detail.normalizedScore.toStringAsFixed(4)}',

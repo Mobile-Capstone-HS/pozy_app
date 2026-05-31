@@ -40,18 +40,29 @@ object ImageMetricsAnalyzer {
         val roiY0 = if (hasRoi) (roiTop!! * h).toInt().coerceIn(0, h - 1) else 0
         val roiX1 = if (hasRoi) (roiRight!! * w).toInt().coerceIn(0, w - 1) else w - 1
         val roiY1 = if (hasRoi) (roiBottom!! * h).toInt().coerceIn(0, h - 1) else h - 1
+        val roiWidth = (roiX1 - roiX0 + 1).coerceAtLeast(1)
+        val roiHeight = (roiY1 - roiY0 + 1).coerceAtLeast(1)
+        val nearPadX = ((roiWidth * 0.45f).toInt()).coerceAtLeast(8)
+        val nearPadY = ((roiHeight * 0.45f).toInt()).coerceAtLeast(8)
+        val nearX0 = if (hasRoi) (roiX0 - nearPadX).coerceIn(0, w - 1) else 0
+        val nearY0 = if (hasRoi) (roiY0 - nearPadY).coerceIn(0, h - 1) else 0
+        val nearX1 = if (hasRoi) (roiX1 + nearPadX).coerceIn(0, w - 1) else w - 1
+        val nearY1 = if (hasRoi) (roiY1 + nearPadY).coerceIn(0, h - 1) else h - 1
 
         var globalLumaSum = 0.0
         var subjectLumaSum = 0.0
         var bgLumaSum = 0.0
+        var nearBgLumaSum = 0.0
         var globalCount = 0
         var subjectCount = 0
         var bgCount = 0
+        var nearBgCount = 0
 
         var highlightCount = 0  // luma >= 235
         var shadowCount = 0     // luma <= 35
         var subjectHighlightCount = 0
         var subjectShadowCount = 0
+        var nearBgHighlightCount = 0
 
         // Light direction — quadrant brightness accumulators
         val midX = w / 2
@@ -93,6 +104,14 @@ object ImageMetricsAnalyzer {
                 } else if (hasRoi) {
                     bgLumaSum += luma
                     bgCount++
+                    val inNearBackground =
+                            x in nearX0..nearX1 &&
+                            y in nearY0..nearY1
+                    if (inNearBackground) {
+                        nearBgLumaSum += luma
+                        nearBgCount++
+                        if (luma >= 235.0) nearBgHighlightCount++
+                    }
                 }
             }
         }
@@ -106,6 +125,10 @@ object ImageMetricsAnalyzer {
             bgCount > 0 -> bgLumaSum / bgCount / 255.0
             else -> globalBrightness
         }
+        val nearBackgroundBrightness = when {
+            nearBgCount > 0 -> nearBgLumaSum / nearBgCount / 255.0
+            else -> backgroundBrightness
+        }
         val highlightRatio = if (globalCount > 0) highlightCount.toDouble() / globalCount else 0.0
         val shadowRatio = if (globalCount > 0) shadowCount.toDouble() / globalCount else 0.0
         val subjectHighlightRatio = when {
@@ -115,6 +138,10 @@ object ImageMetricsAnalyzer {
         val subjectShadowRatio = when {
             subjectCount > 0 -> subjectShadowCount.toDouble() / subjectCount
             else -> shadowRatio
+        }
+        val nearBackgroundHighlightRatio = when {
+            nearBgCount > 0 -> nearBgHighlightCount.toDouble() / nearBgCount
+            else -> highlightRatio
         }
 
         // Laplacian variance (blur detection) — global
@@ -138,10 +165,12 @@ object ImageMetricsAnalyzer {
             "brightness" to globalBrightness,
             "subjectBrightness" to subjectBrightness,
             "backgroundBrightness" to backgroundBrightness,
+            "nearBackgroundBrightness" to nearBackgroundBrightness,
             "highlightRatio" to highlightRatio,
             "shadowRatio" to shadowRatio,
             "subjectHighlightRatio" to subjectHighlightRatio,
             "subjectShadowRatio" to subjectShadowRatio,
+            "nearBackgroundHighlightRatio" to nearBackgroundHighlightRatio,
             "globalBlurScore" to globalBlurScore,
             "subjectBlurScore" to subjectBlurScore,
             "lightDirectionIndex" to lightDirectionIndex,
