@@ -95,6 +95,9 @@ class PortraitNativeAnalyzer(
     companion object {
         private const val LIGHTING_SIZE = 224
         private const val LIGHTING_MIN_CONFIDENCE = 0.55
+        private const val BACKLIGHT_FALLBACK_MIN_BACKGROUND = 180.0
+        private const val BACKLIGHT_FALLBACK_MAX_SUBJECT = 88.0
+        private const val BACKLIGHT_FALLBACK_MIN_CONTRAST = 92.0
         private const val DEFAULT_FACE_INTERVAL_MS = 180
         private const val DEFAULT_FACE_INTERVAL_FRAMES = 6
         private const val LIGHTING_INTERVAL = 1
@@ -308,8 +311,12 @@ class PortraitNativeAnalyzer(
         val backgroundLum = averageLuminance(bitmap, topBand) ?: return PortraitLightingMetrics()
         val contrast = backgroundLum - subjectLum
 
-        return if (backgroundLum >= 165.0 && subjectLum <= 95.0 && contrast >= 75.0) {
-            val confidence = min(0.76, 0.62 + ((contrast - 75.0) / 220.0))
+        return if (
+            backgroundLum >= BACKLIGHT_FALLBACK_MIN_BACKGROUND &&
+            subjectLum <= BACKLIGHT_FALLBACK_MAX_SUBJECT &&
+            contrast >= BACKLIGHT_FALLBACK_MIN_CONTRAST
+        ) {
+            val confidence = min(0.76, 0.62 + ((contrast - BACKLIGHT_FALLBACK_MIN_CONTRAST) / 220.0))
             PortraitLightingMetrics(code = 4.0, confidence = confidence)
         } else {
             PortraitLightingMetrics()

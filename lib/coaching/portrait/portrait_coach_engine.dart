@@ -20,6 +20,9 @@ class PortraitCoachEngine {
   static const double _minConf = 0.5;
   static const bool _enableShoulderAngleCoaching = false;
   static const bool _enableSmileCoaching = false;
+  static const double _selfieBacklightMinConfidence = 0.72;
+  static const double _selfieBacklightStrongMinConfidence = 0.86;
+  static const double _selfieBacklightMinPersonRatio = 0.48;
 
   /// 사용자가 선택한 구도 규칙. none이면 기존 하드코딩 3분할 휴리스틱.
   CompositionRule _rule = CompositionRuleRegistry.of(CompositionRuleType.none);
@@ -97,7 +100,8 @@ class PortraitCoachEngine {
     }
 
     if (s.lightingCondition == LightingCondition.back &&
-        s.lightingConfidence >= 0.6 &&
+        s.lightingConfidence >=
+            (s.isFrontCamera ? _selfieBacklightMinConfidence : 0.6) &&
         (!s.hasNose || !s.hasEyes || s.visibleKeypointCount < 3)) {
       return CoachingResult(
         message: s.isFrontCamera ? '역광 때문에 얼굴이 어두워요' : '역광으로 얼굴이 어두워 보여요',
@@ -178,8 +182,10 @@ class PortraitCoachEngine {
     }
 
     if (s.lightingCondition == LightingCondition.back &&
-        s.lightingConfidence > 0.8 &&
-        s.personBboxRatio >= 0.4) {
+        s.lightingConfidence >
+            (s.isFrontCamera ? _selfieBacklightStrongMinConfidence : 0.8) &&
+        s.personBboxRatio >=
+            (s.isFrontCamera ? _selfieBacklightMinPersonRatio : 0.4)) {
       return CoachingResult(
         message: '강한 역광이에요',
         priority: CoachingPriority.critical,
@@ -595,10 +601,14 @@ class PortraitCoachEngine {
         }
         return null;
       case LightingCondition.back:
-        if (s.personBboxRatio < 0.4) {
+        final minPersonRatio =
+            s.isFrontCamera ? _selfieBacklightMinPersonRatio : 0.4;
+        if (s.personBboxRatio < minPersonRatio) {
           return null;
         }
-        if (s.lightingConfidence >= 0.6) {
+        final minBacklightConfidence =
+            s.isFrontCamera ? _selfieBacklightMinConfidence : 0.6;
+        if (s.lightingConfidence >= minBacklightConfidence) {
           return CoachingResult(
             message: '역광이에요',
             priority: s.isFrontCamera
