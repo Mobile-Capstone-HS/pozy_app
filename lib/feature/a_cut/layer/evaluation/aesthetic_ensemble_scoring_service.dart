@@ -4,6 +4,7 @@ import '../../model/aesthetic_ensemble_score_result.dart';
 import '../../model/aesthetic_ensemble_weights.dart';
 import '../../model/model_score_detail.dart';
 import '../inference/aesthetic_model_contract.dart';
+import '../inference/acut_perf.dart';
 import '../inference/image_preprocessor.dart';
 import '../inference/tflite_aesthetic_service.dart';
 
@@ -29,9 +30,11 @@ class AestheticEnsembleScoringService {
     Uint8List imageBytes, {
     AestheticEnsembleWeights? weights,
     int? imageIndex,
+    String? debugImageLabel,
     AcutImagePreprocessBundle? preprocessBundle,
     Map<String, Future<Uint8List>>? sharedInputCache,
   }) async {
+    final totalSw = AcutAestheticTimingDebug.start();
     final effectiveWeights = weights ?? _defaultWeights;
     final inputCache = sharedInputCache ?? <String, Future<Uint8List>>{};
     final runs = <String, TfliteSingleModelRun>{};
@@ -43,6 +46,7 @@ class AestheticEnsembleScoringService {
           imageBytes,
           model,
           imageIndex: imageIndex,
+          debugImageLabel: debugImageLabel,
           preprocessBundle: preprocessBundle,
           inputCache: inputCache,
         );
@@ -55,9 +59,10 @@ class AestheticEnsembleScoringService {
     }
 
     final nimaRun = runs[nimaMobileContract.id];
-    final rgnetRun = runs[rgnetPaperAadbContract.id];
+    final rgnetRun = runs[rgnetPilResizeAadbContract.id];
     final alampRun = runs[mobileAlampV2Contract.id];
     final icaaRun = runs[icaaColorAestheticContract.id];
+    final aggregationSw = AcutAestheticTimingDebug.start();
 
     final normalizedWeights = AestheticEnsembleWeights(
       nimaWeight: effectiveWeights.nimaWeight,
@@ -138,7 +143,7 @@ class AestheticEnsembleScoringService {
       '${finalAestheticScore?.toStringAsFixed(4) ?? 'unavailable'}',
     );
 
-    return AestheticEnsembleScoreResult(
+    final result = AestheticEnsembleScoreResult(
       nimaScore: nimaScore,
       rgnetScore: rgnetScore,
       alampScore: alampScore,
@@ -163,6 +168,26 @@ class AestheticEnsembleScoringService {
         if (icaaRun != null) icaaRun.model.id,
       ].join('+'),
     );
+    AcutAestheticTimingDebug.logElapsed(
+      stopwatch: aggregationSw,
+      imageLabel: debugImageLabel,
+      imageIndex: imageIndex,
+      modelId: 'aesthetic_ensemble',
+      phase: 'final_aesthetic_aggregation',
+      fields: <String, Object?>{'component_count': runs.length},
+    );
+    AcutAestheticTimingDebug.logElapsed(
+      stopwatch: totalSw,
+      imageLabel: debugImageLabel,
+      imageIndex: imageIndex,
+      modelId: 'aesthetic_ensemble',
+      phase: 'total_aesthetic_scoring',
+      fields: <String, Object?>{
+        'component_count': runs.length,
+        'warning_count': warnings.length,
+      },
+    );
+    return result;
   }
 
   ModelScoreDetail _detailWithWeight(ModelScoreDetail detail, double weight) {

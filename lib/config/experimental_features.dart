@@ -38,12 +38,6 @@ abstract final class ExperimentalFeatures {
     'POZY_DISABLE_FLIVE_DURING_BATCH_SCORING',
     defaultValue: false,
   );
-  static const bool technicalIqaMixed112Enabled =
-      kDebugMode &&
-      bool.fromEnvironment(
-        'POZY_TECHNICAL_IQA_MIXED112_ENABLED',
-        defaultValue: false,
-      );
   static const bool disableNimaDuringBatchScoring = bool.fromEnvironment(
     'POZY_DISABLE_NIMA_DURING_BATCH_SCORING',
     defaultValue: false,
@@ -64,10 +58,55 @@ abstract final class ExperimentalFeatures {
     'POZY_ACUT_VERBOSE_MODEL_LOGS',
     defaultValue: false,
   );
+  // Diagnostic-only timing logs for A-cut aesthetic preprocessing/inference.
+  static const bool enableAcutAestheticTimingDebug =
+      !kReleaseMode &&
+      bool.fromEnvironment(
+        'POZY_ENABLE_ACUT_AESTHETIC_TIMING_DEBUG',
+        defaultValue: false,
+      );
+  // Diagnostic-only baseline score logs before A-cut aesthetic optimizations.
+  static const bool enableAcutAestheticParityDebug =
+      kDebugMode &&
+      bool.fromEnvironment(
+        'POZY_ENABLE_ACUT_AESTHETIC_PARITY_DEBUG',
+        defaultValue: false,
+      );
+  static const bool enableAcutParityDebug =
+      !kReleaseMode &&
+      bool.fromEnvironment(
+        'POZY_ENABLE_ACUT_PARITY_DEBUG',
+        defaultValue: false,
+      );
   static const bool useFreshInterpreterPerImageForDebug = bool.fromEnvironment(
     'POZY_USE_FRESH_INTERPRETER_PER_IMAGE_FOR_DEBUG',
     defaultValue: false,
   );
+  static const String acutTfliteExperimentMode = String.fromEnvironment(
+    'POZY_ACUT_TFLITE_EXPERIMENT_MODE',
+    defaultValue: 'threads_icaa_rgnet',
+  );
+  static const int _acutTfliteNumThreadsRaw = int.fromEnvironment(
+    'POZY_ACUT_TFLITE_NUM_THREADS',
+    defaultValue: 4,
+  );
+  static int get acutTfliteNumThreads {
+    return switch (_acutTfliteNumThreadsRaw) {
+      1 || 2 || 4 => _acutTfliteNumThreadsRaw,
+      _ => 2,
+    };
+  }
+
+  static const bool acutTfliteAllowFallback = bool.fromEnvironment(
+    'POZY_ACUT_TFLITE_ALLOW_FALLBACK',
+    defaultValue: true,
+  );
+  static const bool enableAcutDelegateTimingDebug =
+      !kReleaseMode &&
+      bool.fromEnvironment(
+        'POZY_ENABLE_ACUT_DELEGATE_TIMING_DEBUG',
+        defaultValue: false,
+      );
   static const bool gemmaDebugSequentialComparison = true;
   static const String gemmaLiteRtLmModelPath = String.fromEnvironment(
     'POZY_GEMMA_MODEL_PATH',

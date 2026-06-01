@@ -15,10 +15,12 @@ class TfliteInterpreterManager {
   Future<Interpreter> getInterpreter(
     String assetPath, {
     bool useFlexDelegate = false,
+    String? modelId,
   }) async {
     final handle = await _getHandle(
       assetPath,
       useFlexDelegate: useFlexDelegate,
+      modelId: modelId,
     );
     return handle.interpreter;
   }
@@ -26,6 +28,7 @@ class TfliteInterpreterManager {
   Future<T> withInterpreter<T>(
     String assetPath, {
     bool useFlexDelegate = false,
+    String? modelId,
     required Future<T> Function(
       Interpreter interpreter,
       TfliteModelDescriptor descriptor,
@@ -36,6 +39,7 @@ class TfliteInterpreterManager {
       final handle = await _createHandle(
         assetPath: assetPath,
         useFlexDelegate: useFlexDelegate,
+        modelId: modelId,
       );
       try {
         return await handle.synchronized(action);
@@ -47,6 +51,7 @@ class TfliteInterpreterManager {
     final handle = await _getHandle(
       assetPath,
       useFlexDelegate: useFlexDelegate,
+      modelId: modelId,
     );
     return handle.synchronized(action);
   }
@@ -54,15 +59,32 @@ class TfliteInterpreterManager {
   Future<_InterpreterHandle> _getHandle(
     String assetPath, {
     required bool useFlexDelegate,
+    String? modelId,
   }) async {
-    final cacheKey = '$assetPath|flex:$useFlexDelegate';
-    final pending = _cache.putIfAbsent(
-      cacheKey,
-      () =>
-          _createHandle(assetPath: assetPath, useFlexDelegate: useFlexDelegate),
+    final plan = _AcutTfliteExperimentPlan.resolve(
+      modelId: modelId,
+      assetPath: assetPath,
+      useFlexDelegate: useFlexDelegate,
     );
+    final cacheKey = plan.cacheKey;
+    final existing = _cache[cacheKey];
+    if (existing != null) {
+      return existing;
+    }
+
+    final pending = _createHandle(
+      assetPath: assetPath,
+      useFlexDelegate: useFlexDelegate,
+      modelId: modelId,
+      initialPlan: plan,
+    );
+    _cache[cacheKey] = pending;
     try {
-      return await pending;
+      final handle = await pending;
+      if (handle.cacheKey != cacheKey && identical(_cache[cacheKey], pending)) {
+        _cache.remove(cacheKey);
+      }
+      return handle;
     } catch (_) {
       if (identical(_cache[cacheKey], pending)) {
         _cache.remove(cacheKey);
@@ -74,33 +96,106 @@ class TfliteInterpreterManager {
   Future<_InterpreterHandle> _createHandle({
     required String assetPath,
     required bool useFlexDelegate,
+    String? modelId,
+    _AcutTfliteExperimentPlan? initialPlan,
   }) async {
-    FlexDelegate? flexDelegate;
+    final plan =
+        initialPlan ??
+        _AcutTfliteExperimentPlan.resolve(
+          modelId: modelId,
+          assetPath: assetPath,
+          useFlexDelegate: useFlexDelegate,
+        );
+
+    if (plan.delegateKind == _AcutDelegateKind.nnapi) {
+      return _handleUnavailableDelegatePlan(
+        plan: plan,
+        reason: 'nnapi_api_unavailable',
+      );
+    }
+
+    if (plan.delegateKind == _AcutDelegateKind.gpu && !Platform.isAndroid) {
+      return _handleUnavailableDelegatePlan(
+        plan: plan,
+        reason: 'gpu_delegate_android_only',
+      );
+    }
+
+    return _createHandleWithPlan(plan);
+  }
+
+  Future<_InterpreterHandle> _handleUnavailableDelegatePlan({
+    required _AcutTfliteExperimentPlan plan,
+    required String reason,
+  }) async {
+    if (!ExperimentalFeatures.acutTfliteAllowFallback) {
+      throw UnsupportedError(reason);
+    }
+
+    final fallbackPlan = plan.fallbackCpu(reason);
+    return _createHandleWithPlan(fallbackPlan);
+  }
+
+  Future<_InterpreterHandle> _createHandleWithPlan(
+    _AcutTfliteExperimentPlan plan,
+  ) async {
+    final delegates = <Delegate>[];
     Interpreter? interpreter;
 
     try {
-      final options = InterpreterOptions()..threads = 2;
+      final options = InterpreterOptions()..threads = plan.numThreads;
+      var createDelegateMs = 0;
+      var createDelegateUs = 0;
 
-      if (useFlexDelegate) {
+      if (plan.useFlexDelegate) {
         if (Platform.isAndroid) {
-          flexDelegate = await FlexDelegate.create();
+          delegates.add(await FlexDelegate.create());
         } else {
-          flexDelegate = FlexDelegate();
+          delegates.add(FlexDelegate());
         }
-        options.addDelegate(flexDelegate);
+        options.addDelegate(delegates.last);
       }
 
-      interpreter = await Interpreter.fromAsset(assetPath, options: options);
+      if (plan.delegateKind == _AcutDelegateKind.gpu) {
+        final delegateSw = Stopwatch()..start();
+        final acceleratorDelegate = GpuDelegateV2();
+        delegateSw.stop();
+        createDelegateMs = delegateSw.elapsedMilliseconds;
+        createDelegateUs = delegateSw.elapsedMicroseconds;
+        delegates.add(acceleratorDelegate);
+        options.addDelegate(acceleratorDelegate);
+      }
+
       debugPrint(
-        '[TfliteInterpreterManager] Loaded $assetPath '
-        '(flex=$useFlexDelegate)',
+        '[TfliteInterpreterManager] Loading ${plan.assetPath} '
+        '(flex=${plan.useFlexDelegate} model=${plan.modelId ?? '-'})',
+      );
+      final interpreterSw = Stopwatch()..start();
+      interpreter = await Interpreter.fromAsset(
+        plan.assetPath,
+        options: options,
+      );
+      interpreter.allocateTensors();
+      interpreterSw.stop();
+      _logDelegateTiming(
+        plan: plan,
+        createDelegateMs: createDelegateMs,
+        createDelegateUs: createDelegateUs,
+        createInterpreterMs: interpreterSw.elapsedMilliseconds,
+        createInterpreterUs: interpreterSw.elapsedMicroseconds,
+        fallback: plan.fallback,
+        fallbackReason: plan.fallbackReason,
+      );
+      debugPrint(
+        '[TfliteInterpreterManager] Loaded ${plan.assetPath} '
+        '(flex=${plan.useFlexDelegate} model=${plan.modelId ?? '-'})',
       );
       final descriptor = _readDescriptor(
         interpreter: interpreter,
-        assetPath: assetPath,
+        assetPath: plan.assetPath,
       );
       debugPrint(
-        '[TfliteInterpreterManager] Loaded $assetPath '
+        '[TfliteInterpreterManager] Loaded ${plan.assetPath} '
         'inputShapes=${descriptor.inputShapes} '
         'outputShapes=${descriptor.outputShapes} '
         'inputTypes=${descriptor.inputTypes} '
@@ -110,14 +205,24 @@ class TfliteInterpreterManager {
 
       return _InterpreterHandle(
         interpreter: interpreter,
-        flexDelegate: flexDelegate,
+        delegates: delegates,
         descriptor: descriptor,
+        cacheKey: plan.cacheKey,
       );
     } catch (error) {
       interpreter?.close();
-      flexDelegate?.delete();
+      for (final delegate in delegates.reversed) {
+        delegate.delete();
+      }
+      if (plan.delegateKind != _AcutDelegateKind.none &&
+          !plan.fallback &&
+          ExperimentalFeatures.acutTfliteAllowFallback) {
+        final fallbackPlan = plan.fallbackCpu(error);
+        return _createHandleWithPlan(fallbackPlan);
+      }
       throw Exception(
-        'Failed to initialize interpreter (flex=$useFlexDelegate): $error',
+        'Failed to initialize interpreter for ${plan.assetPath} '
+        '(flex=${plan.useFlexDelegate} model=${plan.modelId ?? '-'}): $error',
       );
     }
   }
@@ -130,8 +235,17 @@ class TfliteInterpreterManager {
     _cache.clear();
   }
 
-  Future<void> evict(String assetPath, {bool useFlexDelegate = false}) async {
-    final cacheKey = '$assetPath|flex:$useFlexDelegate';
+  Future<void> evict(
+    String assetPath, {
+    bool useFlexDelegate = false,
+    String? modelId,
+  }) async {
+    final plan = _AcutTfliteExperimentPlan.resolve(
+      modelId: modelId,
+      assetPath: assetPath,
+      useFlexDelegate: useFlexDelegate,
+    );
+    final cacheKey = plan.cacheKey;
     final pending = _cache.remove(cacheKey);
     if (pending != null) {
       try {
@@ -193,15 +307,17 @@ class TfliteInterpreterManager {
 
 class _InterpreterHandle {
   final Interpreter interpreter;
-  final FlexDelegate? flexDelegate;
+  final List<Delegate> delegates;
   final TfliteModelDescriptor descriptor;
+  final String cacheKey;
   Future<void> _tail = Future<void>.value();
   bool _closed = false;
 
   _InterpreterHandle({
     required this.interpreter,
-    required this.flexDelegate,
+    required this.delegates,
     required this.descriptor,
+    required this.cacheKey,
   });
 
   Future<T> synchronized<T>(
@@ -235,8 +351,172 @@ class _InterpreterHandle {
       }
       _closed = true;
       interpreter.close();
-      flexDelegate?.delete();
+      for (final delegate in delegates.reversed) {
+        delegate.delete();
+      }
     });
+  }
+}
+
+enum _AcutDelegateKind { none, nnapi, gpu }
+
+class _AcutTfliteExperimentPlan {
+  static const _defaultThreads = 2;
+  static const _targetIcaa = 'icaa_color_aesthetic';
+  static const _targetRgnet = 'rgnet_pil_resize_aadb';
+  static const _allowedModes = <String>{
+    'cpu_baseline',
+    'threads_icaa',
+    'threads_rgnet',
+    'threads_icaa_rgnet',
+    'nnapi_icaa',
+    'nnapi_rgnet',
+    'nnapi_icaa_rgnet',
+    'gpu_icaa',
+    'gpu_rgnet',
+    'gpu_icaa_rgnet',
+  };
+
+  final String assetPath;
+  final bool useFlexDelegate;
+  final String? modelId;
+  final String requestedMode;
+  final String appliedMode;
+  final _AcutDelegateKind delegateKind;
+  final int numThreads;
+  final bool targetMatched;
+  final bool fallback;
+  final String? fallbackReason;
+
+  const _AcutTfliteExperimentPlan({
+    required this.assetPath,
+    required this.useFlexDelegate,
+    required this.modelId,
+    required this.requestedMode,
+    required this.appliedMode,
+    required this.delegateKind,
+    required this.numThreads,
+    required this.targetMatched,
+    this.fallback = false,
+    this.fallbackReason,
+  });
+
+  factory _AcutTfliteExperimentPlan.resolve({
+    required String assetPath,
+    required bool useFlexDelegate,
+    required String? modelId,
+  }) {
+    final configuredMode = ExperimentalFeatures.acutTfliteExperimentMode;
+    final requestedMode = _allowedModes.contains(configuredMode)
+        ? configuredMode
+        : 'cpu_baseline';
+    final targetMatched = _targetsModel(requestedMode, modelId);
+
+    if (!targetMatched) {
+      return _AcutTfliteExperimentPlan(
+        assetPath: assetPath,
+        useFlexDelegate: useFlexDelegate,
+        modelId: modelId,
+        requestedMode: requestedMode,
+        appliedMode: 'cpu',
+        delegateKind: _AcutDelegateKind.none,
+        numThreads: _defaultThreads,
+        targetMatched: false,
+      );
+    }
+
+    if (requestedMode.startsWith('threads_')) {
+      return _AcutTfliteExperimentPlan(
+        assetPath: assetPath,
+        useFlexDelegate: useFlexDelegate,
+        modelId: modelId,
+        requestedMode: requestedMode,
+        appliedMode: 'threads',
+        delegateKind: _AcutDelegateKind.none,
+        numThreads: ExperimentalFeatures.acutTfliteNumThreads,
+        targetMatched: true,
+      );
+    }
+
+    if (requestedMode.startsWith('nnapi_')) {
+      return _AcutTfliteExperimentPlan(
+        assetPath: assetPath,
+        useFlexDelegate: useFlexDelegate,
+        modelId: modelId,
+        requestedMode: requestedMode,
+        appliedMode: 'nnapi',
+        delegateKind: _AcutDelegateKind.nnapi,
+        numThreads: _defaultThreads,
+        targetMatched: true,
+      );
+    }
+
+    if (requestedMode.startsWith('gpu_')) {
+      return _AcutTfliteExperimentPlan(
+        assetPath: assetPath,
+        useFlexDelegate: useFlexDelegate,
+        modelId: modelId,
+        requestedMode: requestedMode,
+        appliedMode: 'gpu',
+        delegateKind: _AcutDelegateKind.gpu,
+        numThreads: _defaultThreads,
+        targetMatched: true,
+      );
+    }
+
+    return _AcutTfliteExperimentPlan(
+      assetPath: assetPath,
+      useFlexDelegate: useFlexDelegate,
+      modelId: modelId,
+      requestedMode: requestedMode,
+      appliedMode: 'cpu',
+      delegateKind: _AcutDelegateKind.none,
+      numThreads: _defaultThreads,
+      targetMatched: false,
+    );
+  }
+
+  _AcutTfliteExperimentPlan fallbackCpu(Object? reason) {
+    return _AcutTfliteExperimentPlan(
+      assetPath: assetPath,
+      useFlexDelegate: useFlexDelegate,
+      modelId: modelId,
+      requestedMode: requestedMode,
+      appliedMode: 'fallback_cpu',
+      delegateKind: _AcutDelegateKind.none,
+      numThreads: _defaultThreads,
+      targetMatched: targetMatched,
+      fallback: true,
+      fallbackReason: reason?.toString(),
+    );
+  }
+
+  String get delegateLabel {
+    return switch (delegateKind) {
+      _AcutDelegateKind.none => 'none',
+      _AcutDelegateKind.nnapi => 'nnapi',
+      _AcutDelegateKind.gpu => 'gpu',
+    };
+  }
+
+  String get assetName => assetPath.split('/').last;
+
+  String get cacheKey {
+    return '$assetPath|flex:$useFlexDelegate|model:${modelId ?? '-'}|'
+        'mode:$appliedMode|delegate:$delegateLabel|threads:$numThreads';
+  }
+
+  String get cacheKeySummary {
+    return '$assetName|flex:$useFlexDelegate|model:${modelId ?? '-'}|'
+        'mode:$appliedMode|delegate:$delegateLabel|threads:$numThreads';
+  }
+
+  static bool _targetsModel(String mode, String? modelId) {
+    return switch (modelId) {
+      _targetIcaa => mode.endsWith('_icaa') || mode.endsWith('_icaa_rgnet'),
+      _targetRgnet => mode.endsWith('_rgnet') || mode.endsWith('_icaa_rgnet'),
+      _ => false,
+    };
   }
 }
 
@@ -345,4 +625,48 @@ class TfliteTensorDescriptor {
       return -1;
     }
   }
+}
+
+void _logDelegateTiming({
+  required _AcutTfliteExperimentPlan plan,
+  required int createDelegateMs,
+  required int createDelegateUs,
+  required int createInterpreterMs,
+  required int createInterpreterUs,
+  required bool fallback,
+  Object? fallbackReason,
+}) {
+  if (!ExperimentalFeatures.enableAcutDelegateTimingDebug) {
+    return;
+  }
+
+  debugPrint(
+    '[AcutDelegateTiming] '
+    'model=${plan.modelId ?? '-'} '
+    'asset=${plan.assetName} '
+    'requestedMode=${plan.requestedMode} '
+    'appliedMode=${plan.appliedMode} '
+    'delegate=${plan.delegateLabel} '
+    'threads=${plan.numThreads} '
+    'targetMatched=${plan.targetMatched} '
+    'createDelegateMs=$createDelegateMs '
+    'createDelegateUs=$createDelegateUs '
+    'createInterpreterMs=$createInterpreterMs '
+    'createInterpreterUs=$createInterpreterUs '
+    'fallback=$fallback '
+    'fallbackReason=${_quote(_summarizeError(fallbackReason))} '
+    'cacheKey=${_quote(plan.cacheKeySummary)}',
+  );
+}
+
+String _summarizeError(Object? error) {
+  if (error == null) {
+    return 'none';
+  }
+  final message = error.toString().replaceAll('\n', ' ');
+  return message.length <= 160 ? message : '${message.substring(0, 160)}...';
+}
+
+String _quote(String value) {
+  return '"${value.replaceAll('"', r'\"')}"';
 }

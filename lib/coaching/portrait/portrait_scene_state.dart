@@ -65,6 +65,8 @@ class CoachingResult {
 // ─── 장면 상태 ──────────────────────────────────────────────
 
 class PortraitSceneState {
+  static const double eyeClosedProbabilityThreshold = 0.25;
+
   // 기본 정보
   final int personCount;
   final ShotType shotType;
@@ -218,9 +220,20 @@ class PortraitSceneState {
 
   bool get isJointCropped => croppedJoints.isNotEmpty;
 
-  bool get areEyesClosed => eyeClosedConfirmed;
+  bool get areEyesClosed =>
+      eyeClosedConfirmed ||
+      (leftEyeOpenProb != null &&
+          rightEyeOpenProb != null &&
+          leftEyeOpenProb! < eyeClosedProbabilityThreshold &&
+          rightEyeOpenProb! < eyeClosedProbabilityThreshold);
 
-  bool get isOneEyeClosed => !areEyesClosed && oneEyeClosedConfirmed;
+  bool get isOneEyeClosed =>
+      !areEyesClosed &&
+      (oneEyeClosedConfirmed ||
+          (leftEyeOpenProb != null &&
+              rightEyeOpenProb != null &&
+              (leftEyeOpenProb! < eyeClosedProbabilityThreshold ||
+                  rightEyeOpenProb! < eyeClosedProbabilityThreshold)));
 
   bool get isSmiling => smileProbability != null && smileProbability! >= 0.65;
 
@@ -258,9 +271,9 @@ class PortraitSceneState {
       (leftKneePosition != null || rightKneePosition != null) &&
       kneeConfidence >= 0.15;
 
-  bool get hasReliableAnkles => hasAnyAnkle && ankleConfidence >= 0.15;
+  bool get hasReliableAnkles => hasAnyAnkle && ankleConfidence >= 0.12;
 
-  bool get hasReliableBothAnkles => hasBothAnkles && ankleConfidence >= 0.15;
+  bool get hasReliableBothAnkles => hasBothAnkles && ankleConfidence >= 0.12;
 
   /// 프레임 하단 근처에서 관절이 잘리고 있는지
   bool get isBottomJointCut => bottomJoint != null && bottomJointY != null;

@@ -5,10 +5,7 @@ class AnalyzeRequest {
   final List<int> jpegBytes;
   final List<double>? unionRoi; // [left, top, right, bottom] normalized
 
-  const AnalyzeRequest({
-    required this.jpegBytes,
-    required this.unionRoi,
-  });
+  const AnalyzeRequest({required this.jpegBytes, required this.unionRoi});
 }
 
 /// 광원 방향 — 이미지 분석 결과용 (int로 전달)
@@ -17,12 +14,14 @@ class ObjectImageMetrics {
   final double brightness;
   final double subjectBrightness;
   final double backgroundBrightness;
+  final double nearBackgroundBrightness;
   final double globalBlurScore;
   final double subjectBlurScore;
   final double highlightRatio;
   final double shadowRatio;
   final double subjectHighlightRatio;
   final double subjectShadowRatio;
+  final double nearBackgroundHighlightRatio;
 
   /// 광원 방향 (0~5, LightDirection 인덱스와 대응)
   final int lightDirectionIndex;
@@ -31,12 +30,14 @@ class ObjectImageMetrics {
     required this.brightness,
     required this.subjectBrightness,
     required this.backgroundBrightness,
+    required this.nearBackgroundBrightness,
     required this.globalBlurScore,
     required this.subjectBlurScore,
     required this.highlightRatio,
     required this.shadowRatio,
     required this.subjectHighlightRatio,
     required this.subjectShadowRatio,
+    required this.nearBackgroundHighlightRatio,
     this.lightDirectionIndex = 0,
   });
 }
@@ -53,12 +54,14 @@ ObjectImageMetrics _analyzeIsolate(AnalyzeRequest request) {
       brightness: 0.5,
       subjectBrightness: 0.5,
       backgroundBrightness: 0.5,
+      nearBackgroundBrightness: 0.5,
       globalBlurScore: 999,
       subjectBlurScore: 999,
       highlightRatio: 0,
       shadowRatio: 0,
       subjectHighlightRatio: 0,
       subjectShadowRatio: 0,
+      nearBackgroundHighlightRatio: 0,
     );
   }
 
@@ -68,14 +71,23 @@ ObjectImageMetrics _analyzeIsolate(AnalyzeRequest request) {
   final brightness = _computeBrightness(small, null);
   final subjectBrightness = _computeBrightness(small, roi);
   final backgroundBrightness = _computeBackgroundBrightness(small, roi);
+  final nearBackgroundBrightness = _computeNearBackgroundBrightness(small, roi);
 
   final globalBlurScore = _computeLaplacianVariance(small, null);
   final subjectBlurScore = _computeLaplacianVariance(small, roi);
 
   final highlightRatio = _computeHighlightRatio(small, roi);
   final shadowRatio = _computeShadowRatio(small, roi);
-  final subjectHighlightRatio = _computeHighlightRatio(small, roi, subjectOnly: true);
+  final subjectHighlightRatio = _computeHighlightRatio(
+    small,
+    roi,
+    subjectOnly: true,
+  );
   final subjectShadowRatio = _computeShadowRatio(small, roi, subjectOnly: true);
+  final nearBackgroundHighlightRatio = _computeNearBackgroundHighlightRatio(
+    small,
+    roi,
+  );
 
   final lightDir = _estimateLightDirection(small, roi);
 
@@ -83,12 +95,14 @@ ObjectImageMetrics _analyzeIsolate(AnalyzeRequest request) {
     brightness: brightness,
     subjectBrightness: subjectBrightness,
     backgroundBrightness: backgroundBrightness,
+    nearBackgroundBrightness: nearBackgroundBrightness,
     globalBlurScore: globalBlurScore,
     subjectBlurScore: subjectBlurScore,
     highlightRatio: highlightRatio,
     shadowRatio: shadowRatio,
     subjectHighlightRatio: subjectHighlightRatio,
     subjectShadowRatio: subjectShadowRatio,
+    nearBackgroundHighlightRatio: nearBackgroundHighlightRatio,
     lightDirectionIndex: lightDir,
   );
 }
@@ -134,7 +148,10 @@ double _computeBackgroundBrightness(img.Image image, List<double>? roi) {
   for (int y = 0; y < image.height; y++) {
     for (int x = 0; x < image.width; x++) {
       final inRoi =
-          x >= bounds.left && x < bounds.right && y >= bounds.top && y < bounds.bottom;
+          x >= bounds.left &&
+          x < bounds.right &&
+          y >= bounds.top &&
+          y < bounds.bottom;
       if (inRoi) continue;
 
       sum += _luma(image.getPixel(x, y));
@@ -144,6 +161,12 @@ double _computeBackgroundBrightness(img.Image image, List<double>? roi) {
 
   if (count == 0) return _computeBrightness(image, null);
   return (sum / count / 255.0).clamp(0.0, 1.0);
+}
+
+double _computeNearBackgroundBrightness(img.Image image, List<double>? roi) {
+  if (roi == null) return _computeBackgroundBrightness(image, roi);
+  final stats = _computeNearBackgroundStats(image, roi);
+  return stats.brightness;
 }
 
 double _computeHighlightRatio(
@@ -170,6 +193,73 @@ double _computeHighlightRatio(
 
   if (count == 0) return 0;
   return (brightCount / count).clamp(0.0, 1.0);
+}
+
+double _computeNearBackgroundHighlightRatio(
+  img.Image image,
+  List<double>? roi,
+) {
+  if (roi == null) return _computeHighlightRatio(image, roi);
+  final stats = _computeNearBackgroundStats(image, roi);
+  return stats.highlightRatio;
+}
+
+class _NearBackgroundStats {
+  final double brightness;
+  final double highlightRatio;
+
+  const _NearBackgroundStats({
+    required this.brightness,
+    required this.highlightRatio,
+  });
+}
+
+_NearBackgroundStats _computeNearBackgroundStats(
+  img.Image image,
+  List<double> roi,
+) {
+  final subject = _roiBounds(image, roi);
+  final width = subject.right - subject.left;
+  final height = subject.bottom - subject.top;
+  final padX = (width * 0.45).round().clamp(8, image.width);
+  final padY = (height * 0.45).round().clamp(8, image.height);
+  final outer = _Bounds(
+    (subject.left - padX).clamp(0, image.width - 1),
+    (subject.top - padY).clamp(0, image.height - 1),
+    (subject.right + padX).clamp(1, image.width),
+    (subject.bottom + padY).clamp(1, image.height),
+  );
+
+  double sum = 0;
+  int count = 0;
+  int highlightCount = 0;
+  for (int y = outer.top; y < outer.bottom; y++) {
+    for (int x = outer.left; x < outer.right; x++) {
+      final inSubject =
+          x >= subject.left &&
+          x < subject.right &&
+          y >= subject.top &&
+          y < subject.bottom;
+      if (inSubject) continue;
+
+      final l = _luma(image.getPixel(x, y));
+      sum += l;
+      if (l >= 235.0) highlightCount++;
+      count++;
+    }
+  }
+
+  if (count == 0) {
+    return _NearBackgroundStats(
+      brightness: _computeBackgroundBrightness(image, roi),
+      highlightRatio: _computeHighlightRatio(image, roi),
+    );
+  }
+
+  return _NearBackgroundStats(
+    brightness: (sum / count / 255.0).clamp(0.0, 1.0),
+    highlightRatio: (highlightCount / count).clamp(0.0, 1.0),
+  );
 }
 
 double _computeShadowRatio(
@@ -241,22 +331,25 @@ class _Bounds {
 
 _Bounds _roiBounds(img.Image image, List<double>? roi, {int inset = 0}) {
   if (roi == null) {
-    return _Bounds(
-      inset,
-      inset,
-      image.width - inset,
-      image.height - inset,
-    );
+    return _Bounds(inset, inset, image.width - inset, image.height - inset);
   }
 
-  final left =
-      (roi[0] * image.width).floor().clamp(inset, image.width - inset - 1);
-  final top =
-      (roi[1] * image.height).floor().clamp(inset, image.height - inset - 1);
-  final right =
-      (roi[2] * image.width).ceil().clamp(inset + 1, image.width - inset);
-  final bottom =
-      (roi[3] * image.height).ceil().clamp(inset + 1, image.height - inset);
+  final left = (roi[0] * image.width).floor().clamp(
+    inset,
+    image.width - inset - 1,
+  );
+  final top = (roi[1] * image.height).floor().clamp(
+    inset,
+    image.height - inset - 1,
+  );
+  final right = (roi[2] * image.width).ceil().clamp(
+    inset + 1,
+    image.width - inset,
+  );
+  final bottom = (roi[3] * image.height).ceil().clamp(
+    inset + 1,
+    image.height - inset,
+  );
 
   return _Bounds(left, top, right, bottom);
 }
@@ -325,8 +418,11 @@ int _estimateLightDirection(img.Image image, List<double>? roi) {
     for (int y = 0; y < h; y++) {
       for (int x = 0; x < w; x++) {
         final l = _luma(image.getPixel(x, y));
-        final inRoi = x >= bounds.left && x < bounds.right &&
-            y >= bounds.top && y < bounds.bottom;
+        final inRoi =
+            x >= bounds.left &&
+            x < bounds.right &&
+            y >= bounds.top &&
+            y < bounds.bottom;
         if (inRoi) {
           subjectSum += l;
           subjectCnt++;
@@ -360,4 +456,3 @@ int _estimateLightDirection(img.Image image, List<double>? roi) {
     return vDiff > 0 ? 4 : 3; // bottom : top
   }
 }
-

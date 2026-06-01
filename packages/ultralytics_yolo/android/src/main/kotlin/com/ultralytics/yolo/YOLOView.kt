@@ -50,6 +50,13 @@ class YOLOView @JvmOverloads constructor(
         private var previewUseCase: Preview? = null
 
         private const val TAG = "YOLOView"
+        private const val ENABLE_VERBOSE_LOGS = false
+
+        private fun debugLog(tag: String, message: String) {
+            if (ENABLE_VERBOSE_LOGS) {
+                Log.d(tag, message)
+            }
+        }
 
         // Line thickness and corner radius
         private const val BOX_LINE_WIDTH = 8f
@@ -826,19 +833,19 @@ class YOLOView @JvmOverloads constructor(
     
     /** Set streaming configuration */
     fun setStreamConfig(config: YOLOStreamConfig?) {
-        Log.d(TAG, "🔄 Setting new streaming config")
-        Log.d(TAG, "📋 Previous config: $streamConfig")
+        debugLog(TAG, "🔄 Setting new streaming config")
+        debugLog(TAG, "📋 Previous config: $streamConfig")
         this.streamConfig = config
         resetPoseStreamStability()
         setupThrottlingFromConfig()
-        Log.d(TAG, "✅ New streaming config set: $config")
-        Log.d(TAG, "🎯 Key settings - includeMasks: ${config?.includeMasks}, includeProcessingTimeMs: ${config?.includeProcessingTimeMs}, inferenceFrequency: ${config?.inferenceFrequency}")
+        debugLog(TAG, "✅ New streaming config set: $config")
+        debugLog(TAG, "🎯 Key settings - includeMasks: ${config?.includeMasks}, includeProcessingTimeMs: ${config?.includeProcessingTimeMs}, inferenceFrequency: ${config?.inferenceFrequency}")
     }
     
     /** Set streaming callback */
     fun setStreamCallback(callback: ((Map<String, Any>) -> Unit)?) {
         this.streamCallback = callback
-        Log.d(TAG, "Streaming callback set: ${callback != null}")
+        debugLog(TAG, "Streaming callback set: ${callback != null}")
     }
 
     // Callback to notify model load completion
@@ -1017,7 +1024,7 @@ class YOLOView @JvmOverloads constructor(
             }
         })
 
-        Log.d(TAG, "YoloView init: forced TextureView usage for camera preview + overlay on top.")
+        debugLog(TAG, "YoloView init: forced TextureView usage for camera preview + overlay on top.")
     }
 
     // region threshold setters
@@ -1049,12 +1056,12 @@ class YOLOView @JvmOverloads constructor(
 
     fun setDeviceOrientation(degrees: Int) {
         deviceOrientationDeg = degrees
-        Log.d(
+        debugLog(
             "AcutCamera",
             "${System.currentTimeMillis()} YOLOView.setDeviceOrientation " +
                 "degrees=$degrees noCameraRestart=true"
         )
-        Log.d(TAG, "Device orientation set to $degrees°")
+        debugLog(TAG, "Device orientation set to $degrees°")
     }
 
     fun setPortraitFaceAnalysisThrottle(intervalMs: Int?, intervalFrames: Int?) {
@@ -1146,7 +1153,7 @@ class YOLOView @JvmOverloads constructor(
             )
             newPreview.setSurfaceProvider(previewView.surfaceProvider)
             onZoomChanged?.invoke(currentZoomRatio)
-            Log.d(TAG, "Switched to ultrawide camera: $cameraId")
+            debugLog(TAG, "Switched to ultrawide camera: $cameraId")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to switch to ultrawide camera", e)
             isUsingUltrawide = false
@@ -1197,7 +1204,7 @@ class YOLOView @JvmOverloads constructor(
             // 메인 카메라 줌 복원
             camera?.cameraControl?.setZoomRatio(zoomLevel)
             onZoomChanged?.invoke(currentZoomRatio)
-            Log.d(TAG, "Switched back to main camera with zoom: $zoomLevel")
+            debugLog(TAG, "Switched back to main camera with zoom: $zoomLevel")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to switch back to main camera", e)
         }
@@ -1215,7 +1222,7 @@ class YOLOView @JvmOverloads constructor(
                 if (facing != CameraCharacteristics.LENS_FACING_BACK) return@mapNotNull null
                 val focalLengths = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS) ?: return@mapNotNull null
                 val minFocal = focalLengths.minOrNull() ?: return@mapNotNull null
-                Log.d(TAG, "Back camera $id: minFocalLength=$minFocal")
+                debugLog(TAG, "Back camera $id: minFocalLength=$minFocal")
                 Pair(minFocal, id)
             }.sortedBy { it.first }
 
@@ -1225,13 +1232,13 @@ class YOLOView @JvmOverloads constructor(
                 // 초광각: 가장 짧은 초점 거리가 그 다음 카메라보다 25% 이상 짧을 때
                 if (shortest.first < second.first * 0.75f) {
                     ultrawideCameraId = shortest.second
-                    Log.d(TAG, "Ultrawide camera detected: id=${shortest.second} focal=${shortest.first} (main focal=${second.first})")
+                    debugLog(TAG, "Ultrawide camera detected: id=${shortest.second} focal=${shortest.first} (main focal=${second.first})")
                     return
                 }
             }
 
             ultrawideCameraId = null
-            Log.d(TAG, "No distinct ultrawide camera found. cameras=${backCameras.map { "${it.second}:${it.first}" }}")
+            debugLog(TAG, "No distinct ultrawide camera found. cameras=${backCameras.map { "${it.second}:${it.first}" }}")
         } catch (e: Exception) {
             Log.e(TAG, "Error detecting ultrawide camera", e)
             ultrawideCameraId = null
@@ -1269,7 +1276,7 @@ class YOLOView @JvmOverloads constructor(
                     callback?.invoke(true)
                     // Ensure camera starts after model loads if it's not already running
                     if (allPermissionsGranted() && lifecycleOwner != null && (camera == null || isStopped)) {
-                        Log.d(
+                        debugLog(
                             "AcutCamera",
                             "${System.currentTimeMillis()} YOLOView.setModel post -> startCamera " +
                                 "camera=${camera != null} isStopped=$isStopped"
@@ -1294,13 +1301,13 @@ class YOLOView @JvmOverloads constructor(
         // Try to load labels from model metadata first
         val loadedLabels = YOLOFileUtils.loadLabelsFromAppendedZip(context, modelPath)
         if (loadedLabels != null) {
-            Log.d(TAG, "Labels loaded from model metadata: ${loadedLabels.size} classes")
+            debugLog(TAG, "Labels loaded from model metadata: ${loadedLabels.size} classes")
             return loadedLabels
         }
         
         // Return COCO dataset's 80 classes as a fallback
         // This is much more complete than the previous 7-class hardcoded list
-        Log.d(TAG, "Using COCO classes as fallback")
+        debugLog(TAG, "Using COCO classes as fallback")
         return listOf(
             "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat",
             "traffic light", "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat", "dog",
@@ -1321,7 +1328,7 @@ class YOLOView @JvmOverloads constructor(
      * Called when a LifecycleOwner is available for camera operations
      */
     fun onLifecycleOwnerAvailable(owner: LifecycleOwner) {
-        Log.d(
+        debugLog(
             "AcutCamera",
             "${System.currentTimeMillis()} YOLOView.onLifecycleOwnerAvailable " +
                 "permissions=${allPermissionsGranted()} camera=${camera != null} " +
@@ -1331,7 +1338,7 @@ class YOLOView @JvmOverloads constructor(
         owner.lifecycle.addObserver(this)
         
         if (allPermissionsGranted() && (camera == null || isStopped)) {
-            Log.d("AcutCamera", "${System.currentTimeMillis()} YOLOView.onLifecycleOwnerAvailable -> startCamera")
+            debugLog("AcutCamera", "${System.currentTimeMillis()} YOLOView.onLifecycleOwnerAvailable -> startCamera")
             startCamera(reason = "onLifecycleOwnerAvailable")
         }
     }
@@ -1339,7 +1346,7 @@ class YOLOView @JvmOverloads constructor(
     // region camera init
 
     fun initCamera() {
-        Log.d(
+        debugLog(
             "AcutCamera",
             "${System.currentTimeMillis()} YOLOView.initCamera " +
                 "permissions=${allPermissionsGranted()} lifecycleOwner=${lifecycleOwner != null} " +
@@ -1347,7 +1354,7 @@ class YOLOView @JvmOverloads constructor(
         )
         if (allPermissionsGranted()) {
             if (lifecycleOwner != null && (camera == null || isStopped)) {
-                Log.d("AcutCamera", "${System.currentTimeMillis()} YOLOView.initCamera -> startCamera")
+                debugLog("AcutCamera", "${System.currentTimeMillis()} YOLOView.initCamera -> startCamera")
                 startCamera(reason = "initCamera")
             }
         } else {
@@ -1367,7 +1374,7 @@ class YOLOView @JvmOverloads constructor(
     ) {
         if (requestCode == REQUEST_CODE_PERMISSIONS) {
             if (allPermissionsGranted()) {
-                Log.d("AcutCamera", "${System.currentTimeMillis()} YOLOView.permissionResult -> startCamera")
+                debugLog("AcutCamera", "${System.currentTimeMillis()} YOLOView.permissionResult -> startCamera")
                 startCamera(reason = "permissionResult")
             } else {
                 Toast.makeText(context, "Camera permission not granted.", Toast.LENGTH_SHORT).show()
@@ -1382,7 +1389,7 @@ class YOLOView @JvmOverloads constructor(
     fun startCamera(forceRestart: Boolean = false, reason: String = "unspecified") {
         startCameraCallCount += 1
         val callNumber = startCameraCallCount
-        Log.d(
+        debugLog(
             "AcutCamera",
             "${System.currentTimeMillis()} YOLOView.startCamera enter " +
                 "call=$callNumber reason=$reason forceRestart=$forceRestart " +
@@ -1392,7 +1399,7 @@ class YOLOView @JvmOverloads constructor(
                 "lifecycleOwner=${lifecycleOwner != null}"
         )
         if (isStartingCamera) {
-            Log.d(
+            debugLog(
                 "AcutCamera",
                 "${System.currentTimeMillis()} YOLOView.startCamera duplicate ignored " +
                     "call=$callNumber reason=$reason because start is already in progress"
@@ -1400,7 +1407,7 @@ class YOLOView @JvmOverloads constructor(
             return
         }
         if (!forceRestart && isCameraStarted && !isStopped && camera != null) {
-            Log.d(
+            debugLog(
                 "AcutCamera",
                 "${System.currentTimeMillis()} YOLOView.startCamera duplicate ignored " +
                     "call=$callNumber reason=$reason because camera is already started"
@@ -1415,12 +1422,12 @@ class YOLOView @JvmOverloads constructor(
             cameraProviderFuture.addListener({
                 try {
                     val cameraProvider = cameraProviderFuture.get()
-                    Log.d(
+                    debugLog(
                         "AcutCamera",
                         "${System.currentTimeMillis()} YOLOView.startCamera provider ready " +
                             "call=$callNumber reason=$reason"
                     )
-                    Log.d(TAG, "Camera provider obtained")
+                    debugLog(TAG, "Camera provider obtained")
 
                     // RATIO_16_9: 세로형 폰 화면과 비율 일치 → 프리뷰 크롭 최소화
                     previewUseCase = Preview.Builder()
@@ -1449,8 +1456,8 @@ class YOLOView @JvmOverloads constructor(
                         .requireLensFacing(lensFacing)
                         .build()
 
-                    Log.d(TAG, "Unbinding all camera use cases")
-                    Log.d(
+                    debugLog(TAG, "Unbinding all camera use cases")
+                    debugLog(
                         "AcutCamera",
                         "${System.currentTimeMillis()} YOLOView.startCamera unbindAll " +
                             "call=$callNumber reason=$reason"
@@ -1461,7 +1468,7 @@ class YOLOView @JvmOverloads constructor(
                         val owner = lifecycleOwner
                         if (owner == null) {
                             Log.e(TAG, "No LifecycleOwner available. Call onLifecycleOwnerAvailable() first.")
-                            Log.d(
+                            debugLog(
                                 "AcutCamera",
                                 "${System.currentTimeMillis()} YOLOView.startCamera abort " +
                                     "call=$callNumber reason=$reason no LifecycleOwner"
@@ -1470,8 +1477,8 @@ class YOLOView @JvmOverloads constructor(
                             return@addListener
                         }
 
-                        Log.d(TAG, "Binding camera use cases to lifecycle")
-                        Log.d(
+                        debugLog(TAG, "Binding camera use cases to lifecycle")
+                        debugLog(
                             "AcutCamera",
                             "${System.currentTimeMillis()} YOLOView.startCamera bindToLifecycle before " +
                                 "call=$callNumber reason=$reason"
@@ -1489,7 +1496,7 @@ class YOLOView @JvmOverloads constructor(
                         isUsingUltrawide = false
                         onZoomChanged?.invoke(currentZoomRatio)
 
-                        Log.d(TAG, "Setting surface provider to previewView")
+                        debugLog(TAG, "Setting surface provider to previewView")
                         previewUseCase?.setSurfaceProvider(previewView.surfaceProvider)
 
                         // Initialize zoom
@@ -1498,16 +1505,16 @@ class YOLOView @JvmOverloads constructor(
                             minZoomRatio = cameraInfo.zoomState.value?.minZoomRatio ?: 1.0f
                             maxZoomRatio = cameraInfo.zoomState.value?.maxZoomRatio ?: 1.0f
                             currentZoomRatio = cameraInfo.zoomState.value?.zoomRatio ?: 1.0f
-                            Log.d(TAG, "Zoom initialized - min: $minZoomRatio, max: $maxZoomRatio, current: $currentZoomRatio")
+                            debugLog(TAG, "Zoom initialized - min: $minZoomRatio, max: $maxZoomRatio, current: $currentZoomRatio")
                         }
 
                         // 초광각 카메라 탐색 (Samsung A24 등 Camera2 접근 필요한 기기)
                         detectUltrawideCamera()
 
-                        Log.d(TAG, "Camera setup completed successfully")
+                        debugLog(TAG, "Camera setup completed successfully")
                         isCameraStarted = true
                         isStartingCamera = false
-                        Log.d(
+                        debugLog(
                             "AcutCamera",
                             "${System.currentTimeMillis()} YOLOView.startCamera completed " +
                                 "call=$callNumber reason=$reason isCameraStarted=$isCameraStarted"
@@ -1534,7 +1541,7 @@ class YOLOView @JvmOverloads constructor(
         lensFacing = facing
         // Restart camera if already started
         if (::cameraProviderFuture.isInitialized) {
-            Log.d(
+            debugLog(
                 "AcutCamera",
                 "${System.currentTimeMillis()} YOLOView.setLensFacing -> startCamera " +
                     "forceRestart=true facing=$facing"
@@ -1549,7 +1556,7 @@ class YOLOView @JvmOverloads constructor(
         } else {
             CameraSelector.LENS_FACING_BACK
         }
-        Log.d(
+        debugLog(
             "AcutCamera",
             "${System.currentTimeMillis()} YOLOView.switchCamera -> startCamera " +
                 "forceRestart=true lensFacing=$lensFacing"
@@ -1561,35 +1568,35 @@ class YOLOView @JvmOverloads constructor(
     
     // Lifecycle methods from DefaultLifecycleObserver
     override fun onStart(owner: LifecycleOwner) {
-        Log.d(TAG, "Lifecycle onStart - restarting camera if stopped")
+        debugLog(TAG, "Lifecycle onStart - restarting camera if stopped")
         if (allPermissionsGranted()) {
             // Always restart camera on start if it's stopped or null
             // This ensures camera resumes when navigating back
             if (isStopped || camera == null) {
-                Log.d(TAG, "Camera is stopped or null, restarting on onStart")
-                Log.d("AcutCamera", "${System.currentTimeMillis()} YOLOView.onStart -> startCamera")
+                debugLog(TAG, "Camera is stopped or null, restarting on onStart")
+                debugLog("AcutCamera", "${System.currentTimeMillis()} YOLOView.onStart -> startCamera")
                 startCamera(reason = "onStart")
             } else {
-                Log.d(TAG, "Camera is already running, no restart needed")
+                debugLog(TAG, "Camera is already running, no restart needed")
             }
         }
     }
     
     override fun onResume(owner: LifecycleOwner) {
-        Log.d(TAG, "Lifecycle onResume - ensuring camera is running")
+        debugLog(TAG, "Lifecycle onResume - ensuring camera is running")
         if (allPermissionsGranted()) {
             // Double-check camera is running on resume
             if (isStopped || camera == null) {
-                Log.d(TAG, "Camera not running on resume, restarting...")
-                Log.d("AcutCamera", "${System.currentTimeMillis()} YOLOView.onResume -> startCamera")
+                debugLog(TAG, "Camera not running on resume, restarting...")
+                debugLog("AcutCamera", "${System.currentTimeMillis()} YOLOView.onResume -> startCamera")
                 startCamera(reason = "onResume")
             }
         }
     }
 
     override fun onStop(owner: LifecycleOwner) {
-        Log.d(TAG, "Lifecycle onStop")
-        Log.d(
+        debugLog(TAG, "Lifecycle onStop")
+        debugLog(
             "AcutCamera",
             "${System.currentTimeMillis()} YOLOView.onStop " +
                 "isCameraStarted=$isCameraStarted isStartingCamera=$isStartingCamera"
@@ -1602,7 +1609,7 @@ class YOLOView @JvmOverloads constructor(
     private fun onFrame(imageProxy: ImageProxy) {
         // Early return if view is stopped to prevent accessing closed resources
         if (isStopped) {
-            Log.d(TAG, "onFrame: View is stopped, skipping frame processing")
+            debugLog(TAG, "onFrame: View is stopped, skipping frame processing")
             imageProxy.close()
             return
         }
@@ -1621,7 +1628,7 @@ class YOLOView @JvmOverloads constructor(
 
         // Check again after bitmap conversion (in case stop() was called during conversion)
         if (isStopped) {
-            Log.d(TAG, "onFrame: View stopped during bitmap conversion, skipping inference")
+            debugLog(TAG, "onFrame: View stopped during bitmap conversion, skipping inference")
             imageProxy.close()
             return
         }
@@ -1629,14 +1636,14 @@ class YOLOView @JvmOverloads constructor(
         predictor?.let { p ->
             // Double-check stopped flag before inference (predictor might be closed)
             if (isStopped) {
-                Log.d(TAG, "onFrame: View stopped before inference, skipping")
+                debugLog(TAG, "onFrame: View stopped before inference, skipping")
                 imageProxy.close()
                 return
             }
             
             // Check if we should run inference on this frame
             if (!shouldRunInference()) {
-                Log.d(TAG, "Skipping inference due to frequency control")
+                debugLog(TAG, "Skipping inference due to frequency control")
                 imageProxy.close()
                 return
             }
@@ -1741,6 +1748,10 @@ class YOLOView @JvmOverloads constructor(
                                 imageProxy = imageProxy,
                                 bitmap = bitmap,
                                 isFrontCamera = isFrontCamera,
+                                personRoiLeft = detectionRoi?.left,
+                                personRoiTop = detectionRoi?.top,
+                                personRoiRight = detectionRoi?.right,
+                                personRoiBottom = detectionRoi?.bottom,
                             )
                             metrics.putAll(portraitNativeAnalyzer.latestMetrics())
                             onPortraitFaceResults?.invoke(
@@ -1799,7 +1810,7 @@ class YOLOView @JvmOverloads constructor(
                         
                         callback.invoke(enhancedStreamData)
                     } else {
-                        Log.d(TAG, "Skipping frame output due to throttling")
+                        debugLog(TAG, "Skipping frame output due to throttling")
                     }
                 }
 
@@ -1837,7 +1848,7 @@ class YOLOView @JvmOverloads constructor(
             isClickable = false
             isFocusable = false
 
-            Log.d(TAG, "OverlayView initialized with enhanced Z-order + hardware acceleration")
+            debugLog(TAG, "OverlayView initialized with enhanced Z-order + hardware acceleration")
         }
 
         override fun onDraw(canvas: Canvas) {
@@ -1881,14 +1892,14 @@ class YOLOView @JvmOverloads constructor(
                 // DETECT
                 // ----------------------------------------
                 YOLOTask.DETECT -> {
-                    Log.d(TAG, "Drawing DETECT boxes: ${result.boxes.size}")
+                    debugLog(TAG, "Drawing DETECT boxes: ${result.boxes.size}")
                     
                     // Debug first box coordinates
                     if (result.boxes.isNotEmpty()) {
                         val firstBox = result.boxes[0]
-                        Log.d(TAG, "=== First Box Debug ===")
-                        Log.d(TAG, "Box normalized coords: (${firstBox.xywhn.left}, ${firstBox.xywhn.top}, ${firstBox.xywhn.right}, ${firstBox.xywhn.bottom})")
-                        Log.d(TAG, "Box pixel coords: (${firstBox.xywh.left}, ${firstBox.xywh.top}, ${firstBox.xywh.right}, ${firstBox.xywh.bottom})")
+                        debugLog(TAG, "=== First Box Debug ===")
+                        debugLog(TAG, "Box normalized coords: (${firstBox.xywhn.left}, ${firstBox.xywhn.top}, ${firstBox.xywhn.right}, ${firstBox.xywhn.bottom})")
+                        debugLog(TAG, "Box pixel coords: (${firstBox.xywh.left}, ${firstBox.xywh.top}, ${firstBox.xywh.right}, ${firstBox.xywh.bottom})")
                     }
                     
                     for (box in result.boxes) {
@@ -1938,7 +1949,7 @@ class YOLOView @JvmOverloads constructor(
                             right = flippedRight
                         }
                         
-                        Log.d(TAG, "Drawing box for ${box.cls}: L=$left, T=$top, R=$right, B=$bottom, conf=${box.conf}")
+                        debugLog(TAG, "Drawing box for ${box.cls}: L=$left, T=$top, R=$right, B=$bottom, conf=${box.conf}")
 
                         paint.color = newColor
                         paint.style = Paint.Style.STROKE
@@ -2470,33 +2481,33 @@ class YOLOView @JvmOverloads constructor(
             config.maxFPS?.let { maxFPS ->
                 if (maxFPS > 0) {
                     targetFrameInterval = (1_000_000_000L / maxFPS) // Convert to nanoseconds
-                    Log.d(TAG, "maxFPS throttling enabled - target FPS: $maxFPS, interval: ${targetFrameInterval!! / 1_000_000}ms")
+                    debugLog(TAG, "maxFPS throttling enabled - target FPS: $maxFPS, interval: ${targetFrameInterval!! / 1_000_000}ms")
                 }
             } ?: run {
                 targetFrameInterval = null
-                Log.d(TAG, "maxFPS throttling disabled")
+                debugLog(TAG, "maxFPS throttling disabled")
             }
             
             // Setup throttleInterval (for result output)
             config.throttleIntervalMs?.let { throttleMs ->
                 if (throttleMs > 0) {
                     throttleInterval = throttleMs * 1_000_000L // Convert ms to nanoseconds
-                    Log.d(TAG, "throttleInterval enabled - interval: ${throttleMs}ms")
+                    debugLog(TAG, "throttleInterval enabled - interval: ${throttleMs}ms")
                 }
             } ?: run {
                 throttleInterval = null
-                Log.d(TAG, "throttleInterval disabled")
+                debugLog(TAG, "throttleInterval disabled")
             }
             
             // Setup inference frequency control
             config.inferenceFrequency?.let { inferenceFreq ->
                 if (inferenceFreq > 0) {
                     inferenceFrameInterval = (1_000_000_000L / inferenceFreq) // Convert to nanoseconds
-                    Log.d(TAG, "Inference frequency control enabled - target inference FPS: $inferenceFreq, interval: ${inferenceFrameInterval!! / 1_000_000}ms")
+                    debugLog(TAG, "Inference frequency control enabled - target inference FPS: $inferenceFreq, interval: ${inferenceFrameInterval!! / 1_000_000}ms")
                 }
             } ?: run {
                 inferenceFrameInterval = null
-                Log.d(TAG, "Inference frequency control disabled")
+                debugLog(TAG, "Inference frequency control disabled")
             }
             
             // Setup frame skipping
@@ -2504,12 +2515,12 @@ class YOLOView @JvmOverloads constructor(
                 if (skipFrames > 0) {
                     targetSkipFrames = skipFrames
                     frameSkipCount = 0 // Reset counter
-                    Log.d(TAG, "Frame skipping enabled - skip $skipFrames frames between inferences")
+                    debugLog(TAG, "Frame skipping enabled - skip $skipFrames frames between inferences")
                 }
             } ?: run {
                 targetSkipFrames = 0
                 frameSkipCount = 0
-                Log.d(TAG, "Frame skipping disabled")
+                debugLog(TAG, "Frame skipping disabled")
             }
             
             // Initialize timing
@@ -2653,7 +2664,7 @@ class YOLOView @JvmOverloads constructor(
                         result.origShape.height.toFloat(),
                     )
                     detection["keypoints"] = keypointsFlat
-                    Log.d(TAG, "Added pose detection with ${keypoints.xy.size} keypoints")
+                    debugLog(TAG, "Added pose detection with ${keypoints.xy.size} keypoints")
                     
                     detections.add(detection)
                 }
@@ -2693,7 +2704,7 @@ class YOLOView @JvmOverloads constructor(
                         row.map { it.toDouble() }
                     }
                     detection["mask"] = maskDataDouble
-                    Log.d(TAG, "✅ Added mask data (${maskData.size}x${maskData.firstOrNull()?.size ?: 0}) for detection $detectionIndex")
+                    debugLog(TAG, "✅ Added mask data (${maskData.size}x${maskData.firstOrNull()?.size ?: 0}) for detection $detectionIndex")
                 }
                 
                 // Add pose keypoints (if available and enabled)
@@ -2706,7 +2717,7 @@ class YOLOView @JvmOverloads constructor(
                             result.origShape.height.toFloat(),
                         )
                         detection["keypoints"] = keypointsFlat
-                        Log.d(TAG, "Added keypoints data (${keypoints.xy.size} points) for detection $detectionIndex")
+                        debugLog(TAG, "Added keypoints data (${keypoints.xy.size} points) for detection $detectionIndex")
                     }
                 }
                 
@@ -2789,7 +2800,7 @@ class YOLOView @JvmOverloads constructor(
                     )
                     
                     detection["obb"] = obbDataMap
-                    Log.d(TAG, "✅ Added OBB data: ${obbRes.cls} (${String.format("%.1f", obbRes.box.angle * 180.0 / Math.PI)}° rotation)")
+                    debugLog(TAG, "✅ Added OBB data: ${obbRes.cls} (${String.format("%.1f", obbRes.box.angle * 180.0 / Math.PI)}° rotation)")
                 }
                 
                 detections.add(detection)
@@ -2825,7 +2836,7 @@ class YOLOView @JvmOverloads constructor(
 
             applyPoseDetectionStability(detections)
             map["detections"] = detections
-            Log.d(TAG, "✅ Total detections in stream: ${detections.size} (boxes: ${result.boxes.size}, obb: ${result.obb.size})")
+            debugLog(TAG, "✅ Total detections in stream: ${detections.size} (boxes: ${result.boxes.size}, obb: ${result.obb.size})")
         }
         
         // Add performance metrics (if enabled)
@@ -2833,7 +2844,7 @@ class YOLOView @JvmOverloads constructor(
             val processingTimeMs = result.speed.toDouble()
             map["processingTimeMs"] = processingTimeMs
         } else {
-            Log.d(TAG, "⚠️ Skipping processingTimeMs (includeProcessingTimeMs=${config.includeProcessingTimeMs})")
+            debugLog(TAG, "⚠️ Skipping processingTimeMs (includeProcessingTimeMs=${config.includeProcessingTimeMs})")
         }
         
         if (config.includeFps) {
@@ -2847,7 +2858,7 @@ class YOLOView @JvmOverloads constructor(
                 bitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream)
                 val imageData = outputStream.toByteArray()
                 map["originalImage"] = imageData
-                Log.d(TAG, "✅ Added original image data (${imageData.size} bytes)")
+                debugLog(TAG, "✅ Added original image data (${imageData.size} bytes)")
             }
         }
         
@@ -2873,7 +2884,7 @@ class YOLOView @JvmOverloads constructor(
         consecutiveEmptyPoseFrames += 1
         if (consecutiveEmptyPoseFrames <= poseDetectionHoldFrames) {
             detections.addAll(lastStablePoseDetections.map { HashMap(it) })
-            Log.d(
+            debugLog(
                 TAG,
                 "Holding previous pose detections for transient empty frame ($consecutiveEmptyPoseFrames/$poseDetectionHoldFrames)"
             )
@@ -2926,7 +2937,7 @@ class YOLOView @JvmOverloads constructor(
         }
 
         if (best != null) {
-            Log.d(TAG, "Landscape fallback recovered ${best!!.boxes.size} detection(s)")
+            debugLog(TAG, "Landscape fallback recovered ${best!!.boxes.size} detection(s)")
         }
         return best
     }
@@ -3153,7 +3164,7 @@ class YOLOView @JvmOverloads constructor(
                         val buffer = image.planes[0].buffer
                         val bytes = ByteArray(buffer.remaining())
                         buffer.get(bytes)
-                        Log.d(TAG, "captureHighResPhoto success: ${bytes.size} bytes")
+                        debugLog(TAG, "captureHighResPhoto success: ${bytes.size} bytes")
                         callback(bytes)
                     } finally {
                         image.close()
@@ -3184,7 +3195,7 @@ class YOLOView @JvmOverloads constructor(
             // Method 1: Try to get bitmap from PreviewView directly
             var cameraFrameCaptured = false
             previewView.bitmap?.let { cameraBitmap ->
-                Log.d(TAG, "Got camera bitmap from PreviewView: ${cameraBitmap.width}x${cameraBitmap.height}")
+                debugLog(TAG, "Got camera bitmap from PreviewView: ${cameraBitmap.width}x${cameraBitmap.height}")
                 // Draw the camera bitmap scaled to fit
                 val matrix = Matrix()
                 val scaleX = width.toFloat() / cameraBitmap.width
@@ -3227,7 +3238,7 @@ class YOLOView @JvmOverloads constructor(
             outputStream.close()
             bitmap.recycle()
             
-            Log.d(TAG, "Frame captured successfully: ${imageData.size} bytes, camera captured: $cameraFrameCaptured")
+            debugLog(TAG, "Frame captured successfully: ${imageData.size} bytes, camera captured: $cameraFrameCaptured")
             return imageData
         } catch (e: Exception) {
             Log.e(TAG, "Error capturing frame", e)
@@ -3239,8 +3250,8 @@ class YOLOView @JvmOverloads constructor(
      * Stop camera and inference (can be restarted later)
      */
     fun stop() {
-        Log.d(TAG, "YOLOView.stop() called - tearing down camera")
-        Log.d(
+        debugLog(TAG, "YOLOView.stop() called - tearing down camera")
+        debugLog(
             "AcutCamera",
             "${System.currentTimeMillis()} YOLOView.stop start " +
                 "isCameraStarted=$isCameraStarted isStartingCamera=$isStartingCamera " +
@@ -3257,8 +3268,8 @@ class YOLOView @JvmOverloads constructor(
             if (::cameraProviderFuture.isInitialized) {
                 try {
                     val cameraProvider = cameraProviderFuture.get(1, TimeUnit.SECONDS)
-                    Log.d(TAG, "Unbinding all camera use cases")
-                    Log.d(
+                    debugLog(TAG, "Unbinding all camera use cases")
+                    debugLog(
                         "AcutCamera",
                         "${System.currentTimeMillis()} YOLOView.stop unbindAll"
                     )
@@ -3276,7 +3287,7 @@ class YOLOView @JvmOverloads constructor(
             previewUseCase = null
 
             cameraExecutor?.let { exec ->
-                Log.d(TAG, "Shutting down camera executor")
+                debugLog(TAG, "Shutting down camera executor")
                 exec.shutdown()
                 try {
                     if (!exec.awaitTermination(500, TimeUnit.MILLISECONDS)) {
@@ -3307,8 +3318,8 @@ class YOLOView @JvmOverloads constructor(
             streamCallback = null
             inferenceResult = null
 
-            Log.d(TAG, "YOLOView stop completed successfully")
-            Log.d("AcutCamera", "${System.currentTimeMillis()} YOLOView.stop completed")
+            debugLog(TAG, "YOLOView stop completed successfully")
+            debugLog("AcutCamera", "${System.currentTimeMillis()} YOLOView.stop completed")
         } catch (e: Exception) {
             Log.e(TAG, "Error during YOLOView stop", e)
         }

@@ -30,12 +30,7 @@ import 'portrait_scene_state.dart';
 // Face analysis source selection. Default: previewCapture (existing behavior).
 enum FaceAnalysisSource { previewCapture, imageAnalysis }
 
-enum NativeFaceConfidenceStatus {
-  usable,
-  small,
-  outOfBounds,
-  uncertain,
-}
+enum NativeFaceConfidenceStatus { usable, small, outOfBounds, uncertain }
 
 class NativeFaceResult {
   final Rect boundingBox;
@@ -72,19 +67,19 @@ class NativeFaceResult {
 
   factory NativeFaceResult.fromMap(Map<String, dynamic> map) {
     final boundingBox = Rect.fromLTRB(
-        (map['left'] as num?)?.toDouble() ?? 0.0,
-        (map['top'] as num?)?.toDouble() ?? 0.0,
-        (map['right'] as num?)?.toDouble() ?? 0.0,
-        (map['bottom'] as num?)?.toDouble() ?? 0.0,
+      (map['left'] as num?)?.toDouble() ?? 0.0,
+      (map['top'] as num?)?.toDouble() ?? 0.0,
+      (map['right'] as num?)?.toDouble() ?? 0.0,
+      (map['bottom'] as num?)?.toDouble() ?? 0.0,
     );
     final imageWidth = (map['imageWidth'] as num?)?.toInt() ?? 0;
     final imageHeight = (map['imageHeight'] as num?)?.toInt() ?? 0;
     return NativeFaceResult(
       boundingBox: boundingBox,
-      leftEyeOpenProbability:
-          (map['leftEyeOpenProbability'] as num?)?.toDouble(),
-      rightEyeOpenProbability:
-          (map['rightEyeOpenProbability'] as num?)?.toDouble(),
+      leftEyeOpenProbability: (map['leftEyeOpenProbability'] as num?)
+          ?.toDouble(),
+      rightEyeOpenProbability: (map['rightEyeOpenProbability'] as num?)
+          ?.toDouble(),
       smilingProbability: (map['smilingProbability'] as num?)?.toDouble(),
       headEulerAngleY: (map['headEulerAngleY'] as num?)?.toDouble(),
       headEulerAngleZ: (map['headEulerAngleZ'] as num?)?.toDouble(),
@@ -153,7 +148,8 @@ class NativeFaceResult {
     if (imageWidth <= 0 || imageHeight <= 0 || boundingBox.isEmpty) {
       return NativeFaceConfidenceStatus.uncertain;
     }
-    final outOfBounds = boundingBox.left < 0 ||
+    final outOfBounds =
+        boundingBox.left < 0 ||
         boundingBox.top < 0 ||
         boundingBox.right > imageWidth ||
         boundingBox.bottom > imageHeight;
@@ -213,6 +209,7 @@ class PortraitAnalysisResult {
   final ShotType shotType;
   final int personCount;
   final bool hasPersonStable;
+  final PortraitSceneState? sceneState;
 
   const PortraitAnalysisResult({
     required this.coaching,
@@ -220,6 +217,7 @@ class PortraitAnalysisResult {
     required this.shotType,
     required this.personCount,
     required this.hasPersonStable,
+    this.sceneState,
   });
 }
 
@@ -283,7 +281,6 @@ class PortraitModeHandler {
 
   // ─── 분석 주기 (최적화: 기존 15/10 → 30/20으로 늘림) ────
   static const double _posePointAlpha = 0.38;
-  static const int _lightingEveryN = 30;
   // 얼굴 분석 간격(프레임): 기기 성능에 맞춰 조절 가능
   // 기본값은 45 (저사양 기기는 30 권장). 성능 실험을 위해 120을 임시로 사용 가능.
   int _faceEveryN = 45;
@@ -297,18 +294,19 @@ class PortraitModeHandler {
   bool _enableBitmapCaptureForFace =
       true; // when false, captureFrame won't be called for face
   int _lastFaceAnalysisFrame = -999999;
-  bool _isLightingAnalyzing = false;
   int _lastFaceQualityFrame = -999999;
   static const double _lightingMinConf = 0.5;
 
   // ─── 메시지 안정화 ────────────────────────────────
   static const int _stabilityThreshold = 5;
-  String stableMessage = '\uC778\uBB3C\uC744 \uD654\uBA74 \uC548\uC5D0 \uB2F4\uC544\uBCF4\uC138\uC694';
+  String stableMessage =
+      '\uC778\uBB3C\uC744 \uD654\uBA74 \uC548\uC5D0 \uB2F4\uC544\uBCF4\uC138\uC694';
   String _pendingMessage = '';
   String _pendingSignalKey = '';
   int _pendingCount = 0;
   CoachingResult _stableCoaching = const CoachingResult(
-    message: '\uC778\uBB3C\uC744 \uD654\uBA74 \uC548\uC5D0 \uB2F4\uC544\uBCF4\uC138\uC694',
+    message:
+        '\uC778\uBB3C\uC744 \uD654\uBA74 \uC548\uC5D0 \uB2F4\uC544\uBCF4\uC138\uC694',
     priority: CoachingPriority.critical,
     confidence: 1.0,
     reason:
@@ -394,7 +392,9 @@ class PortraitModeHandler {
   int _eyeClosedStreak = 0; // 연속 눈 감김 프레임 수 (네이티브 raw 기반)
   int _oneEyeClosedStreak = 0; // 연속 한쪽 눈 감김 프레임 수 (네이티브 raw 기반)
   int _anyEyeClosedStreak = 0; // 그룹 눈 감김 연속 프레임
-  static const int _eyeConfirmFrames = 2; // 확정에 필요한 연속 프레임
+  static const double _eyeClosedProbabilityThreshold =
+      PortraitSceneState.eyeClosedProbabilityThreshold;
+  static const int _eyeConfirmFrames = 3; // 확정에 필요한 연속 프레임
 
   // ─── 카메라 안정성 추적 ───────────────────────────
   double _cameraStability = 1.0;
@@ -570,7 +570,8 @@ class PortraitModeHandler {
     _prevShoulderAngle = null;
 
     _faceQualityScores = const [];
-    stableMessage = '\uC778\uBB3C\uC744 \uD654\uBA74 \uC548\uC5D0 \uB2F4\uC544\uBCF4\uC138\uC694';
+    stableMessage =
+        '\uC778\uBB3C\uC744 \uD654\uBA74 \uC548\uC5D0 \uB2F4\uC544\uBCF4\uC138\uC694';
     _pendingMessage = '';
     _pendingSignalKey = '';
     _pendingCount = 0;
@@ -580,13 +581,47 @@ class PortraitModeHandler {
     _lightingSignalTimestampMs = 0;
     _traceSnapshots.clear();
     _stableCoaching = const CoachingResult(
-      message: '\uC778\uBB3C\uC744 \uD654\uBA74 \uC548\uC5D0 \uB2F4\uC544\uBCF4\uC138\uC694',
+      message:
+          '\uC778\uBB3C\uC744 \uD654\uBA74 \uC548\uC5D0 \uB2F4\uC544\uBCF4\uC138\uC694',
       priority: CoachingPriority.critical,
       confidence: 1.0,
       reason:
           '\uC5BC\uAD74\uACFC \uC790\uC138\uAC00 \uBCF4\uC774\uBA74 \uAD6C\uB3C4\uB97C \uC548\uB0B4\uD560\uAC8C\uC694',
       signalKey: 'critical:no_person',
     );
+  }
+
+  Future<void> analyzeStillImage(
+    Uint8List bytes,
+    List<YOLOResult> results, {
+    bool analyzeFace = true,
+    bool analyzeLighting = true,
+    bool analyzeFaceQuality = true,
+  }) async {
+    final rawPersons = results
+        .where((r) => r.className.toLowerCase() == 'person')
+        .toList();
+    final persons = _dedupePersons(rawPersons);
+    if (persons.isEmpty) return;
+
+    final main = _selectMainPerson(persons);
+    if (main == null) return;
+    final nose = _kp(main, PoseKeypointIndex.nose);
+    final lEye = _kp(main, PoseKeypointIndex.leftEye);
+    final rEye = _kp(main, PoseKeypointIndex.rightEye);
+    final lShoulder = _kp(main, PoseKeypointIndex.leftShoulder);
+    final rShoulder = _kp(main, PoseKeypointIndex.rightShoulder);
+
+    if (analyzeFace) {
+      await _analyzeFaceFromPreviewCapture(
+        bytes,
+        analyzeQuality: analyzeFaceQuality,
+      );
+    }
+
+    if (analyzeLighting) {
+      await _analyzeLight(bytes, main, nose, lEye, rEye, lShoulder, rShoulder);
+    }
   }
 
   void updateNativeMetrics(Map<String, double> metrics) {
@@ -726,8 +761,10 @@ class PortraitModeHandler {
 
     if (effectiveResults.isNotEmpty) {
       _markFaceSignalUpdated(
-        frameId: _nativeFaceFrameNumber >= 0 ? _nativeFaceFrameNumber : _frameCount,
-        timestampMs: _nativeFaceTimestampMs > 0 ? _nativeFaceTimestampMs : nowMs,
+        frameId: _frameCount,
+        timestampMs: _nativeFaceTimestampMs > 0
+            ? _nativeFaceTimestampMs
+            : nowMs,
       );
       final mainFace = _selectPrimaryNativeFace(effectiveResults);
       _faceYaw = _smoothMetric(_faceYaw, mainFace.headEulerAngleY);
@@ -858,7 +895,9 @@ class PortraitModeHandler {
         'streak=$_personStreak stable=$stable',
       );
       if (DebugLogFlags.portraitMode) {
-        debugPrint('[PORTRAIT_MODE] mode=$_portraitModeLabel frame=$_frameCount');
+        debugPrint(
+          '[PORTRAIT_MODE] mode=$_portraitModeLabel frame=$_frameCount',
+        );
       }
     }
 
@@ -875,6 +914,7 @@ class PortraitModeHandler {
         shotType: ShotType.unknown,
         personCount: 0,
         hasPersonStable: false,
+        sceneState: const PortraitSceneState(personCount: 0),
       );
     }
 
@@ -892,6 +932,7 @@ class PortraitModeHandler {
         shotType: ShotType.unknown,
         personCount: 0,
         hasPersonStable: false,
+        sceneState: const PortraitSceneState(personCount: 0),
       );
     }
 
@@ -924,7 +965,19 @@ class PortraitModeHandler {
           ..sort((a, b) => b.compareTo(a));
     final mainArea = main.normalizedBox.width * main.normalizedBox.height;
     final secondArea = areas.length > 1 ? areas[1] : 0.0;
-    double secondPersonSizeRatio = mainArea > 0 ? secondArea / mainArea : 0.0;
+    final thirdArea = areas.length > 2 ? areas[2] : 0.0;
+    final secondPersonSizeRatio = mainArea > 0 ? secondArea / mainArea : 0.0;
+    final thirdPersonSizeRatio = mainArea > 0 ? thirdArea / mainArea : 0.0;
+    final avgPersonArea = areas.isEmpty
+        ? 0.0
+        : areas.reduce((a, b) => a + b) / areas.length;
+    final significantPersonCount = mainArea > 0
+        ? persons.where((p) {
+            final area = p.normalizedBox.width * p.normalizedBox.height;
+            final ratio = area / mainArea;
+            return ratio >= 0.14 || area >= 0.018;
+          }).length
+        : persons.length;
 
     double groupLeft = double.infinity;
     double groupTop = double.infinity;
@@ -946,7 +999,15 @@ class PortraitModeHandler {
         : mainArea;
 
     final groupShotCandidate =
-        intent == PortraitIntent.group && persons.length >= 2;
+        intent == PortraitIntent.group &&
+        _shouldTreatAsGroupShot(
+          persons,
+          secondPersonSizeRatio,
+          thirdPersonSizeRatio,
+          groupBboxRatio,
+          avgPersonArea,
+          significantPersonCount,
+        );
 
     // ─── 다중 인물 메트릭 ─────────────────────────────
     // 그룹샷 안정화: 진입은 빠르게, 이탈은 느리게 (깜빡임 방지)
@@ -1216,13 +1277,11 @@ class PortraitModeHandler {
     final hasReliableKnee = kneeAnchorCount >= 1 && maxY > 0.45;
     final hasReliableAnkle =
         ankleAnchorCount >= 1 && hasReliableKnee && maxY > 0.50;
-    final hasKnee = hasReliableKnee;
     final kneeY = _maxY(lKnee, rKnee);
     final hasKneeInsideFrame =
         hasReliableKnee && kneeY != null && kneeY <= 0.84;
     final hasHip = hipAnchorCount >= 1;
     final hasShoulder = shoulderAnchorCount >= 1;
-    final hasUpperBodyAnchor = hasReliableTorso;
 
     if (isGroupShot) {
       shot = ShotType.groupShot;
@@ -1246,7 +1305,7 @@ class PortraitModeHandler {
         shot = ShotType.fullBody;
       } else if (hasKneeInsideFrame && hasReliableTorso) {
         shot = ShotType.kneeShot;
-      } else if (hasHip && !hasKnee && h > 0.45) {
+      } else if (hasHip && h > 0.45) {
         shot = ShotType.waistShot;
       } else if (hasShoulder && !hasHip && h > 0.3) {
         shot = ShotType.headShot;
@@ -1278,7 +1337,7 @@ class PortraitModeHandler {
         kneeConf >= 0.15) {
       if (_isAtEdge(lKnee) || _isAtEdge(rKnee)) croppedList.add('knee');
     }
-    if (shot == ShotType.fullBody && ankleConf >= 0.15) {
+    if (shot == ShotType.fullBody && ankleConf >= 0.12) {
       if (_isAtEdge(lAnkle) || _isAtEdge(rAnkle)) croppedList.add('ankle');
     }
 
@@ -1298,6 +1357,12 @@ class PortraitModeHandler {
     );
     _smoothedFaceRect = _smoothRect(_smoothedFaceRect, rawFaceRect);
     final faceRect = _smoothedFaceRect ?? rawFaceRect;
+    headroom = _adjustHeadroomForFraming(
+      shot: shot,
+      personBox: mainBox,
+      currentHeadroom: headroom,
+      faceRect: faceRect,
+    );
 
     // ─── 발 간격 비율 (어깨 너비 대비) ──────────────────────
     double? ankleSpacing;
@@ -1317,10 +1382,10 @@ class PortraitModeHandler {
     // 관절에서 자르면 어색 → 관절이 화면 하단 12% 안에 있으면 경고
     String? bottomJoint;
     double? bottomJointY;
-    const bottomZone = 0.85;
+    const bottomZone = 0.97;
     final jointCandidates = <String, double?>{
       'knee': kneeConf >= 0.15 ? _maxY(lKnee, rKnee) : null,
-      'ankle': ankleConf >= 0.15 ? _maxY(lAnkle, rAnkle) : null,
+      'ankle': ankleConf >= 0.12 ? _maxY(lAnkle, rAnkle) : null,
       'wrist': _maxY(lWrist, rWrist),
       'hip': _maxY(lHip, rHip),
     };
@@ -1514,6 +1579,7 @@ class PortraitModeHandler {
       shotType: shot,
       personCount: _stablePersonCount,
       hasPersonStable: true,
+      sceneState: state,
     );
   }
 
@@ -1722,9 +1788,15 @@ class PortraitModeHandler {
     }
     switch (_faceAnalysisSource) {
       case FaceAnalysisSource.previewCapture:
-        return _analyzeFaceFromPreviewCapture(bytes, analyzeQuality: analyzeQuality);
+        return _analyzeFaceFromPreviewCapture(
+          bytes,
+          analyzeQuality: analyzeQuality,
+        );
       case FaceAnalysisSource.imageAnalysis:
-        return _analyzeFaceFromImageAnalysis(bytes, analyzeQuality: analyzeQuality);
+        return _analyzeFaceFromImageAnalysis(
+          bytes,
+          analyzeQuality: analyzeQuality,
+        );
     }
   }
 
@@ -1876,7 +1948,7 @@ class PortraitModeHandler {
     }
   }
 
-  // TODO: ImageAnalysis-based face analysis stub. Implement in next step.
+  // ImageAnalysis-based face analysis stub. Implement in a later step.
   Future<void> _analyzeFaceFromImageAnalysis(
     Uint8List bytes, {
     bool analyzeQuality = false,
@@ -2102,7 +2174,7 @@ class PortraitModeHandler {
     for (final entry in points.entries) {
       final point = entry.value;
       if (point == null || _conf(person, entry.key) < minConf) continue;
-      top = top == null ? point.dy : math.min(top!, point.dy);
+      top = top == null ? point.dy : math.min(top, point.dy);
     }
     return top;
   }
@@ -2290,15 +2362,16 @@ class PortraitModeHandler {
   bool _isRawEyesClosed(double? leftEyeOpen, double? rightEyeOpen) {
     return leftEyeOpen != null &&
         rightEyeOpen != null &&
-        leftEyeOpen < 0.35 &&
-        rightEyeOpen < 0.35;
+        leftEyeOpen < _eyeClosedProbabilityThreshold &&
+        rightEyeOpen < _eyeClosedProbabilityThreshold;
   }
 
   bool _isRawOneEyeClosed(double? leftEyeOpen, double? rightEyeOpen) {
     return leftEyeOpen != null &&
         rightEyeOpen != null &&
         !_isRawEyesClosed(leftEyeOpen, rightEyeOpen) &&
-        (leftEyeOpen < 0.35 || rightEyeOpen < 0.35);
+        (leftEyeOpen < _eyeClosedProbabilityThreshold ||
+            rightEyeOpen < _eyeClosedProbabilityThreshold);
   }
 
   bool _hasUsableEyeData(Face face) {
@@ -2352,9 +2425,9 @@ class PortraitModeHandler {
     final roll = face.headEulerAngleZ?.abs();
 
     if (yaw == null || pitch == null || roll == null) return false;
-    if (yaw != null && yaw > 25) return false;
-    if (pitch != null && pitch > 20) return false;
-    if (roll != null && roll > 25) return false;
+    if (yaw > 25) return false;
+    if (pitch > 20) return false;
+    if (roll > 25) return false;
     return true;
   }
 
@@ -2372,7 +2445,8 @@ class PortraitModeHandler {
     if (faces.isEmpty) return const [];
 
     final annotated = faces.map(_withDerivedNativeStatus).toList();
-    final sorted = annotated..sort((a, b) {
+    final sorted = annotated
+      ..sort((a, b) {
         final areaA = a.boundingBox.width * a.boundingBox.height;
         final areaB = b.boundingBox.width * b.boundingBox.height;
         return areaB.compareTo(areaA);
@@ -2393,8 +2467,10 @@ class PortraitModeHandler {
     }
 
     final hasEyeProb =
-        face.leftEyeOpenProbability != null && face.rightEyeOpenProbability != null;
-    final hasPoseAngles = face.headEulerAngleY != null &&
+        face.leftEyeOpenProbability != null &&
+        face.rightEyeOpenProbability != null;
+    final hasPoseAngles =
+        face.headEulerAngleY != null &&
         face.headEulerAngleX != null &&
         face.headEulerAngleZ != null;
     if (!hasEyeProb || !hasPoseAngles) {
@@ -2465,6 +2541,34 @@ class PortraitModeHandler {
     final l = (center.dx - w / 2).clamp(0.0, 1.0);
     final t = (center.dy - h * 0.45).clamp(0.0, 1.0);
     return Rect.fromLTWH(l, t, w.clamp(0.05, 1.0 - l), h.clamp(0.05, 1.0 - t));
+  }
+
+  double _adjustHeadroomForFraming({
+    required ShotType shot,
+    required Rect personBox,
+    required double currentHeadroom,
+    required Rect faceRect,
+  }) {
+    switch (shot) {
+      case ShotType.extremeCloseUp:
+      case ShotType.closeUp:
+      case ShotType.headShot:
+        // Close framing often misses the true hairline in pose keypoints.
+        // Clamp headroom against the detector's person box top so "too close"
+        // and "too much headroom" do not alternate on the same framing.
+        return math.min(currentHeadroom, personBox.top.clamp(0.0, 1.0));
+      case ShotType.upperBody:
+        // Upper-body shots benefit from a softer correction using the estimated
+        // face guide instead of the full person box.
+        return math.min(currentHeadroom, faceRect.top.clamp(0.0, 1.0));
+      case ShotType.waistShot:
+      case ShotType.kneeShot:
+      case ShotType.fullBody:
+      case ShotType.environmental:
+      case ShotType.groupShot:
+      case ShotType.unknown:
+        return currentHeadroom;
+    }
   }
 
   // ─── 유틸리티 ─────────────────────────────────────
@@ -2663,17 +2767,17 @@ class PortraitModeHandler {
   double? _targetEyeLineY(ShotType shot) {
     switch (shot) {
       case ShotType.extremeCloseUp:
-        return 0.38;
+        return 0.45;
       case ShotType.closeUp:
-        return 0.35;
+        return 0.33;
       case ShotType.headShot:
         return 0.35;
       case ShotType.upperBody:
-        return 0.33;
+        return 0.32;
       case ShotType.waistShot:
         return 0.30;
       case ShotType.kneeShot:
-        return 0.31;
+        return 0.28;
       case ShotType.fullBody:
         return 0.29;
       case ShotType.environmental:
@@ -2687,7 +2791,8 @@ class PortraitModeHandler {
   double? _targetHeadroomTop(ShotType shot) {
     switch (shot) {
       case ShotType.extremeCloseUp:
-        return 0.06;
+        // Keep the overlay line inside the engine's 0.00~0.05 headroom window.
+        return 0.03;
       case ShotType.closeUp:
         return 0.08;
       case ShotType.headShot:
@@ -2697,7 +2802,8 @@ class PortraitModeHandler {
       case ShotType.waistShot:
         return 0.09;
       case ShotType.kneeShot:
-        return 0.12;
+        // Engine allows 0.05~0.10, so keep the guide near the middle.
+        return 0.08;
       case ShotType.fullBody:
         return 0.08;
       case ShotType.environmental:
@@ -2722,9 +2828,6 @@ class PortraitModeHandler {
     }
     return out;
   }
-
-  List<_PortraitTraceSnapshot> get recentTraceSnapshots =>
-      List<_PortraitTraceSnapshot>.unmodifiable(_traceSnapshots);
 
   void _markFaceSignalUpdated({
     required int frameId,

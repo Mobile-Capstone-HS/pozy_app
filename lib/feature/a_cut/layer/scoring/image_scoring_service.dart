@@ -82,11 +82,17 @@ class OnDeviceImageScoreService implements ImageScoreService {
       );
     }
 
-    onProgress(
-      _rankingService.rank(results: working, topPercent: topPercent),
-      0,
-      total,
+    final initialRankingSw = AcutAestheticTimingDebug.start();
+    final initialRanking = _rankingService.rank(
+      results: working,
+      topPercent: topPercent,
     );
+    _logTimingElapsedUs(
+      stopwatch: initialRankingSw,
+      phase: 'ranking',
+      resultCount: working.length,
+    );
+    onProgress(initialRanking, 0, total);
 
     var done = 0;
     for (var index = 0; index < working.length; index++) {
@@ -99,7 +105,11 @@ class OnDeviceImageScoreService implements ImageScoreService {
       );
 
       try {
-        final analysisBytes = await _readAnalysisBytes(current.asset);
+        final analysisBytes = await _readAnalysisBytes(
+          current.asset,
+          fileName: current.fileName,
+          imageIndex: oneBasedIndex,
+        );
         if (analysisBytes == null || analysisBytes.isEmpty) {
           throw Exception('Cannot read analysis image bytes.');
         }
@@ -140,11 +150,21 @@ class OnDeviceImageScoreService implements ImageScoreService {
       );
 
       done += 1;
-      onProgress(
-        _rankingService.rank(results: working, topPercent: topPercent),
-        done,
-        total,
+      final rankingSw = AcutAestheticTimingDebug.start();
+      final ranking = _rankingService.rank(
+        results: working,
+        topPercent: topPercent,
       );
+      _logTimingElapsedUs(
+        stopwatch: rankingSw,
+        phase: 'ranking',
+        resultCount: working.length,
+        imageIndex: oneBasedIndex,
+      );
+      if (done == total) {
+        _logFinalRankParity(ranking);
+      }
+      onProgress(ranking, done, total);
     }
     batchSw.stop();
     final avgMs = total == 0 ? 0 : batchSw.elapsedMilliseconds / total;
@@ -161,10 +181,39 @@ class OnDeviceImageScoreService implements ImageScoreService {
     );
   }
 
-  Future<Uint8List?> _readAnalysisBytes(AssetEntity asset) async {
+  Future<Uint8List?> _readAnalysisBytes(
+    AssetEntity asset, {
+    String? fileName,
+    int? imageIndex,
+  }) async {
+    final timingSw = AcutAestheticTimingDebug.start();
+    var timingLogged = false;
+
+    void logLoad({required bool success, int bytes = 0, Object? error}) {
+      if (timingLogged) {
+        return;
+      }
+      timingLogged = true;
+      AcutAestheticTimingDebug.logElapsed(
+        stopwatch: timingSw,
+        imageLabel: fileName ?? asset.id,
+        imageIndex: imageIndex,
+        modelId: 'aesthetic_pipeline',
+        phase: 'image_bytes_load',
+        fields: <String, Object?>{
+          'asset_id': asset.id,
+          'bytes': bytes,
+          'source': 'thumbnailDataWithSize',
+          'success': success,
+          if (error != null) 'error': error.toString(),
+        },
+      );
+    }
+
     try {
       final resized = await asset.thumbnailDataWithSize(_analysisImageSize);
       if (resized != null && resized.isNotEmpty) {
+        logLoad(success: true, bytes: resized.length);
         debugPrint(
           '[AcutPerf] analysis_image_resized asset_id=${asset.id} '
           'bytes=${resized.length}',
@@ -176,8 +225,12 @@ class OnDeviceImageScoreService implements ImageScoreService {
         '[AcutPerf] analysis_image_resized_failed asset_id=${asset.id} '
         'error=$error',
       );
+      logLoad(success: false, error: error);
     }
 
+    if (!timingLogged) {
+      logLoad(success: false);
+    }
     debugPrint('[AcutPerf] analysis_image_unavailable asset_id=${asset.id}');
     return null;
   }
@@ -249,4 +302,57 @@ class OnDeviceImageScoreService implements ImageScoreService {
       return null;
     }
   }
+}
+
+void _logFinalRankParity(MultiPhotoRankingResult ranking) {
+  if (!ExperimentalFeatures.enableAcutParityDebug) {
+    return;
+  }
+
+  final rankedItems = ranking.rankedItems;
+  final topKItems = rankedItems.where((item) => item.isACut).toList();
+
+  debugPrint(
+    '[AcutParity] final_rank_result '
+    'is_final=true '
+    'result_count=${ranking.items.length} '
+    'success_count=${ranking.successCount} '
+    'top_k=${topKItems.length} '
+    'ranked_ids="${_joinAcutParityValues(rankedItems.map((item) => item.asset.id))}" '
+    'ranked_scores="${_joinAcutParityValues(rankedItems.map((item) => item.finalScore?.toString() ?? '-'))}" '
+    'top_k_ids="${_joinAcutParityValues(topKItems.map((item) => item.asset.id))}"',
+  );
+}
+
+void _logTimingElapsedUs({
+  required Stopwatch? stopwatch,
+  required String phase,
+  required int resultCount,
+  int? imageIndex,
+}) {
+  if (stopwatch == null) {
+    return;
+  }
+  if (stopwatch.isRunning) {
+    stopwatch.stop();
+  }
+  AcutAestheticTimingDebug.log(
+    imageIndex: imageIndex,
+    modelId: 'ranking',
+    phase: phase,
+    elapsedMs: stopwatch.elapsedMilliseconds,
+    fields: <String, Object?>{
+      'elapsedUs': stopwatch.elapsedMicroseconds,
+      'result_count': resultCount,
+      'timing_tag': 'AcutTimingRanking',
+    },
+  );
+}
+
+String _joinAcutParityValues(Iterable<String> values) {
+  return values.map(_escapeAcutParityValue).join('|');
+}
+
+String _escapeAcutParityValue(String value) {
+  return value.replaceAll('"', r'\"').replaceAll('|', r'\|');
 }

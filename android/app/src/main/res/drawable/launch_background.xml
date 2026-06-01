@@ -2,4 +2,9 @@
 <!-- Modify this file to customize your launch splash screen -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:drawable="@color/pozy_launch_background" />
+    <item>
+        <bitmap
+            android:gravity="center"
+            android:src="@drawable/splash_icon_empty" />
+    </item>
 </layer-list>
