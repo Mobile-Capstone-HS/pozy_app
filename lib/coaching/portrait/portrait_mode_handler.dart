@@ -411,12 +411,25 @@ class PortraitModeHandler {
   static const double _bodyRectAlpha = 0.2;
   static const int _manualMainPersonMissLimit = 12;
   static const double _manualMainPersonMaxTapDistance = 0.08;
-  static const double _manualMainPersonMaxTrackDistance = 0.18;
-  static const double _manualMainPersonMinTrackIoU = 0.02;
+  static const double _manualMainPersonMaxTrackDistance = 0.10;
+  static const double _manualMainPersonMinTrackIoU = 0.05;
   static const double _portraitPersonMinConfidence = 0.20;
+  static const double _portraitPersonBackCameraMinConfidence = 0.28;
+  static const double _portraitPersonBackCameraDistantMinConfidence = 0.22;
   static const double _portraitPersonMinArea = 0.004;
+  static const double _portraitPersonBackCameraMinArea = 0.007;
+  static const double _portraitPersonBackCameraMinHeight = 0.12;
+  static const double _portraitPersonBackCameraDistantMinHeight = 0.07;
   static const double _portraitPersonKeypointMinConfidence = 0.12;
+  static const double _portraitPersonMinAverageKeypointConfidence = 0.18;
+  static const double _portraitPersonBackCameraMinAverageKeypointConfidence =
+      0.22;
+  static const double
+      _portraitPersonBackCameraDistantMinAverageKeypointConfidence = 0.24;
+  static const double _portraitShotTypeTorsoMinConfidence = 0.20;
+  static const double _portraitShotTypeLowerBodyMinConfidence = 0.18;
   static const int _portraitPersonMinVisibleKeypoints = 5;
+  static const int _portraitPersonDistantMinVisibleKeypoints = 7;
   static const int _portraitPersonMinCoreKeypoints = 2;
 
   // ─── 외부 설정 ────────────────────────────────────
@@ -883,6 +896,26 @@ class PortraitModeHandler {
     }
 
     final main = _selectMainPerson(persons);
+    if (main == null) {
+      const c = CoachingResult(
+        message: '선택한 인물을 다시 화면 안에 담아주세요',
+        priority: CoachingPriority.critical,
+        confidence: 0.92,
+        reason: '터치한 인물을 찾지 못하면 다른 사람으로 자동 전환하지 않아요',
+      );
+      final stableCoaching = _stabilize(c);
+      return PortraitAnalysisResult(
+        coaching: stableCoaching,
+        overlayData: OverlayData(
+          closedFaceRects: const [],
+          coaching: stableCoaching,
+          shotType: ShotType.unknown,
+        ),
+        shotType: ShotType.unknown,
+        personCount: persons.length,
+        hasPersonStable: false,
+      );
+    }
 
     final areas =
         persons
@@ -1112,6 +1145,15 @@ class PortraitModeHandler {
         maxY = math.max(maxY, p.dy);
       }
     }
+    final headTopY = _headTopY(
+      main,
+      <int, Offset?>{
+        PoseKeypointIndex.nose: nose,
+        PoseKeypointIndex.leftEye: lEye,
+        PoseKeypointIndex.rightEye: rEye,
+      },
+      minConf: _portraitShotTypeTorsoMinConfidence,
+    );
     var shot = ShotType.unknown;
     double headroom = 0, footSpace = 0;
 
@@ -1136,14 +1178,51 @@ class PortraitModeHandler {
       centerX = (mainBox.left + mainBox.right) / 2;
     }
 
+    final shoulderAnchorCount = _visibleKeypointsIn(
+      main,
+      const <int>[
+        PoseKeypointIndex.leftShoulder,
+        PoseKeypointIndex.rightShoulder,
+      ],
+      minConf: _portraitShotTypeTorsoMinConfidence,
+    );
+    final hipAnchorCount = _visibleKeypointsIn(
+      main,
+      const <int>[PoseKeypointIndex.leftHip, PoseKeypointIndex.rightHip],
+      minConf: _portraitShotTypeTorsoMinConfidence,
+    );
+    final headAnchorCount = _visibleKeypointsIn(
+      main,
+      const <int>[
+        PoseKeypointIndex.nose,
+        PoseKeypointIndex.leftEye,
+        PoseKeypointIndex.rightEye,
+      ],
+      minConf: _portraitShotTypeTorsoMinConfidence,
+    );
+    final kneeAnchorCount = _visibleKeypointsIn(
+      main,
+      const <int>[PoseKeypointIndex.leftKnee, PoseKeypointIndex.rightKnee],
+      minConf: _portraitShotTypeLowerBodyMinConfidence,
+    );
+    final ankleAnchorCount = _visibleKeypointsIn(
+      main,
+      const <int>[PoseKeypointIndex.leftAnkle, PoseKeypointIndex.rightAnkle],
+      minConf: _portraitShotTypeLowerBodyMinConfidence,
+    );
+    final hasReliableTorso =
+        (shoulderAnchorCount >= 1 && hipAnchorCount >= 1) ||
+        (headAnchorCount >= 1 && shoulderAnchorCount >= 2);
+    final hasReliableKnee = kneeAnchorCount >= 1 && maxY > 0.45;
     final hasReliableAnkle =
-        (lAnkle != null || rAnkle != null) && ankleConf >= 0.12 && maxY > 0.50;
-    final hasKnee = lKnee != null || rKnee != null;
+        ankleAnchorCount >= 1 && hasReliableKnee && maxY > 0.50;
+    final hasKnee = hasReliableKnee;
     final kneeY = _maxY(lKnee, rKnee);
-    final hasKneeInsideFrame = kneeY != null && kneeY <= 0.84;
-    final hasHip = lHip != null || rHip != null;
-    final hasShoulder = lShoulder != null || rShoulder != null;
-    final hasUpperBodyAnchor = nose != null || hasShoulder || hasHip;
+    final hasKneeInsideFrame =
+        hasReliableKnee && kneeY != null && kneeY <= 0.84;
+    final hasHip = hipAnchorCount >= 1;
+    final hasShoulder = shoulderAnchorCount >= 1;
+    final hasUpperBodyAnchor = hasReliableTorso;
 
     if (isGroupShot) {
       shot = ShotType.groupShot;
@@ -1163,9 +1242,9 @@ class PortraitModeHandler {
     } else if (maxY > minY) {
       final h = maxY - minY;
 
-      if (hasReliableAnkle && hasUpperBodyAnchor) {
+      if (hasReliableAnkle && hasReliableTorso) {
         shot = ShotType.fullBody;
-      } else if (hasKneeInsideFrame && hasUpperBodyAnchor) {
+      } else if (hasKneeInsideFrame && hasReliableTorso) {
         shot = ShotType.kneeShot;
       } else if (hasHip && !hasKnee && h > 0.45) {
         shot = ShotType.waistShot;
@@ -1180,7 +1259,7 @@ class PortraitModeHandler {
       } else {
         shot = ShotType.extremeCloseUp;
       }
-      headroom = minY;
+      headroom = headTopY ?? 0.0;
       footSpace = 1.0 - maxY;
     }
 
@@ -1324,10 +1403,19 @@ class PortraitModeHandler {
       lightingSignalAgeFrames: lightingFreshness.ageFrames,
       faceSignalFreshness: faceFreshness.freshness,
       lightingSignalFreshness: lightingFreshness.freshness,
-      visibleKeypointCount: all.where((p) => p != null).length,
-      hasNose: nose != null,
-      hasEyes: lEye != null && rEye != null,
-      hasShoulders: lShoulder != null && rShoulder != null,
+      visibleKeypointCount: _visibleKeypointCount(
+        main,
+        minConf: _portraitPersonKeypointMinConfidence,
+      ),
+      hasNose:
+          _conf(main, PoseKeypointIndex.nose) >=
+          _portraitShotTypeTorsoMinConfidence,
+      hasEyes:
+          _conf(main, PoseKeypointIndex.leftEye) >=
+              _portraitShotTypeTorsoMinConfidence &&
+          _conf(main, PoseKeypointIndex.rightEye) >=
+              _portraitShotTypeTorsoMinConfidence,
+      hasShoulders: shoulderAnchorCount >= 2,
       leftWristPosition: lWrist,
       rightWristPosition: rWrist,
       leftAnklePosition: lAnkle,
@@ -1937,9 +2025,25 @@ class PortraitModeHandler {
   bool _isUsablePortraitPerson(YOLOResult person) {
     final box = person.normalizedBox;
     final area = box.width * box.height;
-    if (person.confidence < _portraitPersonMinConfidence ||
-        area < _portraitPersonMinArea) {
+    if (isFrontCamera &&
+        (person.confidence < _portraitPersonMinConfidence ||
+            area < _portraitPersonMinArea)) {
       return false;
+    }
+    final isBackCameraSmallCandidate =
+        !isFrontCamera &&
+        (area < _portraitPersonBackCameraMinArea ||
+            box.height < _portraitPersonBackCameraMinHeight);
+    if (!isFrontCamera) {
+      final minConfidence = isBackCameraSmallCandidate
+          ? _portraitPersonBackCameraDistantMinConfidence
+          : _portraitPersonBackCameraMinConfidence;
+      if (person.confidence < minConfidence ||
+          area < _portraitPersonMinArea ||
+          (isBackCameraSmallCandidate &&
+              box.height < _portraitPersonBackCameraDistantMinHeight)) {
+        return false;
+      }
     }
 
     final visibleKeypoints = _visibleKeypointCount(
@@ -1950,8 +2054,31 @@ class PortraitModeHandler {
       person,
       minConf: _portraitPersonKeypointMinConfidence,
     );
+    final averageKeypointConfidence = _averageVisibleKeypointConfidence(
+      person,
+      minConf: _portraitPersonKeypointMinConfidence,
+    );
+    final hasReliableSkeleton = _hasReliablePortraitSkeleton(
+      person,
+      minConf: _portraitPersonKeypointMinConfidence,
+    );
+    if (!isFrontCamera && isBackCameraSmallCandidate) {
+      return visibleKeypoints >= _portraitPersonDistantMinVisibleKeypoints &&
+          coreKeypoints >= _portraitPersonMinCoreKeypoints &&
+          averageKeypointConfidence >=
+              _portraitPersonBackCameraDistantMinAverageKeypointConfidence &&
+          _hasReliableDistantPortraitSkeleton(
+            person,
+            minConf: _portraitPersonKeypointMinConfidence,
+          );
+    }
+    final minAverageKeypointConfidence = isFrontCamera
+        ? _portraitPersonMinAverageKeypointConfidence
+        : _portraitPersonBackCameraMinAverageKeypointConfidence;
     return visibleKeypoints >= _portraitPersonMinVisibleKeypoints &&
-        coreKeypoints >= _portraitPersonMinCoreKeypoints;
+        coreKeypoints >= _portraitPersonMinCoreKeypoints &&
+        averageKeypointConfidence >= minAverageKeypointConfidence &&
+        hasReliableSkeleton;
   }
 
   int _visibleKeypointCount(YOLOResult person, {required double minConf}) {
@@ -1966,6 +2093,20 @@ class PortraitModeHandler {
     return count;
   }
 
+  double? _headTopY(
+    YOLOResult person,
+    Map<int, Offset?> points, {
+    required double minConf,
+  }) {
+    double? top;
+    for (final entry in points.entries) {
+      final point = entry.value;
+      if (point == null || _conf(person, entry.key) < minConf) continue;
+      top = top == null ? point.dy : math.min(top!, point.dy);
+    }
+    return top;
+  }
+
   int _corePortraitKeypointCount(YOLOResult person, {required double minConf}) {
     var count = 0;
     for (final idx in const <int>[
@@ -1977,6 +2118,115 @@ class PortraitModeHandler {
       PoseKeypointIndex.leftHip,
       PoseKeypointIndex.rightHip,
     ]) {
+      if (_conf(person, idx) >= minConf) count++;
+    }
+    return count;
+  }
+
+  double _averageVisibleKeypointConfidence(
+    YOLOResult person, {
+    required double minConf,
+  }) {
+    final dynamic confs = person.keypointConfidences;
+    final list = confs is List ? confs : const <dynamic>[];
+    var sum = 0.0;
+    var count = 0;
+    for (final value in list) {
+      if (value is num) {
+        final confidence = value.toDouble();
+        if (confidence >= minConf) {
+          sum += confidence;
+          count++;
+        }
+      }
+    }
+    return count == 0 ? 0.0 : sum / count;
+  }
+
+  bool _hasReliablePortraitSkeleton(
+    YOLOResult person, {
+    required double minConf,
+  }) {
+    final headCount = _visibleKeypointsIn(
+      person,
+      const <int>[
+        PoseKeypointIndex.nose,
+        PoseKeypointIndex.leftEye,
+        PoseKeypointIndex.rightEye,
+      ],
+      minConf: minConf,
+    );
+    final hasHead = headCount >= 1;
+    final shoulderCount = _visibleKeypointsIn(
+      person,
+      const <int>[
+        PoseKeypointIndex.leftShoulder,
+        PoseKeypointIndex.rightShoulder,
+      ],
+      minConf: minConf,
+    );
+    final hipCount = _visibleKeypointsIn(
+      person,
+      const <int>[PoseKeypointIndex.leftHip, PoseKeypointIndex.rightHip],
+      minConf: minConf,
+    );
+    if (isFrontCamera && headCount >= 2) return true;
+    if (hasHead && shoulderCount >= 1) return true;
+    if (shoulderCount >= 2 && hipCount >= 1) return true;
+    return false;
+  }
+
+  bool _hasReliableDistantPortraitSkeleton(
+    YOLOResult person, {
+    required double minConf,
+  }) {
+    final shoulderCount = _visibleKeypointsIn(
+      person,
+      const <int>[
+        PoseKeypointIndex.leftShoulder,
+        PoseKeypointIndex.rightShoulder,
+      ],
+      minConf: minConf,
+    );
+    final hipCount = _visibleKeypointsIn(
+      person,
+      const <int>[PoseKeypointIndex.leftHip, PoseKeypointIndex.rightHip],
+      minConf: minConf,
+    );
+    final legCount = _visibleKeypointsIn(
+      person,
+      const <int>[
+        PoseKeypointIndex.leftKnee,
+        PoseKeypointIndex.rightKnee,
+        PoseKeypointIndex.leftAnkle,
+        PoseKeypointIndex.rightAnkle,
+      ],
+      minConf: minConf,
+    );
+    final headCount = _visibleKeypointsIn(
+      person,
+      const <int>[
+        PoseKeypointIndex.nose,
+        PoseKeypointIndex.leftEye,
+        PoseKeypointIndex.rightEye,
+      ],
+      minConf: minConf,
+    );
+
+    return headCount >= 1 &&
+        shoulderCount >= 1 &&
+        hipCount >= 1 &&
+        legCount >= 2 &&
+        headCount + shoulderCount + hipCount >= 4;
+  }
+
+  int _visibleKeypointsIn(
+    YOLOResult person,
+    List<int> indexes, {
+    required double minConf,
+  }) {
+    var count = 0;
+    for (final idx in indexes) {
       if (_conf(person, idx) >= minConf) count++;
     }
     return count;
@@ -2219,9 +2469,13 @@ class PortraitModeHandler {
 
   // ─── 유틸리티 ─────────────────────────────────────
 
-  YOLOResult _selectMainPerson(List<YOLOResult> persons) {
+  YOLOResult? _selectMainPerson(List<YOLOResult> persons) {
     final manualSelection = _selectManualMainPerson(persons);
     if (manualSelection != null) return manualSelection;
+
+    if (_hasManualMainPersonLock) {
+      return null;
+    }
 
     if (persons.length == 1) {
       _trackedMainBox = persons.first.normalizedBox;
@@ -2251,6 +2505,10 @@ class PortraitModeHandler {
     _trackedMainBox = selected.normalizedBox;
     return selected;
   }
+
+  bool get _hasManualMainPersonLock =>
+      intent != PortraitIntent.group &&
+      (_manualMainPersonPoint != null || _manualMainPersonBox != null);
 
   YOLOResult? _selectManualMainPerson(List<YOLOResult> persons) {
     if (intent == PortraitIntent.group ||
@@ -2331,7 +2589,6 @@ class PortraitModeHandler {
   }
 
   void _recordManualMainPersonMiss() {
-    _manualMainPersonBox = null;
     _manualMainPersonMisses++;
     if (_manualMainPersonMisses >= _manualMainPersonMissLimit) {
       _clearManualMainPerson();
@@ -2340,7 +2597,6 @@ class PortraitModeHandler {
 
   void _markNoUsablePersonCandidate() {
     _trackedMainBox = null;
-    _manualMainPersonBox = null;
     if (_manualMainPersonPoint != null) {
       _manualMainPersonMisses++;
       if (_manualMainPersonMisses >= _manualMainPersonMissLimit) {

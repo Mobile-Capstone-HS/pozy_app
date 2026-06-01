@@ -135,6 +135,7 @@ class _CameraScreenState extends State<CameraScreen> {
   bool _isRuleSelectorExpanded = false;
   bool _showSideToolSelector = false;
   bool _showPortraitIntentSelector = false;
+  bool _isModeCameraSwitching = false;
 
   bool _isDrawingRoi = false;
   Offset? _roiDragStart;
@@ -180,6 +181,9 @@ class _CameraScreenState extends State<CameraScreen> {
   );
   int _portraitLostFrames = 0;
   static const int _portraitLostFrameTolerance = 0;
+  int _lastPortraitPoseResultMs = 0;
+  Timer? _portraitNoResultTimer;
+  static const int _portraitNoResultTimeoutMs = 700;
   CompositionDecision? _landscapeDecision;
   LandscapeOverlayAdvice _landscapeOverlayAdvice =
       const LandscapeOverlayAdvice.none();
@@ -264,8 +268,39 @@ class _CameraScreenState extends State<CameraScreen> {
     });
 
     _startTiltMonitoring();
+    _startPortraitNoResultWatchdog();
     _cameraController.onImageMetrics = _onImageMetrics;
     _cameraController.onPortraitFaceResults = _onPortraitFaceResults;
+  }
+
+  void _startPortraitNoResultWatchdog() {
+    _portraitNoResultTimer?.cancel();
+    _portraitNoResultTimer = Timer.periodic(
+      const Duration(milliseconds: 250),
+      (_) => _clearStalePortraitResultIfNeeded(),
+    );
+  }
+
+  void _clearStalePortraitResultIfNeeded() {
+    if (!mounted || !_isPortraitMode || _lastPortraitPoseResultMs == 0) return;
+
+    final elapsedMs =
+        DateTime.now().millisecondsSinceEpoch - _lastPortraitPoseResultMs;
+    if (elapsedMs < _portraitNoResultTimeoutMs) return;
+
+    final alreadyNoPerson =
+        _portraitCoaching.priority == portrait.CoachingPriority.critical &&
+        _portraitOverlayData.shotType == portrait.ShotType.unknown;
+    if (alreadyNoPerson) return;
+
+    if (DebugLogFlags.yoloDebug) {
+      debugPrint(
+        '[YOLO_DEBUG][pose] no fresh pose result for ${elapsedMs}ms; '
+        'reset portrait UI state',
+      );
+    }
+
+    setState(_resetPortraitState);
   }
 
   void _startTiltMonitoring() {
@@ -426,6 +461,7 @@ class _CameraScreenState extends State<CameraScreen> {
   void _resetPortraitState() {
     _portraitHandler.reset();
     _portraitLostFrames = 0;
+    _lastPortraitPoseResultMs = 0;
     _portraitCoaching = const portrait.CoachingResult(
       message:
           '\uC778\uBB3C\uC744 \uD654\uBA74 \uC548\uC5D0 \uB2F4\uC544\uBCF4\uC138\uC694',
@@ -1211,6 +1247,7 @@ class _CameraScreenState extends State<CameraScreen> {
       );
     }
     if (!mounted || !_isPortraitMode) return;
+    _lastPortraitPoseResultMs = DateTime.now().millisecondsSinceEpoch;
 
     _portraitHandler.deviceOrientationDeg = _deviceOrientationDeg;
     _portraitHandler.isFrontCamera = _isFrontCamera;
@@ -1241,12 +1278,18 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<void> _setZoom(double zoomLevel) async {
-    setState(() => _selectedZoom = zoomLevel);
+    final effectiveZoom = _isFrontCamera && zoomLevel < 1.0 ? 1.0 : zoomLevel;
+    setState(() => _selectedZoom = effectiveZoom);
     if (_isLandscapeMode) {
-      await _landscapeController.setZoomLevel(zoomLevel);
+      await _landscapeController.setZoomLevel(effectiveZoom);
       return;
     }
-    await _cameraController.setZoomLevel(zoomLevel);
+    await _cameraController.setZoomLevel(effectiveZoom);
+  }
+
+  List<double> get _visibleZoomPresets {
+    if (!_isFrontCamera) return _zoomPresets;
+    return _zoomPresets.where((zoom) => zoom >= 1.0).toList(growable: false);
   }
 
   Future<void> _switchCamera() async {
@@ -1310,6 +1353,27 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   void _onModeChanged(ShootingMode mode) {
+    unawaited(_changeMode(mode));
+  }
+
+  Future<void> _changeMode(ShootingMode mode) async {
+    if (_isModeCameraSwitching || mode == _shootingMode) return;
+
+    final wasLandscapeMode = _isLandscapeMode;
+    final willBeLandscapeMode = mode == ShootingMode.landscape;
+    _isModeCameraSwitching = true;
+
+    if (wasLandscapeMode && !willBeLandscapeMode) {
+      await _landscapeController.stop();
+    } else if (!wasLandscapeMode && willBeLandscapeMode) {
+      await _cameraController.stop();
+    }
+
+    if (!mounted) {
+      _isModeCameraSwitching = false;
+      return;
+    }
+
     _sceneCoach.reset();
     _cameraController.setLockedRoi();
     _resetPortraitState();
@@ -1350,6 +1414,8 @@ class _CameraScreenState extends State<CameraScreen> {
       _isRuleSelectorExpanded = false;
       _showPortraitIntentSelector = false;
     });
+
+    _isModeCameraSwitching = false;
   }
 
   void _onTapFocus(Offset localPosition) {
@@ -2060,6 +2126,7 @@ class _CameraScreenState extends State<CameraScreen> {
     _accelerometerSub?.cancel();
     _countdownTimer?.cancel();
     _focusIndicatorTimer?.cancel();
+    _portraitNoResultTimer?.cancel();
     _cameraController.stop();
     _landscapeController.stop();
     _portraitHandler.dispose();
@@ -2364,7 +2431,7 @@ class _CameraScreenState extends State<CameraScreen> {
               right: _bottomControlsHorizontalInset,
               bottom: MediaQuery.of(context).padding.bottom + 6,
               child: BottomCameraControls(
-                zoomPresets: _zoomPresets,
+                zoomPresets: _visibleZoomPresets,
                 selectedZoom: _selectedZoom,
                 isSaving: _isSaving,
                 shootingMode: _shootingMode,

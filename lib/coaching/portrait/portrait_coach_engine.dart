@@ -60,20 +60,28 @@ class PortraitCoachEngine {
     }
 
     if (!s.hasNose && !s.hasEyes && !s.hasShoulders) {
-      return const CoachingResult(
-        message: '인물이 더 잘 보이도록 화면을 맞춰보세요',
+      return CoachingResult(
+        message: s.isFrontCamera
+            ? '얼굴 전체가 보이게 담아주세요'
+            : '얼굴이나 어깨가 보이게 맞춰주세요',
         priority: CoachingPriority.critical,
         confidence: 0.95,
-        reason: '얼굴과 자세가 보이면 구도 안내가 더 정확해져요',
+        reason: s.isFrontCamera
+            ? '카메라를 조금 멀리 두고 눈, 코, 턱선이 함께 보이게 해주세요'
+            : '사람의 기준점이 보여야 구도를 안내할 수 있어요',
       );
     }
 
     if (s.visibleKeypointCount < 3) {
-      return const CoachingResult(
-        message: '상체가 보이도록 화면을 맞춰보세요',
+      return CoachingResult(
+        message: s.isFrontCamera
+            ? '얼굴 전체가 보이게 조금만 멀리 들어주세요'
+            : '상체가 보이게 조금 더 담아주세요',
         priority: CoachingPriority.critical,
         confidence: 0.9,
-        reason: '핵심 자세가 보이면 구도 안내가 더 정확해져요',
+        reason: s.isFrontCamera
+            ? '얼굴 일부만 보이면 셀카 구도를 정확히 판단하기 어려워요'
+            : '어깨와 얼굴이 보이면 안내가 더 정확해져요',
       );
     }
 
@@ -126,12 +134,9 @@ class PortraitCoachEngine {
         message: '강한 역광이에요',
         priority: CoachingPriority.critical,
         confidence: 0.9,
-        reason: '몸을 살짝 돌려 빛을 받아보세요',
+        reason: '카메라 각도를 바꾸거나 몸을 빛 쪽으로 살짝 돌려보세요',
       );
     }
-
-    final lighting = _evaluateLighting(s);
-    if (lighting != null) return lighting;
 
     if (_enableShoulderAngleCoaching) {
       final lightPose = _evaluateLightingPoseCombined(s);
@@ -148,10 +153,15 @@ class PortraitCoachEngine {
     if (face != null) return face;
 
     if (!s.hasEyes || !s.hasShoulders) {
-      return const CoachingResult(
-        message: '상체가 조금 더 보이면 안내가 더 정확해져요.',
+      return CoachingResult(
+        message: s.isFrontCamera
+            ? '얼굴 아래쪽까지 보이게 담아주세요'
+            : '상체가 조금 더 보이면 안내가 더 정확해져요.',
         priority: CoachingPriority.composition,
         confidence: 0.7,
+        reason: s.isFrontCamera
+            ? '카메라를 조금 멀리 두면 턱선까지 자연스럽게 들어와요'
+            : null,
       );
     }
 
@@ -165,10 +175,16 @@ class PortraitCoachEngine {
       if (selfie != null) return selfie;
     }
 
+    final lighting = _evaluateLighting(s);
+    if (lighting != null) return lighting;
+
     if (_enableSmileCoaching) {
       final expression = _evaluateExpression(s);
       if (expression != null) return expression;
     }
+
+    final readiness = _evaluateReadinessForGoodComposition(s);
+    if (readiness != null) return readiness;
 
     return CoachingResult(
       message: s.isFrontCamera ? _selfiePerfectMessage(s) : _perfectMessage(s),
@@ -227,10 +243,10 @@ class PortraitCoachEngine {
     if (s.groupCroppedCount > 0) {
       final isMajority = s.groupCroppedCount >= (s.personCount / 2).ceil();
       return CoachingResult(
-        message: isMajority ? '여러 명이 화면 밖으로 걸려요' : '가장자리 사람이 잘려요',
+        message: isMajority ? '여러 명이 화면 밖으로 잘려요' : '가장자리 사람이 잘려요',
         priority: CoachingPriority.composition,
         confidence: 0.88,
-        reason: isMajority ? '조금 뒤로 물러나 모두 담아보세요' : '조금 뒤로 물러나 여유를 주세요',
+        reason: isMajority ? '한 걸음 뒤로 가서 모두 담아주세요' : '한 걸음 뒤로 가서 양옆 여유를 주세요',
       );
     }
 
@@ -264,19 +280,19 @@ class PortraitCoachEngine {
 
     if (s.headroomRatio < 0.04) {
       return const CoachingResult(
-        message: '머리 위가 좁아요',
+        message: '머리 위가 너무 붙었어요',
         priority: CoachingPriority.composition,
         confidence: 0.80,
-        reason: '폰을 살짝 올려 여유를 만들어보세요',
+        reason: '카메라를 살짝 올려 윗부분 여유를 만들어주세요',
       );
     }
 
     if (s.footSpaceRatio < 0.035) {
       return const CoachingResult(
-        message: '아래쪽이 좁아요',
+        message: '아래쪽 여유가 부족해요',
         priority: CoachingPriority.composition,
         confidence: 0.76,
-        reason: '발끝까지 조금 더 담아보세요',
+        reason: '카메라를 살짝 내려 발끝까지 더 담아주세요',
       );
     }
 
@@ -287,7 +303,7 @@ class PortraitCoachEngine {
         message: '사람들이 한쪽으로 치우쳐요',
         priority: CoachingPriority.composition,
         confidence: 0.78,
-        reason: '폰을 $direction으로 살짝 옮겨보세요',
+        reason: '카메라를 $direction으로 살짝 옮겨보세요',
       );
     }
 
@@ -363,19 +379,20 @@ class PortraitCoachEngine {
 
     if (s.headroomRatio < 0.03) {
       return const CoachingResult(
-        message: '머리 위가 조금 좁아요',
+        message: '머리 위가 너무 붙었어요',
         priority: CoachingPriority.composition,
         confidence: 0.72,
-        reason: '윗부분에 살짝만 여유를 두면 더 편안해 보여요',
+        reason: '카메라를 살짝 올려 윗부분 여유를 만들어주세요',
       );
     }
 
     if (s.footSpaceRatio < 0.025 &&
         (s.shotType == ShotType.fullBody || s.shotType == ShotType.kneeShot)) {
       return const CoachingResult(
-        message: '아래쪽에 조금만 더 여유를 주세요',
+        message: '아래쪽 여유를 조금 더 넣어주세요',
         priority: CoachingPriority.composition,
         confidence: 0.70,
+        reason: '카메라를 살짝 내리거나 한 걸음 뒤로 가보세요',
       );
     }
 
@@ -420,10 +437,10 @@ class PortraitCoachEngine {
       case LightingCondition.normal:
         if (s.lightingConfidence > 0.6) {
           return const CoachingResult(
-            message: '빛이 정면에서 와요',
-            priority: CoachingPriority.composition,
+            message: '몸을 살짝 틀어 입체감을 만들어보세요',
+            priority: CoachingPriority.refinement,
             confidence: 0.7,
-            reason: '몸을 살짝 비스듬히 틀어보세요',
+            reason: '정면광에서는 몸을 약간 비스듬히 두면 얼굴이 더 자연스러워요',
           );
         }
         return null;
@@ -431,67 +448,55 @@ class PortraitCoachEngine {
         final yaw = s.faceYaw?.abs();
         if (yaw == null) return null;
         if (yaw >= 15 && yaw <= 30) {
-          return const CoachingResult(
-            message: '빛 방향이 좋아요. 얼굴이 입체적으로 보여요.',
-            priority: CoachingPriority.perfect,
-            confidence: 0.8,
-          );
+          return null;
         }
         if (yaw < 10) {
           return const CoachingResult(
-            message: '얼굴 방향을 맞춰보세요',
+            message: '얼굴을 빛이 오는 쪽으로 살짝 돌려보세요',
             priority: CoachingPriority.refinement,
             confidence: 0.65,
-            reason: '얼굴을 빛 쪽으로 조금 돌려보세요',
+            reason: '옆빛을 받으면 얼굴 윤곽이 더 또렷해져요',
           );
         }
         if (yaw > 30) {
           return const CoachingResult(
-            message: '그림자가 강해요',
-            priority: CoachingPriority.composition,
+            message: '얼굴이 너무 돌아갔어요',
+            priority: CoachingPriority.refinement,
             confidence: 0.7,
-            reason: '얼굴을 빛 쪽으로 살짝 돌려보세요',
+            reason: '얼굴을 카메라 쪽으로 조금만 돌려 그림자를 줄여보세요',
           );
         }
         return null;
       case LightingCondition.rim:
         if (s.personBboxRatio < 0.4) {
-          return const CoachingResult(
-            message: '뒤쪽 빛이 자연스럽게 들어오고 있어요.',
-            priority: CoachingPriority.refinement,
-            confidence: 0.65,
-          );
+          return null;
         }
         if (s.personBboxRatio >= 0.4) {
           return const CoachingResult(
-            message: '뒤에서 빛이 들어와요',
-            priority: CoachingPriority.composition,
+            message: '얼굴을 빛 쪽으로 조금 돌려보세요',
+            priority: CoachingPriority.refinement,
             confidence: 0.65,
-            reason: '얼굴을 빛 쪽으로 살짝 돌려보세요',
+            reason: '뒤쪽 빛이 강하면 얼굴이 어둡게 보일 수 있어요',
           );
         }
         return null;
       case LightingCondition.back:
         if (s.personBboxRatio < 0.4) {
-          return const CoachingResult(
-            message: '배경 빛이 좋아요. 사람 윤곽을 살려보세요.',
-            priority: CoachingPriority.refinement,
-            confidence: 0.7,
-          );
+          return null;
         }
         if (s.lightingConfidence >= 0.6) {
           return const CoachingResult(
             message: '역광이에요',
-            priority: CoachingPriority.composition,
+            priority: CoachingPriority.refinement,
             confidence: 0.75,
-            reason: '빛이 직접 들어오지 않게 각도를 바꿔보세요',
+            reason: '빛이 직접 들어오지 않게 카메라 각도를 조금 바꿔보세요',
           );
         }
         return const CoachingResult(
-          message: '빛이 뒤에서 들어와요',
-          priority: CoachingPriority.composition,
+          message: '몸을 빛 쪽으로 살짝 돌려보세요',
+          priority: CoachingPriority.refinement,
           confidence: 0.62,
-          reason: '몸을 조금 돌려 빛을 받아보세요',
+          reason: '얼굴이 조금 더 밝게 보일 수 있어요',
         );
       case LightingCondition.unknown:
         return null;
@@ -523,7 +528,7 @@ class PortraitCoachEngine {
           'knee' => '무릎선에 걸려요. 허벅지 중간이나 종아리까지 담아보세요.',
           'ankle' => '발끝까지 담거나, 종아리 중간에서 맞춰보세요.',
           'wrist' => '손이 살짝 걸려요. 손 전체를 넣거나 과감히 빼보세요.',
-          'elbow' => '팔꿈치가 프레임에 걸려요. 팔 중간에서 맞춰보세요.',
+          'elbow' => '팔꿈치가 화면 끝에 걸렸어요. 팔 중간에서 맞춰보세요.',
           _ => '관절이 화면 끝에 걸려요. 조금 더 여유를 주세요.',
         };
         final reason = switch (joint) {
@@ -555,10 +560,10 @@ class PortraitCoachEngine {
 
     if (s.lowerBodyTouchesBottom && !relaxedCropIntent) {
       return const CoachingResult(
-        message: '아래쪽이 잘릴 수 있어요',
+        message: '발이나 다리가 잘릴 수 있어요',
         priority: CoachingPriority.composition,
         confidence: 0.82,
-        reason: '발끝까지 담거나 허벅지 중간에서 맞춰보세요',
+        reason: '한 걸음 뒤로 가서 아래쪽 여유를 더 넣어주세요',
       );
     }
 
@@ -569,7 +574,7 @@ class PortraitCoachEngine {
     }
 
     // ─── 5. 헤드룸 ───────────────────────────────────────────
-    if ((s.hasPose || s.hasNose) &&
+    if (_hasReliableHeadroomSignal(s) &&
         !_shouldSkipGenericHeadroomForSelfieCloseShot(s, intent)) {
       final result = _checkHeadroom(s.headroomRatio, s.shotType, intent);
       if (result != null) return result;
@@ -579,23 +584,31 @@ class PortraitCoachEngine {
     if (s.shotType == ShotType.fullBody && intent == _PoseIntent.standingBasic) {
       if (s.footSpaceRatio < 0.05) {
         return const CoachingResult(
-          message: '발 아래 공간을 더 넣어주세요.',
+          message: '발 아래 여유를 조금 더 넣어주세요',
           priority: CoachingPriority.composition,
           confidence: 0.8,
+          reason: '카메라를 살짝 내리거나 한 걸음 뒤로 가보세요',
         );
       }
       if (s.footSpaceRatio > 0.10) {
         return const CoachingResult(
-          message: '인물이 조금 작게 보여요. 살짝 가까이 가보세요.',
+          message: '인물이 조금 작아요',
           priority: CoachingPriority.composition,
           confidence: 0.68,
+          reason: '반 걸음 가까이 가서 인물을 더 크게 담아보세요',
         );
       }
     }
 
+    if (s.intent == PortraitIntent.environmental) {
+      final environmentalResult = _evaluateEnvironmentalComposition(s);
+      if (environmentalResult != null) return environmentalResult;
+    }
+
     // ─── 구도 규칙 정렬 (전신/환경) ─────────────────────────
     if (s.shotType == ShotType.fullBody ||
-        s.intent == PortraitIntent.environmental) {
+        (s.intent == PortraitIntent.environmental &&
+            _rule.type != CompositionRuleType.none)) {
       final ruleResult = _checkRuleAlignment(s, intent);
       if (ruleResult != null) return ruleResult;
     }
@@ -621,50 +634,32 @@ class PortraitCoachEngine {
           ((s.faceYaw! > yawThreshold && s.personCenterX > posThreshold) ||
               (s.faceYaw! < -yawThreshold && s.personCenterX < negThreshold))) {
         return const CoachingResult(
-          message: '바라보는 쪽에 공간을 더 두세요.',
+          message: '바라보는 쪽에 여백을 더 주세요',
           priority: CoachingPriority.composition,
           confidence: 0.68,
-          reason: '시선 앞쪽이 비어 있으면 더 자연스러워요',
+          reason: '인물이 보는 방향으로 화면을 조금 더 비워보세요',
         );
       }
     }
 
-    // ─── 8. 환경 포트레이트 크기 ─────────────────────────────
-    if (s.intent == PortraitIntent.environmental) {
-      if (s.personBboxRatio > 0.65) {
-        return const CoachingResult(
-          message: '배경이 조금 더 보이면 좋아요',
-          priority: CoachingPriority.composition,
-          confidence: 0.62,
-          reason: '조금 뒤로 물러나 배경을 더 담아보세요',
-        );
-      }
-      if (s.personBboxRatio < 0.08) {
-        return const CoachingResult(
-          message: '인물이 너무 작게 보여요',
-          priority: CoachingPriority.composition,
-          confidence: 0.58,
-          reason: '살짝 가까이 가서 더 크게 담아보세요',
-        );
-      }
-    }
-
-    // ─── 9. 얼굴 프레이밍 ────────────────────────────────────
+    // ─── 8. 얼굴 프레이밍 ────────────────────────────────────
     if (s.hasFace &&
         !relaxedBalanceIntent &&
         (s.shotType == ShotType.closeUp || s.shotType == ShotType.upperBody)) {
       if (s.faceCenterX < 0.22 || s.faceCenterX > 0.78) {
         return const CoachingResult(
-          message: '얼굴이 한쪽으로 치우쳐 있어요.',
+          message: '얼굴이 화면 끝에 가까워요',
           priority: CoachingPriority.composition,
           confidence: 0.72,
+          reason: '얼굴이 화면 안쪽으로 오게 카메라를 살짝 돌려보세요',
         );
       }
       if (s.faceBoxRatio > 0.22 && s.shotType == ShotType.closeUp) {
         return const CoachingResult(
-          message: '조금 뒤로 물러서보세요.',
+          message: '얼굴이 너무 크게 담겼어요',
           priority: CoachingPriority.composition,
           confidence: 0.7,
+          reason: '반 걸음 뒤로 가서 얼굴 주변 여유를 만들어보세요',
         );
       }
     }
@@ -702,28 +697,32 @@ class PortraitCoachEngine {
 
     return switch (joint) {
       'knee' => CoachingResult(
-        message: isVeryBottom ? '무릎이 프레임에 걸려요' : '무릎선에 걸릴 수 있어요',
+        message: isVeryBottom ? '무릎이 화면 끝에 걸렸어요' : '무릎선에 걸릴 수 있어요',
         priority: CoachingPriority.composition,
         confidence: 0.92,
-        reason: isVeryBottom ? '허벅지 중간이나 종아리까지 담아보세요' : '무릎선보다 살짝 위나 아래로 맞춰보세요',
+        reason: isVeryBottom
+            ? '한 걸음 뒤로 가서 종아리까지 더 담아보세요'
+            : '카메라를 살짝 올리거나 내려 무릎선을 피해주세요',
       ),
       'ankle' => CoachingResult(
-        message: isVeryBottom ? '발끝이 프레임에 걸려요' : '발목선에 걸려요',
+        message: isVeryBottom ? '발끝이 화면 끝에 걸렸어요' : '발목선에 걸렸어요',
         priority: CoachingPriority.composition,
         confidence: 0.92,
-        reason: isVeryBottom ? '발끝 아래를 조금 더 담아보세요' : '발끝까지 담거나 종아리 중간에서 맞춰보세요',
+        reason: isVeryBottom
+            ? '카메라를 살짝 내려 발끝 아래 여유를 넣어주세요'
+            : '발끝까지 담거나 종아리 중간에서 잘라보세요',
       ),
       'hip' when s.shotType == ShotType.waistShot => const CoachingResult(
-        message: '허리선에 걸려요',
+        message: '허리선에 걸렸어요',
         priority: CoachingPriority.composition,
         confidence: 0.85,
-        reason: '골반 아래까지 조금 더 담아보세요',
+        reason: '카메라를 살짝 내려 골반 아래까지 담아보세요',
       ),
       'wrist' => const CoachingResult(
-        message: '손이 살짝 걸려요',
+        message: '손이 화면 끝에 걸렸어요',
         priority: CoachingPriority.composition,
         confidence: 0.88,
-        reason: '손 전체를 넣거나 과감히 빼보세요',
+        reason: '손 전체를 넣거나 팔 중간에서 자연스럽게 잘라보세요',
       ),
       _ => null,
     };
@@ -745,27 +744,28 @@ class PortraitCoachEngine {
         !s.hasReliableBothAnkles &&
         s.personBboxRatio >= 0.16) {
       return const CoachingResult(
-        message: '양발이 모두 보이면 좋아요',
+        message: '양발이 모두 보이게 담아주세요',
         priority: CoachingPriority.composition,
         confidence: 0.82,
-        reason: '양발을 모두 담아 더 안정적으로 맞춰보세요',
+        reason: '한 걸음 뒤로 가거나 카메라를 살짝 내려보세요',
       );
     }
 
     // (2) 발 아래 공간
     if (s.hasReliableAnkles && s.footSpaceRatio < 0.04) {
       return const CoachingResult(
-        message: '발끝 아래 여유가 좁아요',
+        message: '발끝 아래 여유가 부족해요',
         priority: CoachingPriority.composition,
         confidence: 0.85,
-        reason: '발끝 아래를 조금 더 담아보세요',
+        reason: '카메라를 살짝 내려 발끝 아래 공간을 넣어주세요',
       );
     }
     if (s.hasReliableAnkles && s.footSpaceRatio > 0.12) {
       return const CoachingResult(
-        message: '아래 여백이 넓어요. 살짝 가까이 가보세요.',
+        message: '아래 여백이 너무 많아요',
         priority: CoachingPriority.composition,
         confidence: 0.68,
+        reason: '카메라를 살짝 올리거나 반 걸음 가까이 가보세요',
       );
     }
 
@@ -776,10 +776,10 @@ class PortraitCoachEngine {
     if (s.eyeMidpoint != null && s.eyeConfidence > _minConf) {
       if (s.eyeMidpoint!.dy > 0.38) {
         return const CoachingResult(
-          message: '폰 높이를 조금 낮춰보세요',
+          message: '카메라 높이를 조금 낮춰보세요',
           priority: CoachingPriority.composition,
           confidence: 0.72,
-          reason: '허리쯤 높이에서 찍으면 더 안정적이에요',
+          reason: '전신은 허리쯤 높이에서 찍으면 더 안정적이에요',
         );
       }
     }
@@ -806,19 +806,20 @@ class PortraitCoachEngine {
 
     if (kneeY != null && kneeY > 0.82) {
       return const CoachingResult(
-        message: '무릎선에 걸려요',
+        message: '무릎선이 화면 끝에 가까워요',
         priority: CoachingPriority.composition,
         confidence: 0.88,
-        reason: '허벅지 중간까지 조금 더 담아보세요',
+        reason: '카메라를 살짝 내리거나 한 걸음 뒤로 가보세요',
       );
     }
 
     // 발 아래 공간이 너무 없으면 (무릎샷에서 약간의 여유는 필요)
     if (s.hasReliableAnkles && s.footSpaceRatio < 0.03) {
       return const CoachingResult(
-        message: '아래쪽 여유가 조금 좁아요. 살짝 뒤로 가보세요.',
+        message: '아래쪽 여유가 부족해요',
         priority: CoachingPriority.composition,
         confidence: 0.72,
+        reason: '한 걸음 뒤로 가서 다리 아래 공간을 더 넣어주세요',
       );
     }
 
@@ -827,6 +828,73 @@ class PortraitCoachEngine {
 
   /// 사용자가 선택한 구도 규칙에 인물 중심이 정렬되어 있는지 확인.
   /// 규칙 미선택(none)이면 기존 좌우 이동 휴리스틱 유지.
+  CoachingResult? _evaluateEnvironmentalComposition(PortraitSceneState s) {
+    if (s.personBboxRatio > 0.65) {
+      return const CoachingResult(
+        message: '배경을 더 보여주세요',
+        priority: CoachingPriority.composition,
+        confidence: 0.72,
+        reason: '한 걸음 뒤로 가서 인물 주변 풍경을 더 담아보세요',
+      );
+    }
+
+    if (s.personBboxRatio < 0.08) {
+      return const CoachingResult(
+        message: '인물이 너무 작아요',
+        priority: CoachingPriority.composition,
+        confidence: 0.66,
+        reason: '반 걸음 가까이 가서 얼굴과 자세가 보이게 해주세요',
+      );
+    }
+
+    if (s.faceYaw != null && s.faceYaw! > 5 && s.personCenterX > 0.48) {
+      return const CoachingResult(
+        message: '인물을 왼쪽에 두고 오른쪽 배경을 보여주세요',
+        priority: CoachingPriority.composition,
+        confidence: 0.72,
+        reason: '바라보는 쪽에 풍경이 남으면 여행 사진처럼 보여요',
+      );
+    }
+
+    if (s.faceYaw != null && s.faceYaw! < -5 && s.personCenterX < 0.52) {
+      return const CoachingResult(
+        message: '인물을 오른쪽에 두고 왼쪽 배경을 보여주세요',
+        priority: CoachingPriority.composition,
+        confidence: 0.72,
+        reason: '바라보는 쪽에 풍경이 남으면 여행 사진처럼 보여요',
+      );
+    }
+
+    if (s.personCenterX > 0.40 && s.personCenterX < 0.60) {
+      return const CoachingResult(
+        message: '배경을 살리려면 인물을 한쪽에 살짝 두어보세요',
+        priority: CoachingPriority.composition,
+        confidence: 0.68,
+        reason: '중앙을 조금 비우면 장소 분위기가 더 잘 보여요',
+      );
+    }
+
+    if (s.personCenterX < 0.22) {
+      return const CoachingResult(
+        message: '인물이 너무 왼쪽에 있어요',
+        priority: CoachingPriority.composition,
+        confidence: 0.64,
+        reason: '카메라를 왼쪽으로 살짝 돌려 인물 옆 여백을 남겨주세요',
+      );
+    }
+
+    if (s.personCenterX > 0.78) {
+      return const CoachingResult(
+        message: '인물이 너무 오른쪽에 있어요',
+        priority: CoachingPriority.composition,
+        confidence: 0.64,
+        reason: '카메라를 오른쪽으로 살짝 돌려 인물 옆 여백을 남겨주세요',
+      );
+    }
+
+    return null;
+  }
+
   CoachingResult? _checkRuleAlignment(
     PortraitSceneState s,
     _PoseIntent intent,
@@ -844,10 +912,10 @@ class PortraitCoachEngine {
       // 기존 휴리스틱: 중앙(0.42~0.58) 안에 있으면 좌우 한쪽으로 이동 권장.
       if (s.personCenterX > 0.42 && s.personCenterX < 0.58) {
         return const CoachingResult(
-          message: '인물을 화면 한쪽에 살짝 배치해보세요.',
+          message: '인물을 화면 한쪽으로 살짝 옮겨보세요',
           priority: CoachingPriority.composition,
           confidence: 0.65,
-          reason: '중앙에서 살짝 벗어나면 더 자연스러워요',
+          reason: '카메라를 왼쪽이나 오른쪽으로 조금 움직여 여백을 만들어보세요',
         );
       }
       return null;
@@ -858,7 +926,7 @@ class PortraitCoachEngine {
       message: _rule.guidance(subject),
       priority: CoachingPriority.composition,
       confidence: 0.7,
-      reason: '선택한 구도에 맞춰보세요',
+      reason: '카메라를 조금 움직여 선택한 구도선에 맞춰보세요',
     );
   }
 
@@ -911,7 +979,7 @@ class PortraitCoachEngine {
     if ((eyeY - targetY).abs() <= tolerance) return null;
 
     return CoachingResult(
-      message: eyeY < targetY ? '폰을 살짝 내려보세요.' : '폰을 살짝 올려보세요.',
+      message: eyeY < targetY ? '카메라를 살짝 내려보세요' : '카메라를 살짝 올려보세요',
       priority: CoachingPriority.composition,
       confidence: 0.8,
       reason: '눈 위치가 맞으면 더 자연스러워요',
@@ -967,22 +1035,31 @@ class PortraitCoachEngine {
       maxH += 0.03;
     }
 
-    if (headroom < minH) {
+    const minTolerance = 0.015;
+    const maxTolerance = 0.05;
+
+    if (headroom < minH - minTolerance) {
       return const CoachingResult(
-        message: '머리 위가 좁아요',
-        priority: CoachingPriority.composition,
-        confidence: 0.85,
-        reason: '폰을 살짝 올려 여유를 만들어보세요',
+        message: '머리 끝이 화면에 붙었어요',
+        priority: CoachingPriority.refinement,
+        confidence: 0.62,
+        reason: '카메라를 살짝 올리거나 한 걸음 뒤로 가보세요',
       );
     }
-    if (headroom > maxH) {
+    if (headroom > maxH + maxTolerance) {
       return const CoachingResult(
-        message: '머리 위가 너무 비었어요. 한 걸음 다가가보세요.',
-        priority: CoachingPriority.composition,
-        confidence: 0.75,
+        message: '얼굴이 너무 아래에 있어요',
+        priority: CoachingPriority.refinement,
+        confidence: 0.58,
+        reason: '카메라를 살짝 내리거나 반 걸음 가까이 가보세요',
       );
     }
     return null;
+  }
+
+  bool _hasReliableHeadroomSignal(PortraitSceneState s) {
+    if (s.hasNose) return true;
+    return s.hasEyes && s.eyeConfidence > 0.45;
   }
 
   bool _shouldSkipGenericHeadroomForSelfieCloseShot(
@@ -1071,9 +1148,10 @@ class PortraitCoachEngine {
       if ((lw != null && (lw.dx < 0.05 || lw.dx > 0.95)) ||
           (rw != null && (rw.dx < 0.05 || rw.dx > 0.95))) {
         return const CoachingResult(
-          message: '손이 프레임에 걸려요. 안쪽으로 살짝 넣어주세요.',
+          message: '손이 화면 끝에 걸렸어요',
           priority: CoachingPriority.pose,
           confidence: 0.7,
+          reason: '손을 화면 안쪽으로 살짝 넣어주세요',
         );
       }
     }
@@ -1179,11 +1257,7 @@ class PortraitCoachEngine {
         s.faceYaw != null &&
         s.faceYaw!.abs() >= 15 &&
         s.faceYaw!.abs() <= 35) {
-      return const CoachingResult(
-        message: '얼굴 방향이 좋아요.',
-        priority: CoachingPriority.perfect,
-        confidence: 0.7,
-      );
+      return null;
     }
 
     return null;
@@ -1209,23 +1283,23 @@ class PortraitCoachEngine {
         intent == _PoseIntent.casualSnapshot;
 
     // ── 1. 광각 왜곡 경고 (전면 카메라 = 광각, 가까울수록 왜곡 심함) ──
-    if (s.personBboxRatio > (relaxedSelfie ? 0.62 : 0.55)) {
+    if (s.personBboxRatio > (relaxedSelfie ? 0.74 : 0.64)) {
       return const CoachingResult(
         message: '너무 가까워요',
         priority: CoachingPriority.composition,
         confidence: 0.88,
-        reason: '팔을 조금 더 뻗으면 자연스러워요',
+        reason: '카메라를 조금 더 멀리 두거나 얼굴 주변 여유를 만들어보세요',
       );
     }
-    if (s.faceBoxRatio > (relaxedSelfie ? 0.17 : 0.13) &&
+    if (s.faceBoxRatio > (relaxedSelfie ? 0.23 : 0.17) &&
         (s.shotType == ShotType.closeUp ||
             s.shotType == ShotType.headShot ||
             s.shotType == ShotType.extremeCloseUp)) {
       return const CoachingResult(
-        message: '얼굴이 너무 크게 잡혀요',
+        message: '얼굴이 너무 크게 담겼어요',
         priority: CoachingPriority.composition,
         confidence: 0.80,
-        reason: '조금 더 떨어져 자연스럽게 맞춰보세요',
+        reason: '가능하면 카메라를 조금 더 멀리 두고 얼굴 주변 여유를 만들어보세요',
       );
     }
 
@@ -1236,7 +1310,7 @@ class PortraitCoachEngine {
         message: '역광이에요',
         priority: CoachingPriority.composition,
         confidence: 0.85,
-        reason: '빛을 향해 살짝 돌아서보세요',
+        reason: '빛을 향해 살짝 돌아서 얼굴을 밝게 만들어보세요',
       );
     }
 
@@ -1248,7 +1322,7 @@ class PortraitCoachEngine {
       if (s.facePitch! < (relaxedSelfie ? -16 : -10)) {
         // 카메라가 아래에 있음 → 이중턱, 불리한 각도
         return const CoachingResult(
-          message: '폰을 조금 올려보세요',
+          message: '카메라를 조금 올려보세요',
           priority: CoachingPriority.composition,
           confidence: 0.85,
           reason: '눈높이보다 살짝 위가 더 자연스러워요',
@@ -1257,10 +1331,10 @@ class PortraitCoachEngine {
       if (s.facePitch! > (relaxedSelfie ? 32 : 25)) {
         // 카메라가 너무 위에 있음 → 부자연스러운 시선
         return const CoachingResult(
-          message: '폰이 조금 높아요',
+          message: '카메라가 조금 높아요',
           priority: CoachingPriority.composition,
           confidence: 0.78,
-          reason: '눈높이보다 살짝 위로 내려보세요',
+          reason: '눈높이보다 살짝 위까지만 내려보세요',
         );
       }
     }
@@ -1270,21 +1344,21 @@ class PortraitCoachEngine {
     if (lighting != null) return lighting;
 
     // ── 5. 헤드룸 ────────────────────────────────────────
-    if (s.hasPose || s.hasNose) {
-      if (s.headroomRatio < (relaxedSelfie ? 0.025 : 0.04)) {
+    if (_hasReliableHeadroomSignal(s)) {
+      if (s.headroomRatio < (relaxedSelfie ? 0.015 : 0.025)) {
         return const CoachingResult(
-          message: '머리가 잘려요',
-          priority: CoachingPriority.composition,
-          confidence: 0.80,
-          reason: '폰을 살짝 내려 머리 위를 담아보세요',
+          message: '머리 끝이 화면에 붙었어요',
+          priority: CoachingPriority.refinement,
+          confidence: 0.62,
+          reason: '카메라를 살짝 내려 머리 위를 담아주세요',
         );
       }
-      if (s.headroomRatio > (relaxedSelfie ? 0.24 : 0.18)) {
+      if (s.headroomRatio > (relaxedSelfie ? 0.30 : 0.24)) {
         return const CoachingResult(
-          message: '머리 위가 많이 비었어요',
-          priority: CoachingPriority.composition,
-          confidence: 0.65,
-          reason: '폰을 조금 가까이 해보세요',
+          message: '얼굴을 화면 가운데로 맞춰주세요',
+          priority: CoachingPriority.refinement,
+          confidence: 0.54,
+          reason: '폰을 살짝 내려 얼굴 위쪽 빈 공간을 줄여보세요',
         );
       }
     }
@@ -1293,14 +1367,15 @@ class PortraitCoachEngine {
     if (s.faceYaw != null) {
       if (s.faceYaw!.abs() > (relaxedSelfie ? 48 : 40)) {
         return const CoachingResult(
-          message: '고개를 너무 많이 돌렸어요. 살짝만 돌려보세요.',
+          message: '고개를 너무 많이 돌렸어요',
           priority: CoachingPriority.pose,
           confidence: 0.75,
+          reason: '얼굴을 카메라 쪽으로 조금만 돌려주세요',
         );
       }
       if (!relaxedSelfie && s.faceYaw!.abs() < 5) {
         return const CoachingResult(
-          message: '살짝 고개를 돌리면 입체감이 생겨요.',
+          message: '고개를 살짝 돌려보세요',
           priority: CoachingPriority.pose,
           confidence: 0.62,
           reason: '완전 정면보다 조금 돌린 얼굴이 자연스러워요',
@@ -1312,19 +1387,20 @@ class PortraitCoachEngine {
     // 카메라 높이가 적절하고 다른 이슈 없을 때 턱 포워드 제안
     if (s.facePitch != null && s.facePitch! >= -5 && s.facePitch! <= 10) {
       return const CoachingResult(
-        message: '턱선을 살짝 살려보세요',
+        message: '턱을 살짝 앞으로 내밀어보세요',
         priority: CoachingPriority.refinement,
         confidence: 0.45,
-        reason: '턱을 조금 앞으로 내밀면 또렷해져요',
+        reason: '턱선이 더 또렷하게 보여요',
       );
     }
 
     // ── 8. 고개 기울기 ───────────────────────────────────
     if (s.faceRoll != null && s.faceRoll!.abs() > (relaxedSelfie ? 28 : 20)) {
       return const CoachingResult(
-        message: '고개가 기울었어요. 바로 세워보세요.',
+        message: '고개가 기울었어요',
         priority: CoachingPriority.refinement,
         confidence: 0.7,
+        reason: '얼굴이 수평에 가깝게 보이도록 바로 세워보세요',
       );
     }
 
@@ -1341,10 +1417,10 @@ class PortraitCoachEngine {
         // 셀카에서 순광은 더 관대하게 (refinement로 낮춤)
         if (s.lightingConfidence > 0.7) {
           return const CoachingResult(
-            message: '빛이 좋아요',
+            message: '얼굴을 살짝 돌려 입체감을 만들어보세요',
             priority: CoachingPriority.refinement,
             confidence: 0.55,
-            reason: '얼굴을 살짝 돌리면 더 자연스러워요',
+            reason: '정면광에서는 얼굴을 약간 틀면 더 자연스러워요',
           );
         }
         return null;
@@ -1356,23 +1432,102 @@ class PortraitCoachEngine {
           return null; // 얼굴 각도가 빛과 맞음
         }
         return const CoachingResult(
-          message: '빛 방향을 맞춰보세요',
+          message: '얼굴을 빛 쪽으로 살짝 돌려보세요',
           priority: CoachingPriority.refinement,
           confidence: 0.60,
-          reason: '빛 쪽으로 살짝 고개를 돌려보세요',
+          reason: '옆빛을 받으면 얼굴 윤곽이 더 또렷해져요',
         );
       case LightingCondition.rim:
         return const CoachingResult(
-          message: '뒤쪽 빛이 강해요',
-          priority: CoachingPriority.composition,
+          message: '얼굴을 빛 쪽으로 조금 돌려보세요',
+          priority: CoachingPriority.refinement,
           confidence: 0.65,
-          reason: '얼굴을 빛 쪽으로 조금 돌려보세요',
+          reason: '뒤쪽 빛이 강하면 얼굴이 어둡게 보일 수 있어요',
         );
       case LightingCondition.back:
         return null; // 역광은 이미 위에서 처리됨
       case LightingCondition.unknown:
         return null;
     }
+  }
+
+  CoachingResult? _evaluateReadinessForGoodComposition(PortraitSceneState s) {
+    if (s.visibleKeypointCount < 5) {
+      return const CoachingResult(
+        message: '인물이 조금 더 또렷하게 보이게 맞춰주세요',
+        priority: CoachingPriority.composition,
+        confidence: 0.72,
+        reason: '감지가 안정적일 때 좋은 구도인지 판단할 수 있어요',
+      );
+    }
+
+    if (!s.hasNose && !s.hasEyes && !s.hasShoulders) {
+      return const CoachingResult(
+        message: '얼굴이나 어깨가 보이게 맞춰주세요',
+        priority: CoachingPriority.composition,
+        confidence: 0.76,
+        reason: '사람의 기준점이 보여야 좋은 구도인지 판단할 수 있어요',
+      );
+    }
+
+    if (s.shotType == ShotType.unknown) {
+      return const CoachingResult(
+        message: '상체가 조금 더 보이게 맞춰주세요',
+        priority: CoachingPriority.composition,
+        confidence: 0.70,
+        reason: '샷 종류가 잡히면 좋은 구도인지 판단할 수 있어요',
+      );
+    }
+
+    if (!s.isGroupShot &&
+        !s.isFrontCamera &&
+        (s.shotType == ShotType.upperBody ||
+            s.shotType == ShotType.waistShot ||
+            s.shotType == ShotType.kneeShot ||
+            s.shotType == ShotType.fullBody) &&
+        !s.hasShoulders) {
+      return const CoachingResult(
+        message: '어깨가 보이게 조금 더 담아주세요',
+        priority: CoachingPriority.composition,
+        confidence: 0.72,
+        reason: '어깨 기준점이 있어야 인물 구도를 안정적으로 볼 수 있어요',
+      );
+    }
+
+    if (!s.isGroupShot &&
+        s.shotType == ShotType.kneeShot &&
+        !s.hasReliableKnees) {
+      return const CoachingResult(
+        message: '무릎 위치가 보이게 조금 더 맞춰주세요',
+        priority: CoachingPriority.composition,
+        confidence: 0.72,
+        reason: '무릎 기준점이 있어야 무릎샷 구도를 판단할 수 있어요',
+      );
+    }
+
+    if (!s.isGroupShot &&
+        s.shotType == ShotType.fullBody &&
+        !s.hasReliableKnees) {
+      return const CoachingResult(
+        message: '다리 라인이 보이게 조금 더 담아주세요',
+        priority: CoachingPriority.composition,
+        confidence: 0.72,
+        reason: '무릎 기준점이 있어야 전신 구도를 판단할 수 있어요',
+      );
+    }
+
+    if (!s.isGroupShot &&
+        s.shotType == ShotType.fullBody &&
+        !s.hasReliableAnkles) {
+      return const CoachingResult(
+        message: '발끝이 보이게 조금 더 담아주세요',
+        priority: CoachingPriority.composition,
+        confidence: 0.74,
+        reason: '전신샷은 발끝까지 보여야 좋은 구도인지 판단할 수 있어요',
+      );
+    }
+
+    return null;
   }
 
   String _selfiePerfectMessage(PortraitSceneState s) {
@@ -1443,9 +1598,10 @@ class PortraitCoachEngine {
         yaw >= 15 &&
         yaw <= 35) {
       return const CoachingResult(
-        message: '빛과 자세가 좋아요. 지금 찍기 좋아요.',
-        priority: CoachingPriority.perfect,
+        message: '빛과 자세가 좋아요',
+        priority: CoachingPriority.refinement,
         confidence: 0.92,
+        reason: '구도가 맞으면 바로 찍기 좋은 상태예요',
       );
     }
 
@@ -1456,9 +1612,10 @@ class PortraitCoachEngine {
         shoulderAng <= 25 &&
         yaw >= 10) {
       return const CoachingResult(
-        message: '빛과 포즈가 완벽하게 어울려요!',
-        priority: CoachingPriority.perfect,
+        message: '빛과 포즈가 잘 어울려요',
+        priority: CoachingPriority.refinement,
         confidence: 0.88,
+        reason: '구도가 맞으면 바로 찍기 좋은 상태예요',
       );
     }
 
@@ -1468,9 +1625,10 @@ class PortraitCoachEngine {
         s.personBboxRatio < 0.35 &&
         s.shotType == ShotType.environmental) {
       return const CoachingResult(
-        message: '배경 빛이 좋아요. 사람 윤곽을 살려보세요.',
+        message: '사람 윤곽을 살려보세요',
         priority: CoachingPriority.refinement,
         confidence: 0.68,
+        reason: '배경 빛을 살리려면 인물을 조금 작게 두는 것도 좋아요',
       );
     }
 
