@@ -30,12 +30,7 @@ import 'portrait_scene_state.dart';
 // Face analysis source selection. Default: previewCapture (existing behavior).
 enum FaceAnalysisSource { previewCapture, imageAnalysis }
 
-enum NativeFaceConfidenceStatus {
-  usable,
-  small,
-  outOfBounds,
-  uncertain,
-}
+enum NativeFaceConfidenceStatus { usable, small, outOfBounds, uncertain }
 
 class NativeFaceResult {
   final Rect boundingBox;
@@ -72,19 +67,19 @@ class NativeFaceResult {
 
   factory NativeFaceResult.fromMap(Map<String, dynamic> map) {
     final boundingBox = Rect.fromLTRB(
-        (map['left'] as num?)?.toDouble() ?? 0.0,
-        (map['top'] as num?)?.toDouble() ?? 0.0,
-        (map['right'] as num?)?.toDouble() ?? 0.0,
-        (map['bottom'] as num?)?.toDouble() ?? 0.0,
+      (map['left'] as num?)?.toDouble() ?? 0.0,
+      (map['top'] as num?)?.toDouble() ?? 0.0,
+      (map['right'] as num?)?.toDouble() ?? 0.0,
+      (map['bottom'] as num?)?.toDouble() ?? 0.0,
     );
     final imageWidth = (map['imageWidth'] as num?)?.toInt() ?? 0;
     final imageHeight = (map['imageHeight'] as num?)?.toInt() ?? 0;
     return NativeFaceResult(
       boundingBox: boundingBox,
-      leftEyeOpenProbability:
-          (map['leftEyeOpenProbability'] as num?)?.toDouble(),
-      rightEyeOpenProbability:
-          (map['rightEyeOpenProbability'] as num?)?.toDouble(),
+      leftEyeOpenProbability: (map['leftEyeOpenProbability'] as num?)
+          ?.toDouble(),
+      rightEyeOpenProbability: (map['rightEyeOpenProbability'] as num?)
+          ?.toDouble(),
       smilingProbability: (map['smilingProbability'] as num?)?.toDouble(),
       headEulerAngleY: (map['headEulerAngleY'] as num?)?.toDouble(),
       headEulerAngleZ: (map['headEulerAngleZ'] as num?)?.toDouble(),
@@ -153,7 +148,8 @@ class NativeFaceResult {
     if (imageWidth <= 0 || imageHeight <= 0 || boundingBox.isEmpty) {
       return NativeFaceConfidenceStatus.uncertain;
     }
-    final outOfBounds = boundingBox.left < 0 ||
+    final outOfBounds =
+        boundingBox.left < 0 ||
         boundingBox.top < 0 ||
         boundingBox.right > imageWidth ||
         boundingBox.bottom > imageHeight;
@@ -305,12 +301,14 @@ class PortraitModeHandler {
 
   // ─── 메시지 안정화 ────────────────────────────────
   static const int _stabilityThreshold = 5;
-  String stableMessage = '\uC778\uBB3C\uC744 \uD654\uBA74 \uC548\uC5D0 \uB2F4\uC544\uBCF4\uC138\uC694';
+  String stableMessage =
+      '\uC778\uBB3C\uC744 \uD654\uBA74 \uC548\uC5D0 \uB2F4\uC544\uBCF4\uC138\uC694';
   String _pendingMessage = '';
   String _pendingSignalKey = '';
   int _pendingCount = 0;
   CoachingResult _stableCoaching = const CoachingResult(
-    message: '\uC778\uBB3C\uC744 \uD654\uBA74 \uC548\uC5D0 \uB2F4\uC544\uBCF4\uC138\uC694',
+    message:
+        '\uC778\uBB3C\uC744 \uD654\uBA74 \uC548\uC5D0 \uB2F4\uC544\uBCF4\uC138\uC694',
     priority: CoachingPriority.critical,
     confidence: 1.0,
     reason:
@@ -392,7 +390,9 @@ class PortraitModeHandler {
   // ─── 눈 감김 정밀 추적 ────────────────────────────
   int _eyeClosedStreak = 0; // 연속 눈 감김 프레임 수 (네이티브 raw 기반)
   int _anyEyeClosedStreak = 0; // 그룹 눈 감김 연속 프레임
-  static const int _eyeConfirmFrames = 2; // 확정에 필요한 연속 프레임
+  static const double _eyeClosedProbabilityThreshold =
+      PortraitSceneState.eyeClosedProbabilityThreshold;
+  static const int _eyeConfirmFrames = 3; // 확정에 필요한 연속 프레임
 
   // ─── 카메라 안정성 추적 ───────────────────────────
   double _cameraStability = 1.0;
@@ -530,7 +530,8 @@ class PortraitModeHandler {
     _prevShoulderAngle = null;
 
     _faceQualityScores = const [];
-    stableMessage = '\uC778\uBB3C\uC744 \uD654\uBA74 \uC548\uC5D0 \uB2F4\uC544\uBCF4\uC138\uC694';
+    stableMessage =
+        '\uC778\uBB3C\uC744 \uD654\uBA74 \uC548\uC5D0 \uB2F4\uC544\uBCF4\uC138\uC694';
     _pendingMessage = '';
     _pendingSignalKey = '';
     _pendingCount = 0;
@@ -540,7 +541,8 @@ class PortraitModeHandler {
     _lightingSignalTimestampMs = 0;
     _traceSnapshots.clear();
     _stableCoaching = const CoachingResult(
-      message: '\uC778\uBB3C\uC744 \uD654\uBA74 \uC548\uC5D0 \uB2F4\uC544\uBCF4\uC138\uC694',
+      message:
+          '\uC778\uBB3C\uC744 \uD654\uBA74 \uC548\uC5D0 \uB2F4\uC544\uBCF4\uC138\uC694',
       priority: CoachingPriority.critical,
       confidence: 1.0,
       reason:
@@ -577,15 +579,7 @@ class PortraitModeHandler {
     }
 
     if (analyzeLighting) {
-      await _analyzeLight(
-        bytes,
-        main,
-        nose,
-        lEye,
-        rEye,
-        lShoulder,
-        rShoulder,
-      );
+      await _analyzeLight(bytes, main, nose, lEye, rEye, lShoulder, rShoulder);
     }
   }
 
@@ -641,7 +635,10 @@ class PortraitModeHandler {
         metrics['portraitSmileProbability'] != null) {
       _markFaceSignalUpdated(frameId: _frameCount, timestampMs: nowMs);
     }
-    if (rawL != null && rawR != null && rawL < 0.35 && rawR < 0.35) {
+    if (rawL != null &&
+        rawR != null &&
+        rawL < _eyeClosedProbabilityThreshold &&
+        rawR < _eyeClosedProbabilityThreshold) {
       _eyeClosedStreak++;
     } else {
       _eyeClosedStreak = 0;
@@ -722,7 +719,9 @@ class PortraitModeHandler {
     if (effectiveResults.isNotEmpty) {
       _markFaceSignalUpdated(
         frameId: _frameCount,
-        timestampMs: _nativeFaceTimestampMs > 0 ? _nativeFaceTimestampMs : nowMs,
+        timestampMs: _nativeFaceTimestampMs > 0
+            ? _nativeFaceTimestampMs
+            : nowMs,
       );
       final mainFace = _selectPrimaryNativeFace(effectiveResults);
       _faceYaw = _smoothMetric(_faceYaw, mainFace.headEulerAngleY);
@@ -845,7 +844,9 @@ class PortraitModeHandler {
         'streak=$_personStreak stable=$stable',
       );
       if (DebugLogFlags.portraitMode) {
-        debugPrint('[PORTRAIT_MODE] mode=$_portraitModeLabel frame=$_frameCount');
+        debugPrint(
+          '[PORTRAIT_MODE] mode=$_portraitModeLabel frame=$_frameCount',
+        );
       }
     }
 
@@ -1659,9 +1660,15 @@ class PortraitModeHandler {
     }
     switch (_faceAnalysisSource) {
       case FaceAnalysisSource.previewCapture:
-        return _analyzeFaceFromPreviewCapture(bytes, analyzeQuality: analyzeQuality);
+        return _analyzeFaceFromPreviewCapture(
+          bytes,
+          analyzeQuality: analyzeQuality,
+        );
       case FaceAnalysisSource.imageAnalysis:
-        return _analyzeFaceFromImageAnalysis(bytes, analyzeQuality: analyzeQuality);
+        return _analyzeFaceFromImageAnalysis(
+          bytes,
+          analyzeQuality: analyzeQuality,
+        );
     }
   }
 
@@ -2043,7 +2050,9 @@ class PortraitModeHandler {
     final l = face.leftEyeOpenProbability;
     final r = face.rightEyeOpenProbability;
     if (l == null || r == null) return false;
-    return _isNativeFaceFrontalForEyes(face) && l < 0.35 && r < 0.35;
+    return _isNativeFaceFrontalForEyes(face) &&
+        l < _eyeClosedProbabilityThreshold &&
+        r < _eyeClosedProbabilityThreshold;
   }
 
   bool _isNativeFaceFrontalForEyes(NativeFaceResult face) {
@@ -2075,7 +2084,8 @@ class PortraitModeHandler {
     if (faces.isEmpty) return const [];
 
     final annotated = faces.map(_withDerivedNativeStatus).toList();
-    final sorted = annotated..sort((a, b) {
+    final sorted = annotated
+      ..sort((a, b) {
         final areaA = a.boundingBox.width * a.boundingBox.height;
         final areaB = b.boundingBox.width * b.boundingBox.height;
         return areaB.compareTo(areaA);
@@ -2096,8 +2106,10 @@ class PortraitModeHandler {
     }
 
     final hasEyeProb =
-        face.leftEyeOpenProbability != null && face.rightEyeOpenProbability != null;
-    final hasPoseAngles = face.headEulerAngleY != null &&
+        face.leftEyeOpenProbability != null &&
+        face.rightEyeOpenProbability != null;
+    final hasPoseAngles =
+        face.headEulerAngleY != null &&
         face.headEulerAngleX != null &&
         face.headEulerAngleZ != null;
     if (!hasEyeProb || !hasPoseAngles) {

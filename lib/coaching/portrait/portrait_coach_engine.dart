@@ -28,6 +28,43 @@ class PortraitCoachEngine {
     _rule = rule;
   }
 
+  ({CoachingResult result, double rank}) _candidate(
+    String signalPrefix,
+    CoachingResult result, {
+    double bias = 0.0,
+  }) {
+    final signalKey =
+        result.signalKey ?? '$signalPrefix.${result.priority.name}';
+    return (
+      result: CoachingResult(
+        message: result.message,
+        priority: result.priority,
+        confidence: result.confidence,
+        reason: result.reason,
+        signalKey: signalKey,
+      ),
+      rank: _priorityRank(result.priority) + result.confidence * 10.0 + bias,
+    );
+  }
+
+  CoachingResult? _pickCandidate(
+    List<({CoachingResult result, double rank})> candidates,
+  ) {
+    if (candidates.isEmpty) return null;
+    candidates.sort((a, b) => b.rank.compareTo(a.rank));
+    return candidates.first.result;
+  }
+
+  double _priorityRank(CoachingPriority priority) {
+    return switch (priority) {
+      CoachingPriority.critical => 100.0,
+      CoachingPriority.composition => 70.0,
+      CoachingPriority.pose => 55.0,
+      CoachingPriority.refinement => 42.0,
+      CoachingPriority.perfect => 12.0,
+    };
+  }
+
   CoachingResult evaluate(PortraitSceneState s) {
     final poseIntent = _inferPoseIntent(s);
 
@@ -147,24 +184,38 @@ class PortraitCoachEngine {
       );
     }
 
+    final candidates = <({CoachingResult result, double rank})>[];
+
     if (s.isFrontCamera) {
       final lighting = _evaluateLighting(s);
-      if (lighting != null) return lighting;
+      if (lighting != null) {
+        candidates.add(_candidate('portrait.lighting', lighting, bias: 8.0));
+      }
     }
 
     if (s.isFrontCamera && _enableShoulderAngleCoaching) {
       final lightPose = _evaluateLightingPoseCombined(s);
-      if (lightPose != null) return lightPose;
+      if (lightPose != null) {
+        candidates.add(_candidate('portrait.lightPose', lightPose, bias: 6.0));
+      }
     }
 
     final composition = _evaluateComposition(s, poseIntent);
-    if (composition != null) return composition;
+    if (composition != null) {
+      candidates.add(
+        _candidate('portrait.composition', composition, bias: 6.0),
+      );
+    }
 
     final pose = _evaluatePose(s, poseIntent);
-    if (pose != null) return pose;
+    if (pose != null) {
+      candidates.add(_candidate('portrait.pose', pose, bias: 2.0));
+    }
 
     final face = _evaluateFaceDirection(s, poseIntent);
-    if (face != null) return face;
+    if (face != null) {
+      candidates.add(_candidate('portrait.face', face));
+    }
 
     if (!s.hasEyes || !s.hasShoulders) {
       return const CoachingResult(
@@ -176,28 +227,41 @@ class PortraitCoachEngine {
 
     if (!s.isFrontCamera) {
       final lighting = _evaluateLighting(s);
-      if (lighting != null) return lighting;
+      if (lighting != null) {
+        candidates.add(_candidate('portrait.lighting', lighting, bias: 8.0));
+      }
     }
 
     if (!s.isFrontCamera && _enableShoulderAngleCoaching) {
       final lightPose = _evaluateLightingPoseCombined(s);
-      if (lightPose != null) return lightPose;
+      if (lightPose != null) {
+        candidates.add(_candidate('portrait.lightPose', lightPose, bias: 6.0));
+      }
     }
 
     // ─── 카메라 안정성은 구도/조명/포즈보다 뒤에서 보조적으로 사용 ──────
     final stability = _evaluateStability(s);
-    if (stability != null) return stability;
+    if (stability != null) {
+      candidates.add(_candidate('portrait.stability', stability, bias: 4.0));
+    }
 
     // ─── 셀카 전용 미세 조정은 공통 인물 규칙 뒤에서 적용 ─────────────
     if (s.isFrontCamera) {
       final selfie = _evaluateSelfie(s, poseIntent);
-      if (selfie != null) return selfie;
+      if (selfie != null) {
+        candidates.add(_candidate('portrait.selfie', selfie, bias: 3.0));
+      }
     }
 
     if (_enableSmileCoaching) {
       final expression = _evaluateExpression(s);
-      if (expression != null) return expression;
+      if (expression != null) {
+        candidates.add(_candidate('portrait.expression', expression));
+      }
     }
+
+    final picked = _pickCandidate(candidates);
+    if (picked != null) return picked;
 
     if (s.isFrontCamera) {
       return _selfieFallbackResult(s);
