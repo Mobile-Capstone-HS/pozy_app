@@ -38,7 +38,7 @@ class _PortraitAssetTestScreenState extends State<PortraitAssetTestScreen> {
   int _loadedCount = 0;
   int _totalCount = 0;
   PortraitIntent _intent = PortraitIntent.single;
-  bool _isFrontCamera = true;
+  bool _isFrontCamera = false;
 
   @override
   void initState() {

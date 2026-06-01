@@ -20,6 +20,9 @@ class PortraitCoachEngine {
   static const double _minConf = 0.5;
   static const bool _enableShoulderAngleCoaching = false;
   static const bool _enableSmileCoaching = false;
+  static const double _selfieBacklightMinConfidence = 0.72;
+  static const double _selfieBacklightStrongMinConfidence = 0.86;
+  static const double _selfieBacklightMinPersonRatio = 0.48;
 
   /// 사용자가 선택한 구도 규칙. none이면 기존 하드코딩 3분할 휴리스틱.
   CompositionRule _rule = CompositionRuleRegistry.of(CompositionRuleType.none);
@@ -97,7 +100,8 @@ class PortraitCoachEngine {
     }
 
     if (s.lightingCondition == LightingCondition.back &&
-        s.lightingConfidence >= 0.6 &&
+        s.lightingConfidence >=
+            (s.isFrontCamera ? _selfieBacklightMinConfidence : 0.6) &&
         (!s.hasNose || !s.hasEyes || s.visibleKeypointCount < 3)) {
       return CoachingResult(
         message: s.isFrontCamera ? '역광 때문에 얼굴이 어두워요' : '역광으로 얼굴이 어두워 보여요',
@@ -178,8 +182,10 @@ class PortraitCoachEngine {
     }
 
     if (s.lightingCondition == LightingCondition.back &&
-        s.lightingConfidence > 0.8 &&
-        s.personBboxRatio >= 0.4) {
+        s.lightingConfidence >
+            (s.isFrontCamera ? _selfieBacklightStrongMinConfidence : 0.8) &&
+        s.personBboxRatio >=
+            (s.isFrontCamera ? _selfieBacklightMinPersonRatio : 0.4)) {
       return CoachingResult(
         message: '강한 역광이에요',
         priority: CoachingPriority.critical,
@@ -275,7 +281,15 @@ class PortraitCoachEngine {
     if (picked != null) return picked;
 
     if (s.isFrontCamera) {
-      return _selfieFallbackResult(s);
+      final selfieFallback = _selfieFallbackResult(s);
+      if (selfieFallback.message != '각도와 빛을 조금 더 맞춰볼게요') {
+        return selfieFallback;
+      }
+      return const CoachingResult(
+        message: '지금 찍어도 좋아요',
+        priority: CoachingPriority.perfect,
+        confidence: 0.72,
+      );
     }
 
     final readiness = _evaluateReadinessForGoodComposition(s);
@@ -587,10 +601,14 @@ class PortraitCoachEngine {
         }
         return null;
       case LightingCondition.back:
-        if (s.personBboxRatio < 0.4) {
+        final minPersonRatio =
+            s.isFrontCamera ? _selfieBacklightMinPersonRatio : 0.4;
+        if (s.personBboxRatio < minPersonRatio) {
           return null;
         }
-        if (s.lightingConfidence >= 0.6) {
+        final minBacklightConfidence =
+            s.isFrontCamera ? _selfieBacklightMinConfidence : 0.6;
+        if (s.lightingConfidence >= minBacklightConfidence) {
           return CoachingResult(
             message: '역광이에요',
             priority: s.isFrontCamera
@@ -719,7 +737,7 @@ class PortraitCoachEngine {
           reason: '카메라를 살짝 내리거나 한 걸음 뒤로 가보세요',
         );
       }
-      if (s.footSpaceRatio > 0.20) {
+      if (s.footSpaceRatio > 0.15) {
         return const CoachingResult(
           message: '인물이 조금 작아요',
           priority: CoachingPriority.composition,
@@ -927,6 +945,16 @@ class PortraitCoachEngine {
         priority: CoachingPriority.composition,
         confidence: 0.68,
         reason: '카메라를 살짝 올리거나 반 걸음 가까이 가보세요',
+      );
+    }
+
+    final faceToPersonRatio = s.faceToPersonRatio;
+    if (faceToPersonRatio != null && faceToPersonRatio > 0.15) {
+      return const CoachingResult(
+        message: '폰 높이를 조금 낮춰보세요',
+        priority: CoachingPriority.composition,
+        confidence: 0.78,
+        reason: '머리 비중이 커 보여서 카메라를 조금 낮추면 비율이 더 좋아져요',
       );
     }
 
@@ -1176,7 +1204,7 @@ class PortraitCoachEngine {
         minH = 0.05;
         maxH = 0.10;
       case ShotType.fullBody:
-        minH = 0.05;
+        minH = 0.10;
         maxH = 0.50;
       case ShotType.environmental:
       case ShotType.groupShot:
@@ -1451,7 +1479,8 @@ class PortraitCoachEngine {
     }
 
     // 적절한 얼굴 각도 칭찬 (headShot/closeUp에서)
-    if ((s.shotType == ShotType.headShot || s.shotType == ShotType.closeUp) &&
+    if (!deferGenericFaceAngleToSelfie &&
+        (s.shotType == ShotType.headShot || s.shotType == ShotType.closeUp) &&
         s.faceYaw != null &&
         s.faceYaw!.abs() >= 15 &&
         s.faceYaw!.abs() <= 35) {
@@ -1481,6 +1510,31 @@ class PortraitCoachEngine {
         intent == _PoseIntent.casualSnapshot;
 
     // ── 1. 광각 왜곡 경고 (전면 카메라 = 광각, 가까울수록 왜곡 심함) ──
+    const horizontalFaceCropThreshold = 0.08;
+    const verticalFaceCropThreshold = 0.03;
+    final faceCroppedLeft = s.faceLeftInset <= horizontalFaceCropThreshold;
+    final faceCroppedTop = s.faceTopInset <= verticalFaceCropThreshold;
+    final faceCroppedRight = s.faceRightInset <= horizontalFaceCropThreshold;
+    final faceCroppedBottom = s.faceBottomInset <= verticalFaceCropThreshold;
+    final horizontalFaceCrop = faceCroppedLeft || faceCroppedRight;
+    final verticalFaceCrop = faceCroppedTop || faceCroppedBottom;
+
+    if (horizontalFaceCrop || verticalFaceCrop) {
+      final message = horizontalFaceCrop && verticalFaceCrop
+          ? '얼굴이 프레임 밖으로 잘려요'
+          : horizontalFaceCrop
+          ? '얼굴 옆부분이 잘려요'
+          : faceCroppedTop
+          ? '이마 쪽이 잘려요'
+          : '턱 쪽이 잘려요';
+      return CoachingResult(
+        message: message,
+        priority: CoachingPriority.composition,
+        confidence: 0.86,
+        reason: '얼굴 전체가 프레임 안에 들어오게 조금만 조정해보세요',
+      );
+    }
+
     if (s.personBboxRatio > 0.90) {
       return const CoachingResult(
         message: '너무 가까워요',
@@ -1633,7 +1687,7 @@ class PortraitCoachEngine {
       );
     }
 
-    if (pitch != null && pitch < -12) {
+    if (pitch != null && pitch < -15) {
       return const CoachingResult(
         message: '폰을 눈높이에 조금 더 가깝게 맞춰보세요.',
         priority: CoachingPriority.refinement,
@@ -1670,7 +1724,7 @@ class PortraitCoachEngine {
         roll <= 18) {
       return const CoachingResult(
         message: '셀카 앵글이 좋아요',
-        priority: CoachingPriority.refinement,
+        priority: CoachingPriority.perfect,
         confidence: 0.58,
         reason: '빛과 거리까지 맞으면 더 자연스러워요',
       );
