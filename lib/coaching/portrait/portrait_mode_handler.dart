@@ -1308,6 +1308,25 @@ class PortraitModeHandler {
     final effectiveLightingConf = lightingUsable
         ? lastLightingConf * lightingFreshness.freshness
         : 0.0;
+    double faceLeftInset = faceRect.left;
+    double faceTopInset = faceRect.top;
+    double faceRightInset = 1.0 - faceRect.right;
+    double faceBottomInset = 1.0 - faceRect.bottom;
+    if (_latestNativeFaceResults.isNotEmpty) {
+      final primaryNativeFace = _selectPrimaryNativeFace(_latestNativeFaceResults);
+      if (primaryNativeFace.imageWidth > 0 && primaryNativeFace.imageHeight > 0) {
+        faceLeftInset =
+            primaryNativeFace.boundingBox.left / primaryNativeFace.imageWidth;
+        faceTopInset =
+            primaryNativeFace.boundingBox.top / primaryNativeFace.imageHeight;
+        faceRightInset =
+            (primaryNativeFace.imageWidth - primaryNativeFace.boundingBox.right) /
+            primaryNativeFace.imageWidth;
+        faceBottomInset =
+            (primaryNativeFace.imageHeight - primaryNativeFace.boundingBox.bottom) /
+            primaryNativeFace.imageHeight;
+      }
+    }
 
     final state = PortraitSceneState(
       personCount: _stablePersonCount,
@@ -1322,6 +1341,10 @@ class PortraitModeHandler {
       faceCenterX: faceRect.center.dx,
       faceCenterY: faceRect.center.dy,
       faceBoxRatio: faceRect.width * faceRect.height,
+      faceLeftInset: faceLeftInset,
+      faceTopInset: faceTopInset,
+      faceRightInset: faceRightInset,
+      faceBottomInset: faceBottomInset,
       shoulderAngleDeg: shoulderAngle,
       leftArmBodyGap: lArmGap,
       rightArmBodyGap: rArmGap,
@@ -2157,13 +2180,13 @@ class PortraitModeHandler {
 
     double w;
     if (leftShoulder != null && rightShoulder != null) {
-      w = (rightShoulder.dx - leftShoulder.dx).abs() * 0.75;
+      w = (rightShoulder.dx - leftShoulder.dx).abs() * 0.95;
     } else if (leftEye != null && rightEye != null) {
-      w = (rightEye.dx - leftEye.dx).abs() * 2.4;
+      w = (rightEye.dx - leftEye.dx).abs() * 2.9;
     } else {
-      w = personBox.width * 0.38;
+      w = personBox.width * 0.44;
     }
-    w = w.clamp(0.12, 0.45);
+    w = w.clamp(0.12, 0.52);
     final h = (w * 1.18).clamp(0.14, 0.52);
     final l = (center.dx - w / 2).clamp(0.0, 1.0);
     final t = (center.dy - h * 0.45).clamp(0.0, 1.0);

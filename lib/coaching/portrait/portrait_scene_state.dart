@@ -81,6 +81,10 @@ class PortraitSceneState {
   final double faceCenterX;
   final double faceCenterY;
   final double faceBoxRatio;
+  final double faceLeftInset;
+  final double faceTopInset;
+  final double faceRightInset;
+  final double faceBottomInset;
 
   // 포즈 데이터 (YOLO Pose)
   final double? shoulderAngleDeg;
@@ -165,6 +169,10 @@ class PortraitSceneState {
     this.faceCenterX = 0.5,
     this.faceCenterY = 0.33,
     this.faceBoxRatio = 0.0,
+    this.faceLeftInset = 1.0,
+    this.faceTopInset = 1.0,
+    this.faceRightInset = 1.0,
+    this.faceBottomInset = 1.0,
     this.shoulderAngleDeg,
     this.leftArmBodyGap,
     this.rightArmBodyGap,
@@ -257,6 +265,11 @@ class PortraitSceneState {
 
   bool get hasBothAnkles =>
       leftAnklePosition != null && rightAnklePosition != null;
+
+  double? get faceToPersonRatio {
+    if (personBboxRatio <= 0.0 || faceBoxRatio <= 0.0) return null;
+    return faceBoxRatio / personBboxRatio;
+  }
 
   bool get hasAnyAnkle =>
       leftAnklePosition != null || rightAnklePosition != null;
