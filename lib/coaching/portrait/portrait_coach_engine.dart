@@ -791,12 +791,10 @@ class PortraitCoachEngine {
           message: s.intent == PortraitIntent.environmental
               ? '시선이 향하는 쪽에 장소의 여백을 남겨보세요'
               : '바라보는 쪽에 여백을 더 주세요',
-              : '바라보는 쪽에 여백을 더 주세요',
           priority: CoachingPriority.composition,
           confidence: 0.68,
           reason: s.intent == PortraitIntent.environmental
               ? '인물이 바라보는 방향으로 공간이 열리면 장면이 더 자연스럽게 읽혀요'
-              : '인물이 보는 방향으로 화면을 조금 더 비워보세요',
               : '인물이 보는 방향으로 화면을 조금 더 비워보세요',
         );
       }
@@ -1604,77 +1602,6 @@ class PortraitCoachEngine {
         priority: CoachingPriority.refinement,
         confidence: 0.7,
         reason: '얼굴이 수평에 가깝게 보이도록 바로 세워보세요',
-      );
-    }
-
-    return null;
-  }
-
-  CoachingResult? _evaluateSelfieAngle(PortraitSceneState s) {
-    if (!s.isFrontCamera || !s.hasFace) return null;
-
-    final yaw = s.faceYaw?.abs();
-    final pitch = s.facePitch;
-    final roll = s.faceRoll?.abs();
-
-    if (yaw != null && yaw < 8) {
-      return const CoachingResult(
-        message: '얼굴을 살짝만 옆으로 틀어보세요.',
-        priority: CoachingPriority.pose,
-        confidence: 0.64,
-        reason: '정면보다 살짝 틀어진 각도가 셀카에 더 자연스러워요',
-      );
-    }
-
-    if (yaw != null && yaw > 32) {
-      return const CoachingResult(
-        message: '얼굴을 정면 쪽으로 조금만 돌려보세요.',
-        priority: CoachingPriority.pose,
-        confidence: 0.66,
-        reason: '너무 옆을 보면 얼굴선이 강해 보여요',
-      );
-    }
-
-    if (pitch != null && pitch < -12) {
-      return const CoachingResult(
-        message: '폰을 눈높이에 조금 더 가깝게 맞춰보세요.',
-        priority: CoachingPriority.refinement,
-        confidence: 0.60,
-        reason: '눈높이보다 살짝 위 각도가 셀카에 가장 자연스러워요',
-      );
-    }
-
-    if (pitch != null && pitch > 12) {
-      return const CoachingResult(
-        message: '폰을 조금만 더 높여보세요.',
-        priority: CoachingPriority.refinement,
-        confidence: 0.60,
-        reason: '아래에서 올려다보는 각도보다 살짝 위가 더 안정적이에요',
-      );
-    }
-
-    if (roll != null && roll > 18) {
-      return const CoachingResult(
-        message: '고개 기울임을 조금만 줄여보세요.',
-        priority: CoachingPriority.refinement,
-        confidence: 0.58,
-        reason: '앵글은 좋고 기울기만 정리되면 더 자연스러워요',
-      );
-    }
-
-    if (yaw != null &&
-        pitch != null &&
-        roll != null &&
-        yaw >= 12 &&
-        yaw <= 28 &&
-        pitch >= -12 &&
-        pitch <= 8 &&
-        roll <= 18) {
-      return const CoachingResult(
-        message: '셀카 앵글이 좋아요',
-        priority: CoachingPriority.refinement,
-        confidence: 0.58,
-        reason: '빛과 거리까지 맞으면 더 자연스러워요',
       );
     }
 
