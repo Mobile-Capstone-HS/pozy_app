@@ -22,9 +22,11 @@ enum LightDirection {
 }
 
 class CoachingResult {
+  final String? signalKey;
   final String guidance;
   final CoachingLevel level;
   final String? subGuidance;
+  final double confidence;
 
   /// 0~100 점수. null이면 점수 표시하지 않음.
   final double? score;
@@ -36,9 +38,11 @@ class CoachingResult {
   final LightDirection lightDirection;
 
   const CoachingResult({
+    this.signalKey,
     required this.guidance,
     required this.level,
     this.subGuidance,
+    this.confidence = 1.0,
     this.score,
     this.directionHint = DirectionHint.none,
     this.lightDirection = LightDirection.unknown,

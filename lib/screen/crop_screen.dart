@@ -47,8 +47,13 @@ extension on _AspectRatioOption {
 
 class CropScreen extends StatefulWidget {
   final Uint8List sourceBytes;
+  final Uint8List previewBytes;
 
-  const CropScreen({super.key, required this.sourceBytes});
+  const CropScreen({
+    super.key,
+    required this.sourceBytes,
+    required this.previewBytes,
+  });
 
   @override
   State<CropScreen> createState() => _CropScreenState();
@@ -78,7 +83,7 @@ class _CropScreenState extends State<CropScreen> {
     setState(() => _isProcessing = true);
     try {
       final result = await compute(_decodeForDisplay, {
-        'bytes': widget.sourceBytes,
+        'bytes': widget.previewBytes,
         'rotation': _rotationSteps * 90,
       });
       if (!mounted) return;
@@ -648,13 +653,10 @@ Map<String, dynamic> _decodeForDisplay(Map<String, dynamic> request) {
   var image = img.decodeImage(bytes);
   if (image == null) throw Exception('이미지를 해석할 수 없습니다.');
 
-  image = img.bakeOrientation(image);
+  // previewBytes는 이미 bakeOrientation 처리가 완료되어 있으므로 생략합니다.
 
-  if (rotation != 0) {
-    image = img.copyRotate(image, angle: rotation);
-  }
-
-  final maxDim = 1200;
+  // 먼저 크기를 900px 한도로 축소한 다음 회전을 수행하여 회전 연산 속도를 비약적으로 향상시킵니다.
+  final maxDim = 900;
   final longestSide = max(image.width, image.height);
   if (longestSide > maxDim) {
     if (image.width >= image.height) {
@@ -664,8 +666,12 @@ Map<String, dynamic> _decodeForDisplay(Map<String, dynamic> request) {
     }
   }
 
+  if (rotation != 0) {
+    image = img.copyRotate(image, angle: rotation);
+  }
+
   return {
-    'display': Uint8List.fromList(img.encodeJpg(image, quality: 88)),
+    'display': Uint8List.fromList(img.encodeJpg(image, quality: 85)),
     'width': image.width,
     'height': image.height,
   };
@@ -684,16 +690,40 @@ Uint8List _applyCropAndRotate(Map<String, dynamic> request) {
 
   image = img.bakeOrientation(image);
 
+  // 최적화: 회전 전 원본 이미지에서 자르기 영역을 역산하여 먼저 자르고(copyCrop),
+  // 잘려진 작은 이미지에 대해서만 회전(copyRotate)을 수행함으로써 연산 속도와 메모리를 크게 최적화합니다.
+  double leftUnrot = cropLeft;
+  double topUnrot = cropTop;
+  double widthUnrot = cropWidth;
+  double heightUnrot = cropHeight;
+
+  if (rotation == 90) {
+    leftUnrot = cropTop;
+    topUnrot = 1.0 - (cropLeft + cropWidth);
+    widthUnrot = cropHeight;
+    heightUnrot = cropWidth;
+  } else if (rotation == 180) {
+    leftUnrot = 1.0 - (cropLeft + cropWidth);
+    topUnrot = 1.0 - (cropTop + cropHeight);
+    widthUnrot = cropWidth;
+    heightUnrot = cropHeight;
+  } else if (rotation == 270) {
+    leftUnrot = 1.0 - (cropTop + cropHeight);
+    topUnrot = cropLeft;
+    widthUnrot = cropHeight;
+    heightUnrot = cropWidth;
+  }
+
+  final x = (leftUnrot * image.width).round().clamp(0, image.width - 1);
+  final y = (topUnrot * image.height).round().clamp(0, image.height - 1);
+  final w = (widthUnrot * image.width).round().clamp(1, image.width - x);
+  final h = (heightUnrot * image.height).round().clamp(1, image.height - y);
+
+  image = img.copyCrop(image, x: x, y: y, width: w, height: h);
+
   if (rotation != 0) {
     image = img.copyRotate(image, angle: rotation);
   }
-
-  final x = (cropLeft * image.width).round().clamp(0, image.width - 1);
-  final y = (cropTop * image.height).round().clamp(0, image.height - 1);
-  final w = (cropWidth * image.width).round().clamp(1, image.width - x);
-  final h = (cropHeight * image.height).round().clamp(1, image.height - y);
-
-  image = img.copyCrop(image, x: x, y: y, width: w, height: h);
 
   return Uint8List.fromList(img.encodeJpg(image, quality: 92));
 }

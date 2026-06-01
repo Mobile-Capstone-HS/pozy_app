@@ -1,0 +1,9 @@
+category,model_id,file,class_or_function,finding,evidence,risk_level,recommended_action
+Formula,nima_mobile/rgnet_pil_resize_aadb/mobile_alamp_v2/icaa_color_aesthetic,aesthetic_ensemble_weights.dart,Aesthetic blending weights confirmed,"NIMA=0.1, RGNet=0.4, ALAMP=0.3, ICAA=0.2 confirmed in defaults",Safe,Keep as is
+Performance,mobile_alamp_v2,image_preprocessor.dart,_selectAlampAdaptivePatchBoxes,A-LAMP patch scoring on main isolate,Uses nested loops and scoring on Main Isolate,High,Move to background isolate
+Performance,icaa_color_aesthetic,image_preprocessor.dart,AcutImagePreprocessBundle.rgbFloat32,Redundant resize for ICAA,ICAA normalization (imageNet) prevents cache hit for 224x224 resized image,Medium,Cache resized img.Image before normalization
+Performance,all,image_preprocessor.dart,AcutImagePreprocessBundle,All preprocessing on main isolate,None of the bundle methods use compute/isolate,High,Offload all bundle methods to isolates
+Contract,nima_mobile,tflite_aesthetic_service.dart,_parseNimaDistribution10,Distribution conversion confirmed,Correctly calculates weighted mean then normalizes to [0,1],Safe,Keep as is
+Optimization,nima_mobile/koniq_mobile/flive_image_mobile,image_preprocessor.dart,AcutImagePreprocessBundle,Tensor sharing already active,All 3 use zeroToOne 224x224 and hit the same cache key,Safe,Keep as is
+Orientation,all,image_preprocessor.dart,ImagePreprocessor,Missing bakeOrientation after decode,img.bakeOrientation is only called for Gemma VLM input path,Medium,Verify photo_manager orientation and consider adding bakeOrientation to bundle
+Flags,rgnet_pil_resize_aadb/mobile_alamp_v2,tflite_aesthetic_service.dart,_isModelDisabledForBatch,Aesthetic models bypass batch disable flags,Hardcoded to return false for aesthetic IDs,Low,Align with ExperimentalFeatures flags if batch disable is desired

@@ -344,10 +344,15 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   Future<void> _openCropScreen() async {
-    if (_sourceBytes == null) return;
+    if (_sourceBytes == null || _previewSourceBytes == null) return;
 
     final result = await Navigator.of(context).push<Uint8List>(
-      MaterialPageRoute(builder: (_) => CropScreen(sourceBytes: _sourceBytes!)),
+      MaterialPageRoute(
+        builder: (_) => CropScreen(
+          sourceBytes: _sourceBytes!,
+          previewBytes: _previewSourceBytes!,
+        ),
+      ),
     );
 
     if (result == null || !mounted) return;
