@@ -1,0 +1,28 @@
+category,file,reference,classification,safe_action,risk_level,notes
+Asset,assets/models/topiq_lite_mixed112_frozen_fp16.tflite,N/A,dead/unused,Delete,Low,Reduces bundle size by 12.6 MB
+Asset,assets/models/topiq_lite_mixed112.metadata.json,N/A,dead/unused,Delete,Low,
+Flag,lib/config/experimental_features.dart,enableC6TopiqKoniqCandidate,experiment-only,Remove,Low,
+Flag,lib/config/experimental_features.dart,enableTopiqPreprocessDebug,debug-only,Remove,Low,
+Flag,lib/config/experimental_features.dart,enableTopiqTensorFingerprint,debug-only,Remove,Low,
+Contract,lib/feature/a_cut/layer/inference/aesthetic_model_contract.dart,topiqLiteMixed112Contract,experiment-only,Remove,Low,
+Method,lib/feature/a_cut/layer/evaluation/photo_evaluation_service.dart,_logC6TopiqCandidate,debug-only,Remove,Low,
+Method,lib/feature/a_cut/layer/inference/tflite_aesthetic_service.dart,_maybeLogTopiqPreprocessDebug,debug-only,Remove,Low,
+Method,lib/feature/a_cut/layer/inference/tflite_aesthetic_service.dart,_maybeLogTopiqTensorFingerprint,debug-only,Remove,Low,
+Method,lib/feature/a_cut/layer/inference/tflite_aesthetic_service.dart,_calculateTopiqTensorStats,debug-only,Remove,Low,
+Class,lib/feature/a_cut/layer/inference/tflite_aesthetic_service.dart,_TopiqTensorStats,debug-only,Remove,Low,
+Doc,docs/acut_c6_topiq_koniq_android_smoke_20260527.md,N/A,documentation-only,Delete,Low,
+Doc,docs/acut_c6_topiq_koniq_flutter_preimplementation_audit_20260527.md,N/A,documentation-only,Delete,Low,
+Doc,docs/acut_c6_topiq_koniq_flutter_reaudit_after_asset_add_20260527.md,N/A,documentation-only,Delete,Low,
+Doc,docs/acut_c6_topiq_koniq_larger_batch_20260527.md,N/A,documentation-only,Delete,Low,
+Doc,docs/acut_topiq_tensor_fingerprint_debug_20260529.md,N/A,documentation-only,Delete,Low,
+Artifact,docs/acut_topiq_tensor_fingerprint_rows_20260529.csv,N/A,generated artifact,Delete,Low,
+Script,scripts/parse_topiq_logs.py,N/A,debug-only,Delete,Low,
+Log,c6_android_parity_20260527.log,N/A,generated artifact,Delete,Low,
+Log,c6_topiq_larger_batch_20260527.log,N/A,generated artifact,Delete,Low,
+Log,c6_topiq_smoke_20260527.log,N/A,generated artifact,Delete,Low,
+Log,c6_topiq_tensor_debug_20260529.log,N/A,generated artifact,Delete,Low,
+Log,full_logcat_c6_smoke_20260527.log,N/A,generated artifact,Delete,Low,
+Helper,lib/feature/a_cut/layer/inference/image_preprocessor.dart,resizeWithPadRgbFloat32,production-active,KEEP,High,Used by A-LAMP global view
+Helper,lib/feature/a_cut/layer/inference/aesthetic_model_contract.dart,AestheticModelResizeMode.resizeWithPad,production-active,KEEP,High,Used by A-LAMP global view
+Model,lib/feature/a_cut/layer/inference/aesthetic_model_contract.dart,koniqMobileContract,production-active,KEEP,High,Production technical score
+Model,lib/feature/a_cut/layer/inference/aesthetic_model_contract.dart,fliveImageMobileContract,production-active,KEEP,High,Production technical score

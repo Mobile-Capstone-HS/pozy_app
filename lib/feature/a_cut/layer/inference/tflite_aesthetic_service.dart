@@ -6,6 +6,7 @@ import 'package:flutter_litert/flutter_litert.dart';
 
 import '../../../../config/experimental_features.dart';
 import '../../model/model_score_detail.dart';
+import 'acut_perf.dart';
 import 'aesthetic_model_contract.dart';
 import 'image_preprocessor.dart';
 import 'tflite_interpreter_manager.dart';
@@ -82,6 +83,7 @@ class TfliteAestheticService {
     Uint8List imageBytes,
     AestheticModelContract contract, {
     int? imageIndex,
+    String? debugImageLabel,
     AcutImagePreprocessBundle? bundle,
     AcutImagePreprocessBundle? preprocessBundle,
     Map<String, Future<Uint8List>>? inputCache,
@@ -98,6 +100,7 @@ class TfliteAestheticService {
       resolvedConfig,
       inputCache: inputCache ?? <String, Future<Uint8List>>{},
       imageIndex: imageIndex,
+      debugImageLabel: debugImageLabel,
       bundle: bundle ?? preprocessBundle,
     );
 
@@ -163,7 +166,17 @@ class TfliteAestheticService {
       throw Exception('No technical quality model could be executed.');
     }
 
+    final technicalMergeSw = AcutAestheticTimingDebug.start();
     final technicalScore = _blend(technicalDetails);
+    _logTimingElapsedUs(
+      stopwatch: technicalMergeSw,
+      modelId: 'technical_ensemble',
+      phase: 'technical_score_merge',
+      fields: <String, Object?>{
+        'model_count': technicalDetails.length,
+        'timing_tag': 'AcutTimingTechnicalModel',
+      },
+    );
     final aestheticScore = aestheticDetails.isEmpty
         ? null
         : _blend(aestheticDetails);
@@ -201,8 +214,7 @@ class TfliteAestheticService {
     );
     final resolved = contract.resolve(metadataResult: metadataResult);
     if (contract.id == 'nima_mobile' ||
-        contract.id == 'rgnet_pil_resize_aadb' ||
-        contract.id == 'topiq_lite_mixed112') {
+        contract.id == 'rgnet_pil_resize_aadb') {
       debugPrint(
         '[TfliteAestheticService] model_resolved '
         'id=${resolved.id} '
@@ -222,6 +234,7 @@ class TfliteAestheticService {
     ResolvedAestheticModelConfig contract, {
     required Map<String, Future<Uint8List>> inputCache,
     int? imageIndex,
+    String? debugImageLabel,
     AcutImagePreprocessBundle? bundle,
   }) async {
     try {
@@ -230,6 +243,7 @@ class TfliteAestheticService {
         contract,
         inputCache: inputCache,
         imageIndex: imageIndex,
+        debugImageLabel: debugImageLabel,
         bundle: bundle,
       );
     } catch (error, stackTrace) {
@@ -249,6 +263,7 @@ class TfliteAestheticService {
           contract,
           inputCache: inputCache,
           imageIndex: imageIndex,
+          debugImageLabel: debugImageLabel,
           bundle: bundle,
         );
         debugPrint(
@@ -276,6 +291,7 @@ class TfliteAestheticService {
     return _interpreterManager.evict(
       contract.assetPath,
       useFlexDelegate: contract.useFlexDelegate,
+      modelId: contract.id,
     );
   }
 
@@ -284,6 +300,7 @@ class TfliteAestheticService {
     ResolvedAestheticModelConfig contract, {
     required Map<String, Future<Uint8List>> inputCache,
     int? imageIndex,
+    String? debugImageLabel,
     AcutImagePreprocessBundle? bundle,
   }) async {
     final sw = Stopwatch()..start();
@@ -297,6 +314,7 @@ class TfliteAestheticService {
         .withInterpreter(
           contract.assetPath,
           useFlexDelegate: contract.useFlexDelegate,
+          modelId: contract.id,
           action: (interpreter, descriptor) async {
             if (contract.inputDtype != 'float32') {
               throw Exception(
@@ -322,6 +340,8 @@ class TfliteAestheticService {
                   interpreter: interpreter,
                   descriptor: descriptor,
                   inputCache: inputCache,
+                  imageIndex: imageIndex,
+                  debugImageLabel: debugImageLabel,
                   bundle: bundle,
                 );
               case AestheticModelExecutionMode.signature:
@@ -331,6 +351,8 @@ class TfliteAestheticService {
                   interpreter: interpreter,
                   descriptor: descriptor,
                   inputCache: inputCache,
+                  imageIndex: imageIndex,
+                  debugImageLabel: debugImageLabel,
                   bundle: bundle,
                 );
             }
@@ -362,6 +384,8 @@ class TfliteAestheticService {
     required Interpreter interpreter,
     required TfliteModelDescriptor descriptor,
     required Map<String, Future<Uint8List>> inputCache,
+    int? imageIndex,
+    String? debugImageLabel,
     AcutImagePreprocessBundle? bundle,
   }) async {
     if (contract.id == 'nima_mobile') {
@@ -440,6 +464,19 @@ class TfliteAestheticService {
       debugPrint(
         '[AcutPerf] preprocess_${inputWidth}_ms=$pMs model=${contract.id}',
       );
+      AcutAestheticTimingDebug.log(
+        imageLabel: debugImageLabel,
+        imageIndex: imageIndex,
+        modelId: contract.id,
+        phase: 'nima_preprocessing',
+        elapsedMs: pMs,
+        tensorShape: '[1,$inputHeight,$inputWidth,3]',
+        imageDimensions: _sourceImageDimensions(bundle),
+        fields: <String, Object?>{
+          'normalization': contract.normalization.name,
+          'bytes': preprocessed.lengthInBytes,
+        },
+      );
 
       if (preprocessed.lengthInBytes != expectedBytes) {
         debugPrint(
@@ -468,6 +505,14 @@ class TfliteAestheticService {
       inferSw.stop();
       final int iMs = inferSw.elapsedMilliseconds;
       AcutPerfMetrics.totalInferenceMs += iMs;
+      AcutAestheticTimingDebug.log(
+        imageLabel: debugImageLabel,
+        imageIndex: imageIndex,
+        modelId: contract.id,
+        phase: 'nima_inference',
+        elapsedMs: iMs,
+        tensorShape: '[1,10]',
+      );
 
       if (ExperimentalFeatures.verboseModelLogs) {
         debugPrint(
@@ -502,6 +547,8 @@ class TfliteAestheticService {
         interpreter: interpreter,
         descriptor: descriptor,
         inputCache: inputCache,
+        imageIndex: imageIndex,
+        debugImageLabel: debugImageLabel,
         bundle: bundle,
       );
     }
@@ -564,6 +611,22 @@ class TfliteAestheticService {
         '[AcutPerf] preprocess_${runtimeWidth}_ms=$pMs model=${contract.id} '
         'resize_mode=${contract.resizeMode.name}',
       );
+      if (contract.id == 'icaa_color_aesthetic') {
+        AcutAestheticTimingDebug.log(
+          imageLabel: debugImageLabel,
+          imageIndex: imageIndex,
+          modelId: contract.id,
+          phase: 'icaa_preprocessing',
+          elapsedMs: pMs,
+          tensorShape: '[1,$runtimeHeight,$runtimeWidth,3]',
+          imageDimensions: _sourceImageDimensions(bundle),
+          fields: <String, Object?>{
+            'normalization': contract.normalization.name,
+            'resize_mode': contract.resizeMode.name,
+            'bytes': preprocessed.lengthInBytes,
+          },
+        );
+      }
 
       if (preprocessed.lengthInBytes != expectedBytes) {
         throw Exception(
@@ -616,6 +679,31 @@ class TfliteAestheticService {
     final iMs = inferSw.elapsedMilliseconds;
     AcutPerfMetrics.totalInferenceMs += iMs;
     debugPrint('[AcutPerf] model_inference_only_ms=$iMs model=${contract.id}');
+    final technicalInferencePhase = _technicalInferencePhase(contract.id);
+    if (technicalInferencePhase != null) {
+      AcutAestheticTimingDebug.log(
+        imageLabel: debugImageLabel,
+        imageIndex: imageIndex,
+        modelId: contract.id,
+        phase: technicalInferencePhase,
+        elapsedMs: iMs,
+        tensorShape: _shapeString(outputDescriptors.first.shape),
+        fields: <String, Object?>{
+          'elapsedUs': inferSw.elapsedMicroseconds,
+          'timing_tag': 'AcutTimingTechnicalModel',
+        },
+      );
+    }
+    if (contract.id == 'icaa_color_aesthetic') {
+      AcutAestheticTimingDebug.log(
+        imageLabel: debugImageLabel,
+        imageIndex: imageIndex,
+        modelId: contract.id,
+        phase: 'icaa_inference',
+        elapsedMs: iMs,
+        tensorShape: _shapeString(outputDescriptors.first.shape),
+      );
+    }
 
     final int totalMs = preprocessMs + iMs;
     debugPrint(
@@ -696,6 +784,8 @@ class TfliteAestheticService {
     required Interpreter interpreter,
     required TfliteModelDescriptor descriptor,
     required Map<String, Future<Uint8List>> inputCache,
+    int? imageIndex,
+    String? debugImageLabel,
     AcutImagePreprocessBundle? bundle,
   }) async {
     final inputDescriptor = _primaryInputDescriptor(descriptor, contract);
@@ -766,6 +856,19 @@ class TfliteAestheticService {
     debugPrint(
       '[AcutPerf] preprocess_${inputWidth}_ms=$pMs model=${contract.id}',
     );
+    AcutAestheticTimingDebug.log(
+      imageLabel: debugImageLabel,
+      imageIndex: imageIndex,
+      modelId: contract.id,
+      phase: 'rgnet_preprocessing',
+      elapsedMs: pMs,
+      tensorShape: '[1,$inputHeight,$inputWidth,3]',
+      imageDimensions: _sourceImageDimensions(bundle),
+      fields: <String, Object?>{
+        'normalization': contract.normalization.name,
+        'bytes': preprocessed.lengthInBytes,
+      },
+    );
 
     if (preprocessed.lengthInBytes != expectedBytes) {
       throw Exception(
@@ -786,6 +889,14 @@ class TfliteAestheticService {
     final iMs = inferSw.elapsedMilliseconds;
     AcutPerfMetrics.totalInferenceMs += iMs;
     AcutPerfMetrics.totalRgnetMs += pMs + iMs;
+    AcutAestheticTimingDebug.log(
+      imageLabel: debugImageLabel,
+      imageIndex: imageIndex,
+      modelId: contract.id,
+      phase: 'rgnet_inference',
+      elapsedMs: iMs,
+      tensorShape: _shapeString(outputShape),
+    );
 
     final rawValue = output.first.first;
     final outputValues = Float32List.fromList([rawValue]);
@@ -917,6 +1028,17 @@ class TfliteAestheticService {
     }
   }
 
+  String? _sourceImageDimensions(AcutImagePreprocessBundle? bundle) {
+    if (bundle == null) {
+      return null;
+    }
+    return '${bundle.sourceWidth}x${bundle.sourceHeight}';
+  }
+
+  String _shapeString(List<int> shape) {
+    return '[${shape.join(',')}]';
+  }
+
   List<double> _extractNimaProbabilities(dynamic output) {
     if (output == null) {
       debugPrint('[AcutPerf] NIMA_OUTPUT_EMPTY');
@@ -1021,6 +1143,8 @@ class TfliteAestheticService {
     required Interpreter interpreter,
     required TfliteModelDescriptor descriptor,
     required Map<String, Future<Uint8List>> inputCache,
+    int? imageIndex,
+    String? debugImageLabel,
     AcutImagePreprocessBundle? bundle,
   }) async {
     if (descriptor.signatures.isEmpty) {
@@ -1054,6 +1178,8 @@ class TfliteAestheticService {
         signature: signatureDescriptor,
         inputNames: inputNames,
         inputCache: inputCache,
+        imageIndex: imageIndex,
+        debugImageLabel: debugImageLabel,
         bundle: bundle,
       );
 
@@ -1093,6 +1219,17 @@ class TfliteAestheticService {
       debugPrint(
         '[AcutPerf] model_inference_only_ms=$iMs model=${contract.id}',
       );
+      if (contract.id == 'mobile_alamp_v2') {
+        AcutAestheticTimingDebug.log(
+          imageLabel: debugImageLabel,
+          imageIndex: imageIndex,
+          modelId: contract.id,
+          phase: 'alamp_inference',
+          elapsedMs: iMs,
+          tensorShape: _shapeString(outputDescriptor.shape),
+          fields: <String, Object?>{'signature': signatureKey},
+        );
+      }
       final totalMs = preparedInputs.preprocessMs + iMs;
       debugPrint(
         '[AcutPerf] model_total_with_preprocess_ms=$totalMs model=${contract.id}',
@@ -1150,6 +1287,8 @@ class TfliteAestheticService {
     required TfliteSignatureDescriptor signature,
     required List<String> inputNames,
     required Map<String, Future<Uint8List>> inputCache,
+    int? imageIndex,
+    String? debugImageLabel,
     AcutImagePreprocessBundle? bundle,
   }) async {
     switch (contract.id) {
@@ -1160,6 +1299,8 @@ class TfliteAestheticService {
           signature: signature,
           inputNames: inputNames,
           inputCache: inputCache,
+          imageIndex: imageIndex,
+          debugImageLabel: debugImageLabel,
           bundle: bundle,
         );
     }
@@ -1175,6 +1316,8 @@ class TfliteAestheticService {
     required TfliteSignatureDescriptor signature,
     required List<String> inputNames,
     required Map<String, Future<Uint8List>> inputCache,
+    int? imageIndex,
+    String? debugImageLabel,
     AcutImagePreprocessBundle? bundle,
   }) async {
     final patchInputName = _findInputName(
@@ -1211,6 +1354,8 @@ class TfliteAestheticService {
         '${patchSpec.patchCount}:${contract.normalization.name}';
 
     final preSw = Stopwatch()..start();
+    final globalCacheHit = inputCache.containsKey(globalCacheKey);
+    final globalSw = AcutAestheticTimingDebug.start();
     final globalBuffer = await inputCache.putIfAbsent(
       globalCacheKey,
       () => contract.id == 'mobile_alamp_v2'
@@ -1237,6 +1382,21 @@ class TfliteAestheticService {
                   normalization: contract.normalization,
                 ),
     );
+    AcutAestheticTimingDebug.logElapsed(
+      stopwatch: globalSw,
+      imageLabel: debugImageLabel,
+      imageIndex: imageIndex,
+      modelId: contract.id,
+      phase: 'alamp_global_preprocessing',
+      tensorShape: '[1,$globalSide,$globalSide,3]',
+      imageDimensions: _sourceImageDimensions(bundle),
+      fields: <String, Object?>{
+        'normalization': contract.normalization.name,
+        'cache_hit': globalCacheHit,
+        'input_name': globalInputName,
+        'bytes': globalBuffer.lengthInBytes,
+      },
+    );
     final patchBuffer = await inputCache.putIfAbsent(
       patchesCacheKey,
       () =>
@@ -1245,6 +1405,8 @@ class TfliteAestheticService {
             patchHeight: patchSpec.patchHeight,
             patchCount: patchSpec.patchCount,
             normalization: contract.normalization,
+            debugImageLabel: debugImageLabel,
+            imageIndex: imageIndex,
           ) ??
           _preprocessor.preprocessAlampAdaptivePatchesFloat32(
             imageBytes,
@@ -1446,6 +1608,45 @@ class TfliteAestheticService {
     );
 
     return (weightedSum / totalWeight).clamp(0.0, 1.0).toDouble();
+  }
+
+  String? _technicalInferencePhase(String modelId) {
+    return switch (modelId) {
+      'koniq_mobile' => 'koniq_inference',
+      'flive_image_mobile' => 'flive_inference',
+      _ => null,
+    };
+  }
+
+  void _logTimingElapsedUs({
+    required Stopwatch? stopwatch,
+    required String modelId,
+    required String phase,
+    String? imageLabel,
+    int? imageIndex,
+    String? tensorShape,
+    String? imageDimensions,
+    Map<String, Object?> fields = const <String, Object?>{},
+  }) {
+    if (stopwatch == null) {
+      return;
+    }
+    if (stopwatch.isRunning) {
+      stopwatch.stop();
+    }
+    AcutAestheticTimingDebug.log(
+      imageLabel: imageLabel,
+      imageIndex: imageIndex,
+      modelId: modelId,
+      phase: phase,
+      elapsedMs: stopwatch.elapsedMilliseconds,
+      tensorShape: tensorShape,
+      imageDimensions: imageDimensions,
+      fields: <String, Object?>{
+        'elapsedUs': stopwatch.elapsedMicroseconds,
+        ...fields,
+      },
+    );
   }
 }
 
