@@ -5,6 +5,7 @@ import 'package:ultralytics_yolo/yolo.dart';
 
 import '../composition/composition_rule.dart';
 import '../composition/composition_rule_registry.dart';
+import 'coaching_message_catalog.dart';
 import 'coaching_result.dart';
 import 'object_image_analyzer.dart';
 
@@ -428,6 +429,67 @@ class _CoachingEngine {
   final _IssueAccumulator _acc = _IssueAccumulator();
   double _shootReady = 0.0;
 
+  CoachingResult _messageResult(
+    ObjectCoachingSignal signal, {
+    required double? score,
+    required LightDirection lightDirection,
+    double confidence = 1.0,
+    DirectionHint? directionHint,
+    String? ruleLabel,
+    String? ruleGuidance,
+  }) {
+    final spec = CoachingMessageCatalog.object(
+      signal,
+      lightDirection: lightDirection,
+      ruleLabel: ruleLabel,
+      ruleGuidance: ruleGuidance,
+    );
+    return CoachingResult(
+      signalKey: 'object.${signal.name}',
+      guidance: spec.guidance,
+      subGuidance: spec.subGuidance,
+      level: spec.level,
+      confidence: confidence.clamp(0.0, 1.0),
+      score: score,
+      directionHint: directionHint ?? spec.directionHint,
+      lightDirection: spec.lightDirection == LightDirection.unknown
+          ? lightDirection
+          : spec.lightDirection,
+    );
+  }
+
+  ({CoachingResult result, double rank}) _candidate(
+    ObjectCoachingSignal signal, {
+    required double rank,
+    required double? score,
+    required LightDirection lightDirection,
+    double confidence = 1.0,
+    DirectionHint? directionHint,
+    String? ruleLabel,
+    String? ruleGuidance,
+  }) {
+    return (
+      result: _messageResult(
+        signal,
+        score: score,
+        lightDirection: lightDirection,
+        confidence: confidence,
+        directionHint: directionHint,
+        ruleLabel: ruleLabel,
+        ruleGuidance: ruleGuidance,
+      ),
+      rank: rank,
+    );
+  }
+
+  CoachingResult? _pickCandidate(
+    List<({CoachingResult result, double rank})> candidates,
+  ) {
+    if (candidates.isEmpty) return null;
+    candidates.sort((a, b) => b.rank.compareTo(a.rank));
+    return candidates.first.result;
+  }
+
   void decayStaleImageQuality() {
     _acc.decayImageQuality();
   }
@@ -539,6 +601,15 @@ class _CoachingEngine {
       }
     }
 
+    if (s.numObjects < 0.5) {
+      _shootReady = (_shootReady - 0.20).clamp(0.0, 1.0);
+      return _messageResult(
+        ObjectCoachingSignal.noSubject,
+        score: null,
+        lightDirection: lightDir,
+      );
+    }
+
     // 피사체 고정 조건은 다른 모든 코칭보다 우선한다.
     if (s.numObjects < 0.5) {
       _shootReady = (_shootReady - 0.20).clamp(0.0, 1.0);
@@ -569,6 +640,152 @@ class _CoachingEngine {
           0.0,
           1.0,
         );
+
+    final candidates = <({CoachingResult result, double rank})>[];
+
+    if (_acc.clippedSubject >= 0.24) {
+      candidates.add(
+        _candidate(
+          ObjectCoachingSignal.clippedSubject,
+          rank: 103 + _acc.clippedSubject * 18,
+          confidence: _acc.clippedSubject,
+          score: score,
+          lightDirection: lightDir,
+        ),
+      );
+    }
+    if (_acc.tooClose >= 0.48) {
+      candidates.add(
+        _candidate(
+          ObjectCoachingSignal.tooClose,
+          rank: 88 + _acc.tooClose * 12,
+          confidence: _acc.tooClose,
+          score: score,
+          lightDirection: lightDir,
+        ),
+      );
+    }
+    if (_acc.backlight >= 0.52) {
+      candidates.add(
+        _candidate(
+          ObjectCoachingSignal.backlight,
+          rank: 98 + _acc.backlight * 16,
+          confidence: _acc.backlight,
+          score: score,
+          lightDirection: LightDirection.behind,
+        ),
+      );
+    }
+    if (_acc.dark >= 0.52) {
+      candidates.add(
+        _candidate(
+          ObjectCoachingSignal.dark,
+          rank: 92 + _acc.dark * 14,
+          confidence: _acc.dark,
+          score: score,
+          lightDirection: lightDir,
+        ),
+      );
+    }
+    if (_acc.blur >= 0.52) {
+      candidates.add(
+        _candidate(
+          ObjectCoachingSignal.blur,
+          rank: 90 + _acc.blur * 14,
+          confidence: _acc.blur,
+          score: score,
+          lightDirection: lightDir,
+        ),
+      );
+    }
+    if (_acc.over >= 0.52) {
+      candidates.add(
+        _candidate(
+          ObjectCoachingSignal.overexposed,
+          rank: 88 + _acc.over * 14,
+          confidence: _acc.over,
+          score: score,
+          lightDirection: lightDir,
+        ),
+      );
+    }
+    if (_acc.tiltStrong >= 0.24) {
+      candidates.add(
+        _candidate(
+          ObjectCoachingSignal.tiltStrong,
+          rank: 86 + _acc.tiltStrong * 12,
+          confidence: _acc.tiltStrong,
+          score: score,
+          lightDirection: lightDir,
+        ),
+      );
+    }
+    if (_acc.tiltMild >= 0.32) {
+      candidates.add(
+        _candidate(
+          ObjectCoachingSignal.tiltMild,
+          rank: 66 + _acc.tiltMild * 10,
+          confidence: _acc.tiltMild,
+          score: score,
+          lightDirection: lightDir,
+        ),
+      );
+    }
+    if (_acc.smallSubject >= 0.56) {
+      candidates.add(
+        _candidate(
+          ObjectCoachingSignal.smallSubject,
+          rank: 58 + _acc.smallSubject * 10,
+          confidence: _acc.smallSubject,
+          score: score,
+          lightDirection: lightDir,
+        ),
+      );
+    }
+    if (_acc.imbalance >= 0.58) {
+      final hint = directionFromCenter(s);
+      if (ruleActive) {
+        candidates.add(
+          _candidate(
+            ObjectCoachingSignal.ruleImbalance,
+            rank: 62 + _acc.imbalance * 10,
+            confidence: _acc.imbalance,
+            score: score,
+            directionHint: hint,
+            lightDirection: lightDir,
+            ruleLabel: _rule.label,
+            ruleGuidance: _rule.guidance(subjectCenter),
+          ),
+        );
+      } else {
+        final moveRight = s.sceneCenterX < 0.5;
+        candidates.add(
+          _candidate(
+            moveRight
+                ? ObjectCoachingSignal.leftImbalance
+                : ObjectCoachingSignal.rightImbalance,
+            rank: 62 + _acc.imbalance * 10,
+            confidence: _acc.imbalance,
+            score: score,
+            lightDirection: lightDir,
+          ),
+        );
+      }
+    }
+    if (_acc.tightFraming >= 0.62) {
+      candidates.add(
+        _candidate(
+          ObjectCoachingSignal.tightFraming,
+          rank: 56 + _acc.tightFraming * 10,
+          confidence: _acc.tightFraming,
+          score: score,
+          lightDirection: lightDir,
+        ),
+      );
+    }
+
+    final picked = _pickCandidate(candidates);
+    if (picked != null) return picked;
 
     if (_acc.clippedSubject >= 0.24) {
       return CoachingResult(
@@ -713,29 +930,23 @@ class _CoachingEngine {
         _acc.tightFraming >= 0.48;
 
     if (_shootReady >= 0.62) {
-      return CoachingResult(
-        guidance: '지금 찍기 좋아요',
-        subGuidance: '현재 구도가 안정적이에요',
-        level: CoachingLevel.good,
+      return _messageResult(
+        ObjectCoachingSignal.shootReady,
         score: score,
         lightDirection: lightDir,
       );
     }
 
     if (!hasCriticalIssue && rawScore >= 78.0) {
-      return CoachingResult(
-        guidance: '지금 찍어도 좋아요',
-        subGuidance: '현재 장면이 비교적 안정적이에요',
-        level: CoachingLevel.good,
+      return _messageResult(
+        ObjectCoachingSignal.goodEnough,
         score: score,
         lightDirection: lightDir,
       );
     }
 
-    return CoachingResult(
-      guidance: '현재 장면이 무난해요',
-      subGuidance: '원하는 느낌에 맞게 각도만 조금 조정해보세요',
-      level: CoachingLevel.caution,
+    return _messageResult(
+      ObjectCoachingSignal.neutral,
       score: score,
       lightDirection: lightDir,
     );
@@ -743,9 +954,9 @@ class _CoachingEngine {
 
   String _lightSubGuidance(LightDirection dir, String fallback) {
     return switch (dir) {
-      LightDirection.left => '왼쪽에서 빛이 들어오고 있어요. 각도를 조금 바꿔보세요',
-      LightDirection.right => '오른쪽에서 빛이 들어오고 있어요. 각도를 조금 바꿔보세요',
-      LightDirection.top => '위에서 빛이 들어오고 있어요. 그림자를 확인해보세요',
+      LightDirection.left ||
+      LightDirection.right ||
+      LightDirection.top => fallback,
       LightDirection.behind => '뒤쪽 빛을 피해서 방향을 조금 바꿔보세요',
       _ => fallback,
     };

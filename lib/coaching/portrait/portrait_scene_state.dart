@@ -65,6 +65,8 @@ class CoachingResult {
 // ─── 장면 상태 ──────────────────────────────────────────────
 
 class PortraitSceneState {
+  static const double eyeClosedProbabilityThreshold = 0.25;
+
   // 기본 정보
   final int personCount;
   final ShotType shotType;
@@ -220,14 +222,15 @@ class PortraitSceneState {
       eyeClosedConfirmed ||
       (leftEyeOpenProb != null &&
           rightEyeOpenProb != null &&
-          leftEyeOpenProb! < 0.35 &&
-          rightEyeOpenProb! < 0.35);
+          leftEyeOpenProb! < eyeClosedProbabilityThreshold &&
+          rightEyeOpenProb! < eyeClosedProbabilityThreshold);
 
   bool get isOneEyeClosed =>
       leftEyeOpenProb != null &&
       rightEyeOpenProb != null &&
       !areEyesClosed &&
-      (leftEyeOpenProb! < 0.35 || rightEyeOpenProb! < 0.35);
+      (leftEyeOpenProb! < eyeClosedProbabilityThreshold ||
+          rightEyeOpenProb! < eyeClosedProbabilityThreshold);
 
   bool get isSmiling => smileProbability != null && smileProbability! >= 0.65;
 
