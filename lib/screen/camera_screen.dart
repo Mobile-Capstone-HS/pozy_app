@@ -1950,6 +1950,7 @@ class _CameraScreenState extends State<CameraScreen> {
     if (_portraitCoaching.priority == portrait.CoachingPriority.perfect) {
       return null;
     }
+    if (_isFrontCamera) return null;
 
     final lighting = _portraitHandler.lastLighting;
     final lightConf = _portraitHandler.lastLightingConf;
