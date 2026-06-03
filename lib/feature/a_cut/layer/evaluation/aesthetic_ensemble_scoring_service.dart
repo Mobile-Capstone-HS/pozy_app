@@ -130,7 +130,7 @@ class AestheticEnsembleScoringService {
       }
     }
 
-    // --- Ensemble V3 Uncalibrated Logic (Production) ---
+    // --- Ensemble V5 Uncalibrated Logic (Production: Product Gold Selected) ---
     double? finalAestheticScore;
     if (nimaNorm != null || rgnetNorm != null || alampNorm != null) {
       var weightSum = 0.0;
@@ -154,14 +154,15 @@ class AestheticEnsembleScoringService {
 
         if (kDebugMode || kProfileMode) {
           debugPrint(
-            '[AcutAestheticEnsembleV3] Production (A-LAMP heavy uncalibrated): '
+            '[AcutAestheticEnsembleV5] Production (Product Gold Selected 0.40/0.45/0.15): '
             'nimaNorm=${nimaNorm?.toStringAsFixed(4) ?? 'N/A'} '
             'rgnetNorm=${rgnetNorm?.toStringAsFixed(4) ?? 'N/A'} '
             'alampNorm=${alampNorm?.toStringAsFixed(4) ?? 'N/A'} | '
             'finalNorm=${finalAestheticScore.toStringAsFixed(4)} | '
             'weights ${normalizedWeights.nimaWeight.toStringAsFixed(2)}/'
             '${normalizedWeights.rgnetWeight.toStringAsFixed(2)}/'
-            '${normalizedWeights.alampWeight.toStringAsFixed(2)}',
+            '${normalizedWeights.alampWeight.toStringAsFixed(2)} | '
+            'ICAA excluded',
           );
         }
       }
@@ -228,13 +229,17 @@ class AestheticEnsembleScoringService {
             // 5. rgnetHeavy (NIMA 0.20, RGNet 0.55, A-LAMP 0.25)
             final rgnetHeavy =
                 (nimaNorm * 0.20) + (rgnetNorm * 0.55) + (alampNorm * 0.25);
+            // 6. productGoldSelected (NIMA 0.40, RGNet 0.45, A-LAMP 0.15)
+            final productGoldSelected =
+                (nimaNorm * 0.40) + (rgnetNorm * 0.45) + (alampNorm * 0.15);
 
             debugPrint(
               '[AcutAestheticCompare] norms nima=${nimaNorm.toStringAsFixed(4)} '
               'rgnet=${rgnetNorm.toStringAsFixed(4)} alamp=${alampNorm.toStringAsFixed(4)} | '
               'oldNoIcaa=${oldNoIcaa.toStringAsFixed(4)} newUncal=${newUncal.toStringAsFixed(4)} '
               'calibCandidate=${calibratedCandidate.toStringAsFixed(4)} alampHeavy=${alampHeavy.toStringAsFixed(4)} '
-              'nimaHeavy=${nimaHeavy.toStringAsFixed(4)} rgnetHeavy=${rgnetHeavy.toStringAsFixed(4)}',
+              'nimaHeavy=${nimaHeavy.toStringAsFixed(4)} rgnetHeavy=${rgnetHeavy.toStringAsFixed(4)} '
+              'productGoldSelected=${productGoldSelected.toStringAsFixed(4)}',
             );
           }
         }
