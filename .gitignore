@@ -80,3 +80,13 @@ packages/ultralytics_yolo/example/android/.gradle/
 packages/ultralytics_yolo/example/android/local.properties
 /.gradle-user/
 functions/node_modules/
+
+# Local/generated project documents
+/docs/
+
+# Local agent/tool artifacts
+.agents/
+skills-lock.json
+
+# Local analysis scripts
+scripts/generate_timing_breakdown.py

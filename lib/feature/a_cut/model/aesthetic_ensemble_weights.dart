@@ -1,8 +1,8 @@
 class AestheticEnsembleWeights {
-  static const double _defaultNimaWeight = 0.10;
-  static const double _defaultRgnetWeight = 0.40;
-  static const double _defaultAlampWeight = 0.30;
-  static const double _defaultIcaaWeight = 0.20;
+  static const double _defaultNimaWeight = 0.40;
+  static const double _defaultRgnetWeight = 0.45;
+  static const double _defaultAlampWeight = 0.15;
+  static const double _defaultIcaaWeight = 0.00;
 
   static const AestheticEnsembleWeights defaults = AestheticEnsembleWeights._(
     nimaWeight: _defaultNimaWeight,

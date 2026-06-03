@@ -9,6 +9,14 @@ import '../inference/image_preprocessor.dart';
 import '../inference/tflite_aesthetic_service.dart';
 
 class AestheticEnsembleScoringService {
+  // Calibration constants for Ensemble V2 (audited 2026-06-03)
+  static const _nimaSlope = 0.8126;
+  static const _nimaIntercept = 1.4492;
+  static const _rgnetSlope = 0.0899;
+  static const _rgnetIntercept = 4.8656;
+  static const _alampSlope = 0.1637;
+  static const _alampIntercept = 4.6493;
+
   AestheticEnsembleScoringService({
     TfliteAestheticService? modelRunner,
     List<AestheticModelContract>? models,
@@ -71,62 +79,185 @@ class AestheticEnsembleScoringService {
       icaaWeight: effectiveWeights.icaaWeight,
     );
 
-    final nimaScore = nimaRun?.detail.normalizedScore;
-    final rgnetScore = rgnetRun?.detail.normalizedScore;
-    final alampScore = alampRun?.detail.normalizedScore;
-    final icaaScore = icaaRun?.detail.normalizedScore;
+    final nimaNorm = nimaRun?.detail.normalizedScore;
+    final rgnetNorm = rgnetRun?.detail.normalizedScore;
+    final alampNorm = alampRun?.detail.normalizedScore;
+    final icaaNorm = icaaRun?.detail.normalizedScore;
 
+    // --- Ensemble V2 Calibration Logic ---
+    double? nimaCalib;
+    if (nimaNorm != null) {
+      final raw10 = nimaNorm * 9.0 + 1.0;
+      nimaCalib = raw10 * _nimaSlope + _nimaIntercept;
+      if (kDebugMode || kProfileMode) {
+        debugPrint(
+          '[AcutAestheticEnsembleV2] NIMA: norm=${nimaNorm.toStringAsFixed(4)} '
+          'raw10=${raw10.toStringAsFixed(4)} calib=${nimaCalib.toStringAsFixed(4)}',
+        );
+      }
+    }
+
+    double? rgnetCalib;
+    if (rgnetNorm != null) {
+      final raw10 = rgnetNorm * 10.0;
+      rgnetCalib = raw10 * _rgnetSlope + _rgnetIntercept;
+      if (kDebugMode || kProfileMode) {
+        debugPrint(
+          '[AcutAestheticEnsembleV2] RGNet: norm=${rgnetNorm.toStringAsFixed(4)} '
+          'raw10=${raw10.toStringAsFixed(4)} calib=${rgnetCalib.toStringAsFixed(4)}',
+        );
+      }
+    }
+
+    double? alampCalib;
+    if (alampNorm != null) {
+      final raw10 = alampNorm * 10.0;
+      alampCalib = raw10 * _alampSlope + _alampIntercept;
+      if (kDebugMode || kProfileMode) {
+        debugPrint(
+          '[AcutAestheticEnsembleV2] A-LAMP: norm=${alampNorm.toStringAsFixed(4)} '
+          'raw10=${raw10.toStringAsFixed(4)} calib=${alampCalib.toStringAsFixed(4)}',
+        );
+      }
+    }
+
+    // ICAA is skipped from holistic production path if weight is 0.0
+    if (normalizedWeights.icaaWeight == 0.0 && icaaNorm != null) {
+      if (kDebugMode || kProfileMode) {
+        debugPrint(
+          '[AcutAestheticEnsembleV2] ICAA skipped from holistic production path',
+        );
+      }
+    }
+
+    // --- Ensemble V5 Uncalibrated Logic (Production: Product Gold Selected) ---
     double? finalAestheticScore;
-
-    if (nimaScore != null &&
-        rgnetScore != null &&
-        alampScore != null &&
-        icaaScore != null) {
-      finalAestheticScore = normalizedWeights.weightedScore(
-        nimaScore: nimaScore,
-        rgnetScore: rgnetScore,
-        alampScore: alampScore,
-        icaaScore: icaaScore,
-      );
-    } else if (nimaScore != null ||
-        rgnetScore != null ||
-        alampScore != null ||
-        icaaScore != null) {
+    if (nimaNorm != null || rgnetNorm != null || alampNorm != null) {
       var weightSum = 0.0;
       var scoreSum = 0.0;
-      if (nimaScore != null) {
+
+      if (nimaNorm != null) {
         weightSum += normalizedWeights.nimaWeight;
-        scoreSum += nimaScore * normalizedWeights.nimaWeight;
+        scoreSum += nimaNorm * normalizedWeights.nimaWeight;
       }
-      if (rgnetScore != null) {
+      if (rgnetNorm != null) {
         weightSum += normalizedWeights.rgnetWeight;
-        scoreSum += rgnetScore * normalizedWeights.rgnetWeight;
+        scoreSum += rgnetNorm * normalizedWeights.rgnetWeight;
       }
-      if (alampScore != null) {
+      if (alampNorm != null) {
         weightSum += normalizedWeights.alampWeight;
-        scoreSum += alampScore * normalizedWeights.alampWeight;
+        scoreSum += alampNorm * normalizedWeights.alampWeight;
       }
-      if (icaaScore != null) {
-        weightSum += normalizedWeights.icaaWeight;
-        scoreSum += icaaScore * normalizedWeights.icaaWeight;
-      }
+
       if (weightSum > 0.0) {
-        finalAestheticScore = scoreSum / weightSum;
+        finalAestheticScore = (scoreSum / weightSum).clamp(0.0, 1.0);
+
+        if (kDebugMode || kProfileMode) {
+          debugPrint(
+            '[AcutAestheticEnsembleV5] Production (Product Gold Selected 0.40/0.45/0.15): '
+            'nimaNorm=${nimaNorm?.toStringAsFixed(4) ?? 'N/A'} '
+            'rgnetNorm=${rgnetNorm?.toStringAsFixed(4) ?? 'N/A'} '
+            'alampNorm=${alampNorm?.toStringAsFixed(4) ?? 'N/A'} | '
+            'finalNorm=${finalAestheticScore.toStringAsFixed(4)} | '
+            'weights ${normalizedWeights.nimaWeight.toStringAsFixed(2)}/'
+            '${normalizedWeights.rgnetWeight.toStringAsFixed(2)}/'
+            '${normalizedWeights.alampWeight.toStringAsFixed(2)} | '
+            'ICAA excluded',
+          );
+        }
       }
+    }
+
+    // --- Ensemble V2 Calibration Logic (Debug Only) ---
+    double? calibratedCandidate;
+    if (nimaCalib != null ||
+        rgnetCalib != null ||
+        alampCalib != null ||
+        icaaNorm != null) {
+      var weightSum = 0.0;
+      var scoreSum = 0.0;
+
+      if (nimaCalib != null) {
+        weightSum += normalizedWeights.nimaWeight;
+        scoreSum += nimaCalib * normalizedWeights.nimaWeight;
+      }
+      if (rgnetCalib != null) {
+        weightSum += normalizedWeights.rgnetWeight;
+        scoreSum += rgnetCalib * normalizedWeights.rgnetWeight;
+      }
+      if (alampCalib != null) {
+        weightSum += normalizedWeights.alampWeight;
+        scoreSum += alampCalib * normalizedWeights.alampWeight;
+      }
+
+      // ICAA is treated as already in normalized space if it exists in ensemble
+      if (icaaNorm != null && normalizedWeights.icaaWeight > 0) {
+        weightSum += normalizedWeights.icaaWeight;
+        // Convert ICAA to 1..10 for weighted average in calibrated space
+        final icaa10 = icaaNorm * 9.0 + 1.0;
+        scoreSum += icaa10 * normalizedWeights.icaaWeight;
+      }
+
+      if (weightSum > 0.0) {
+        final calibratedEnsemble10 = scoreSum / weightSum;
+        // Map back to 0..1
+        calibratedCandidate = ((calibratedEnsemble10 - 1.0) / 9.0).clamp(
+          0.0,
+          1.0,
+        );
+
+        if (kDebugMode || kProfileMode) {
+          debugPrint(
+            '[AcutAestheticEnsembleV2] Calibrated Candidate: ensemble10=${calibratedEnsemble10.toStringAsFixed(4)} '
+            'norm=${calibratedCandidate.toStringAsFixed(4)}',
+          );
+
+          // [AcutAestheticCompare] Debug comparison for ranking candidates
+          if (nimaNorm != null && rgnetNorm != null && alampNorm != null) {
+            // 1. oldNoIcaaRenorm (NIMA 0.125, RGNet 0.50, A-LAMP 0.375)
+            final oldNoIcaa =
+                (nimaNorm * 0.125) + (rgnetNorm * 0.50) + (alampNorm * 0.375);
+            // 2. newUncalibrated (NIMA 0.37, RGNet 0.41, A-LAMP 0.22)
+            final newUncal =
+                (nimaNorm * 0.37) + (rgnetNorm * 0.41) + (alampNorm * 0.22);
+            // 3. alampHeavy (NIMA 0.25, RGNet 0.30, A-LAMP 0.45)
+            final alampHeavy =
+                (nimaNorm * 0.25) + (rgnetNorm * 0.30) + (alampNorm * 0.45);
+            // 4. nimaHeavy (NIMA 0.50, RGNet 0.30, A-LAMP 0.20)
+            final nimaHeavy =
+                (nimaNorm * 0.50) + (rgnetNorm * 0.30) + (alampNorm * 0.20);
+            // 5. rgnetHeavy (NIMA 0.20, RGNet 0.55, A-LAMP 0.25)
+            final rgnetHeavy =
+                (nimaNorm * 0.20) + (rgnetNorm * 0.55) + (alampNorm * 0.25);
+            // 6. productGoldSelected (NIMA 0.40, RGNet 0.45, A-LAMP 0.15)
+            final productGoldSelected =
+                (nimaNorm * 0.40) + (rgnetNorm * 0.45) + (alampNorm * 0.15);
+
+            debugPrint(
+              '[AcutAestheticCompare] norms nima=${nimaNorm.toStringAsFixed(4)} '
+              'rgnet=${rgnetNorm.toStringAsFixed(4)} alamp=${alampNorm.toStringAsFixed(4)} | '
+              'oldNoIcaa=${oldNoIcaa.toStringAsFixed(4)} newUncal=${newUncal.toStringAsFixed(4)} '
+              'calibCandidate=${calibratedCandidate.toStringAsFixed(4)} alampHeavy=${alampHeavy.toStringAsFixed(4)} '
+              'nimaHeavy=${nimaHeavy.toStringAsFixed(4)} rgnetHeavy=${rgnetHeavy.toStringAsFixed(4)} '
+              'productGoldSelected=${productGoldSelected.toStringAsFixed(4)}',
+            );
+          }
+        }
+      }
+    }
+
+    if (finalAestheticScore == null) {
       final missing = <String>[
-        if (nimaScore == null) 'nima',
-        if (rgnetScore == null) 'rgnet',
-        if (alampScore == null) 'alamp',
-        if (icaaScore == null) 'icaa',
+        if (nimaNorm == null) 'nima',
+        if (rgnetNorm == null) 'rgnet',
+        if (alampNorm == null) 'alamp',
+        if (icaaNorm == null && normalizedWeights.icaaWeight > 0) 'icaa',
       ];
       debugPrint(
         '[AestheticEnsembleScoringService] missingComponents=$missing',
       );
       debugPrint(
         '[AestheticEnsembleScoringService] effectiveWeights=nima:${normalizedWeights.nimaWeight}, rgnet:${normalizedWeights.rgnetWeight}, alamp:${normalizedWeights.alampWeight}, icaa:${normalizedWeights.icaaWeight}',
-      );
-      debugPrint(
-        '[AestheticEnsembleScoringService] finalWeightedScore=$finalAestheticScore',
       );
       debugPrint('[AestheticEnsembleScoringService] degraded=true');
     }
@@ -144,10 +275,10 @@ class AestheticEnsembleScoringService {
     );
 
     final result = AestheticEnsembleScoreResult(
-      nimaScore: nimaScore,
-      rgnetScore: rgnetScore,
-      alampScore: alampScore,
-      icaaScore: icaaScore,
+      nimaScore: nimaNorm,
+      rgnetScore: rgnetNorm,
+      alampScore: alampNorm,
+      icaaScore: icaaNorm,
       finalAestheticScore: finalAestheticScore,
       weights: normalizedWeights,
       scoreDetails: [
@@ -187,6 +318,7 @@ class AestheticEnsembleScoringService {
         'warning_count': warnings.length,
       },
     );
+
     return result;
   }
 

@@ -25,8 +25,5 @@ class AestheticEnsembleScoreResult {
   });
 
   bool get hasCompleteScores =>
-      nimaScore != null &&
-      rgnetScore != null &&
-      alampScore != null &&
-      icaaScore != null;
+      nimaScore != null && rgnetScore != null && alampScore != null;
 }

@@ -50,6 +50,10 @@ abstract final class ExperimentalFeatures {
     'POZY_DISABLE_ALAMP_DURING_BATCH_SCORING',
     defaultValue: true,
   );
+  static const bool skipIccaExperiment = bool.fromEnvironment(
+    'POZY_ACUT_SKIP_ICAA_EXPERIMENT',
+    defaultValue: false,
+  );
   static const bool acutVerboseModelLogs = bool.fromEnvironment(
     'POZY_ACUT_VERBOSE_MODEL_LOGS',
     defaultValue: false,

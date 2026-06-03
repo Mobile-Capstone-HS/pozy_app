@@ -534,7 +534,6 @@ const List<AestheticModelContract> defaultTechnicalModelContracts = [
 /// Active four-model ensemble for A-cut aesthetic scoring.
 const List<AestheticModelContract> activeAestheticEnsembleContracts = [
   nimaMobileContract,
-  icaaColorAestheticContract,
   mobileAlampV2Contract,
   rgnetPilResizeAadbContract,
 ];
