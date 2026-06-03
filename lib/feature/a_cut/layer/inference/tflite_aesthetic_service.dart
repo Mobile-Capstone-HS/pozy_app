@@ -1563,14 +1563,18 @@ class TfliteAestheticService {
       'koniq_mobile' => ExperimentalFeatures.disableKoniqDuringBatchScoring,
       'flive_image_mobile' =>
         ExperimentalFeatures.disableFliveDuringBatchScoring,
-      'nima_mobile' ||
-      'icaa_color_aesthetic' ||
-      'mobile_alamp_v2' ||
-      'rgnet_pil_resize_aadb' => false,
+      'icaa_color_aesthetic' => ExperimentalFeatures.skipIccaExperiment,
+      'nima_mobile' || 'mobile_alamp_v2' || 'rgnet_pil_resize_aadb' => false,
       _ => false,
     };
 
     if (disabled) {
+      if (contract.id == 'icaa_color_aesthetic') {
+        debugPrint(
+          '[AcutPerf] aesthetic_model_skip model=icaa_color_aesthetic '
+          'reason=POZY_ACUT_SKIP_ICAA_EXPERIMENT image_index=$imageIndex',
+        );
+      }
       debugPrint(
         '[AcutPerf] model_skipped image_index=$imageIndex '
         'model=${contract.id} reason=debug_flag',
