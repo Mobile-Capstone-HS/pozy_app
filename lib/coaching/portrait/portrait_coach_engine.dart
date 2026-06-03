@@ -112,9 +112,7 @@ class PortraitCoachEngine {
 
     if (!s.hasNose && !s.hasEyes && !s.hasShoulders) {
       return CoachingResult(
-        message: s.isFrontCamera
-            ? '얼굴 전체가 보이게 담아주세요'
-            : '얼굴이나 어깨가 보이게 맞춰주세요',
+        message: s.isFrontCamera ? '얼굴 전체가 보이게 담아주세요' : '얼굴이나 어깨가 보이게 맞춰주세요',
         priority: CoachingPriority.critical,
         confidence: 0.95,
         reason: s.isFrontCamera
@@ -206,9 +204,7 @@ class PortraitCoachEngine {
             : '상체가 조금 더 보이면 안내가 더 정확해져요.',
         priority: CoachingPriority.composition,
         confidence: 0.7,
-        reason: s.isFrontCamera
-            ? '카메라를 조금 멀리 두면 턱선까지 자연스럽게 들어와요'
-            : null,
+        reason: s.isFrontCamera ? '카메라를 조금 멀리 두면 턱선까지 자연스럽게 들어와요' : null,
       );
     }
 
@@ -302,8 +298,7 @@ class PortraitCoachEngine {
     final crossedOrTightFeet =
         s.ankleSpacingRatio != null && s.ankleSpacingRatio! < 0.45;
     final wideFeet = s.ankleSpacingRatio != null && s.ankleSpacingRatio! > 1.6;
-    final offCenter = (s.personCenterX - 0.5).abs() > 0.14;
-    return s.hasContrapposto || crossedOrTightFeet || wideFeet || offCenter;
+    return s.hasContrapposto || crossedOrTightFeet || wideFeet;
   }
 
   double? _averageDefined(List<double?> values) {
@@ -402,15 +397,6 @@ class PortraitCoachEngine {
       }
     }
 
-    if (s.personCount == 2 && s.secondPersonSizeRatio < 0.35) {
-      return const CoachingResult(
-        message: '두 사람 크기 차이가 커요',
-        priority: CoachingPriority.composition,
-        confidence: 0.82,
-        reason: '비슷한 거리에서 서보세요',
-      );
-    }
-
     // 얼굴/눈은 멀어질수록 불안정하므로 프레이밍 이후의 보조 안내로만 사용합니다.
     if (s.faceHiddenCount > 0) {
       return CoachingResult(
@@ -443,48 +429,12 @@ class PortraitCoachEngine {
   }
 
   CoachingResult _evaluateCoupleShot(PortraitSceneState s) {
-    if (s.groupCroppedCount > 0) {
-      return const CoachingResult(
-        message: '두 사람이 모두 잘 보이게 조금만 여유를 주세요',
-        priority: CoachingPriority.composition,
-        confidence: 0.86,
-        reason: '가장자리 잘림만 줄여도 훨씬 자연스러워져요',
-      );
-    }
-
     if (s.headroomRatio < 0.03) {
       return const CoachingResult(
         message: '머리 위가 너무 붙었어요',
         priority: CoachingPriority.composition,
         confidence: 0.72,
         reason: '카메라를 살짝 올려 윗부분 여유를 만들어주세요',
-      );
-    }
-
-    if (s.footSpaceRatio < 0.025 &&
-        (s.shotType == ShotType.fullBody || s.shotType == ShotType.kneeShot)) {
-      return const CoachingResult(
-        message: '아래쪽 여유를 조금 더 넣어주세요',
-        priority: CoachingPriority.composition,
-        confidence: 0.70,
-        reason: '카메라를 살짝 내리거나 한 걸음 뒤로 가보세요',
-      );
-    }
-
-    if (s.secondPersonSizeRatio < 0.28) {
-      return const CoachingResult(
-        message: '두 사람 크기가 조금 차이 나 보여요',
-        priority: CoachingPriority.composition,
-        confidence: 0.72,
-        reason: '서 있는 위치를 살짝만 맞추면 더 자연스러워요',
-      );
-    }
-
-    if (s.faceHiddenCount > 0) {
-      return const CoachingResult(
-        message: '두 사람 얼굴이 모두 잘 보이게 맞춰보세요',
-        priority: CoachingPriority.composition,
-        confidence: 0.70,
       );
     }
 
@@ -526,16 +476,6 @@ class PortraitCoachEngine {
         if (yaw == null) return null;
         if (yaw >= 15 && yaw <= 30) {
           return null;
-        }
-        if (yaw < 10) {
-          return CoachingResult(
-            message: '얼굴을 빛이 오는 쪽으로 살짝 돌려보세요',
-            priority: CoachingPriority.refinement,
-            confidence: 0.65,
-            reason: s.isFrontCamera
-                ? '얼굴을 빛 쪽으로 조금 돌려보세요'
-                : '피사체 얼굴이 빛 쪽을 살짝 보게 해보세요',
-          );
         }
         if (yaw > 30) {
           return CoachingResult(
@@ -679,26 +619,6 @@ class PortraitCoachEngine {
     }
 
     // ─── 6. 전신 발 아래 공간 ─────────────────────────────────
-    if (s.shotType == ShotType.fullBody &&
-        intent == _PoseIntent.standingBasic) {
-      if (s.footSpaceRatio < 0.05) {
-        return const CoachingResult(
-          message: '발 아래 여유를 조금 더 넣어주세요',
-          priority: CoachingPriority.composition,
-          confidence: 0.8,
-          reason: '카메라를 살짝 내리거나 한 걸음 뒤로 가보세요',
-        );
-      }
-      if (s.footSpaceRatio > 0.15) {
-        return const CoachingResult(
-          message: '인물이 조금 작아요',
-          priority: CoachingPriority.composition,
-          confidence: 0.68,
-          reason: '반 걸음 가까이 가서 인물을 더 크게 담아보세요',
-        );
-      }
-    }
-
     if (s.intent == PortraitIntent.environmental) {
       final environmentalResult = _evaluateEnvironmentalComposition(s);
       if (environmentalResult != null) return environmentalResult;
@@ -883,25 +803,17 @@ class PortraitCoachEngine {
     }
 
     // (2) 발 아래 공간
-    if (s.hasReliableAnkles && s.footSpaceRatio < 0.04) {
+    if (s.hasReliableAnkles && s.footSpaceRatio > 0.18) {
       return const CoachingResult(
-        message: '발끝 아래 여유가 부족해요',
-        priority: CoachingPriority.composition,
-        confidence: 0.85,
-        reason: '카메라를 살짝 내려 발끝 아래 공간을 넣어주세요',
-      );
-    }
-    if (s.hasReliableAnkles && s.footSpaceRatio > 0.15) {
-      return const CoachingResult(
-        message: '아래 여백이 너무 많아요',
+        message: '발끝을 화면 하단선에 맞춰보세요',
         priority: CoachingPriority.composition,
         confidence: 0.68,
-        reason: '카메라를 살짝 올리거나 반 걸음 가까이 가보세요',
+        reason: '카메라를 살짝 기울이거나 반 걸음 가까이 가보세요',
       );
     }
 
     final faceToPersonRatio = s.faceToPersonRatio;
-    if (faceToPersonRatio != null && faceToPersonRatio > 0.15) {
+    if (faceToPersonRatio != null && faceToPersonRatio > 0.13) {
       return const CoachingResult(
         message: '폰 높이를 조금 낮춰보세요',
         priority: CoachingPriority.composition,
@@ -914,7 +826,18 @@ class PortraitCoachEngine {
       return null;
     }
 
-    // (3) 카메라 높이 가이드 (눈 위치로 추정)
+    // (3) 전신 중앙 정렬
+    final centerOffset = s.personCenterX - 0.5;
+    if (centerOffset.abs() > 0.08) {
+      return const CoachingResult(
+        message: '인물을 가운데에 맞춰주세요',
+        priority: CoachingPriority.composition,
+        confidence: 0.76,
+        reason: '전신샷은 중앙 정렬이 가장 자연스러워요',
+      );
+    }
+
+    // (4) 카메라 높이 가이드 (눈 위치로 추정)
     // 전신은 허리~가슴 높이에서 찍어야 다리가 길어 보임
     // 눈이 너무 높으면(eyeY < 0.22) 카메라가 너무 낮음
     // 눈이 너무 낮으면(eyeY > 0.38) 카메라가 너무 높음 (다리가 짧아 보임)
@@ -957,16 +880,6 @@ class PortraitCoachEngine {
         priority: CoachingPriority.composition,
         confidence: 0.88,
         reason: '무릎선보다 살짝 위나 아래로 프레임을 맞춰보세요',
-      );
-    }
-
-    // 발 아래 공간이 너무 없으면 (무릎샷에서 약간의 여유는 필요)
-    if (s.hasReliableAnkles && s.footSpaceRatio < 0.03) {
-      return const CoachingResult(
-        message: '아래쪽 여유가 부족해요',
-        priority: CoachingPriority.composition,
-        confidence: 0.72,
-        reason: '한 걸음 뒤로 가서 다리 아래 공간을 더 넣어주세요',
       );
     }
 
