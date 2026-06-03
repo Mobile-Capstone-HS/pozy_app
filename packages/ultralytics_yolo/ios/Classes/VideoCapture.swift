@@ -60,6 +60,8 @@ class VideoCapture: NSObject, @unchecked Sendable {
   var longSide: CGFloat = 3
   var shortSide: CGFloat = 4
   var frameSizeCaptured = false
+  private(set) var latestPixelBuffer: CVPixelBuffer?
+  private(set) var latestSampleBuffer: CMSampleBuffer?
 
   private var currentBuffer: CVPixelBuffer?
 
@@ -231,6 +233,7 @@ class VideoCapture: NSObject, @unchecked Sendable {
     }
     if currentBuffer == nil, let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) {
       currentBuffer = pixelBuffer
+      latestPixelBuffer = pixelBuffer
       if !frameSizeCaptured {
         let frameWidth = CGFloat(CVPixelBufferGetWidth(pixelBuffer))
         let frameHeight = CGFloat(CVPixelBufferGetHeight(pixelBuffer))
@@ -307,6 +310,7 @@ extension VideoCapture: AVCaptureVideoDataOutputSampleBufferDelegate {
     from connection: AVCaptureConnection
   ) {
     guard inferenceOK else { return }
+    latestSampleBuffer = sampleBuffer
     predictOnFrame(sampleBuffer: sampleBuffer)
   }
 }

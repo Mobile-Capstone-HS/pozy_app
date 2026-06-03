@@ -11,6 +11,29 @@ extension Float {
   }
 }
 
+private final class FlutterEventStreamHandler: NSObject, FlutterStreamHandler {
+  var eventSink: FlutterEventSink?
+
+  func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink)
+    -> FlutterError?
+  {
+    eventSink = events
+    return nil
+  }
+
+  func onCancel(withArguments arguments: Any?) -> FlutterError? {
+    eventSink = nil
+    return nil
+  }
+
+  func send(_ payload: [String: Any]) {
+    guard let eventSink = eventSink else { return }
+    DispatchQueue.main.async {
+      eventSink(payload)
+    }
+  }
+}
+
 @MainActor
 public class SwiftYOLOPlatformView: NSObject, FlutterPlatformView, FlutterStreamHandler {
   private let frame: CGRect
@@ -21,6 +44,10 @@ public class SwiftYOLOPlatformView: NSObject, FlutterPlatformView, FlutterStream
   // Event channel for sending detection results
   private let eventChannel: FlutterEventChannel
   private var eventSink: FlutterEventSink?
+  private let metricsEventChannel: FlutterEventChannel
+  private let portraitFaceResultsEventChannel: FlutterEventChannel
+  private let metricsStreamHandler = FlutterEventStreamHandler()
+  private let portraitFaceResultsStreamHandler = FlutterEventStreamHandler()
 
   // Method channel for receiving control commands
   private let methodChannel: FlutterMethodChannel
@@ -55,6 +82,16 @@ public class SwiftYOLOPlatformView: NSObject, FlutterPlatformView, FlutterStream
     // Setup event channel - create unique channel name using view ID
     let eventChannelName = "com.ultralytics.yolo/detectionResults_\(flutterViewId)"
     self.eventChannel = FlutterEventChannel(name: eventChannelName, binaryMessenger: messenger)
+    let metricsChannelName = "com.ultralytics.yolo/imageMetrics_\(flutterViewId)"
+    self.metricsEventChannel = FlutterEventChannel(
+      name: metricsChannelName,
+      binaryMessenger: messenger
+    )
+    let faceResultsChannelName = "com.ultralytics.yolo/portraitFaceResults_\(flutterViewId)"
+    self.portraitFaceResultsEventChannel = FlutterEventChannel(
+      name: faceResultsChannelName,
+      binaryMessenger: messenger
+    )
 
     // Setup method channel - create unique channel name using view ID
     let methodChannelName = "com.ultralytics.yolo/controlChannel_\(flutterViewId)"
@@ -64,6 +101,8 @@ public class SwiftYOLOPlatformView: NSObject, FlutterPlatformView, FlutterStream
 
     // Set self as stream handler for event channel
     self.eventChannel.setStreamHandler(self)
+    self.metricsEventChannel.setStreamHandler(metricsStreamHandler)
+    self.portraitFaceResultsEventChannel.setStreamHandler(portraitFaceResultsStreamHandler)
 
     // Unwrap creation parameters
     if let dict = args as? [String: Any] {
@@ -113,6 +152,7 @@ public class SwiftYOLOPlatformView: NSObject, FlutterPlatformView, FlutterStream
 
       // Configure YOLOView streaming functionality
       setupYOLOViewStreaming(args: dict)
+      setupNativeCoachingCallbacks()
 
       // Configure YOLOView
       setupYOLOView(confidenceThreshold: confidenceThreshold, iouThreshold: iouThreshold)
@@ -359,6 +399,46 @@ public class SwiftYOLOPlatformView: NSObject, FlutterPlatformView, FlutterStream
             ))
         }
 
+      case "setLockedRoi":
+        if let args = call.arguments as? [String: Any] {
+          self.yoloView?.setLockedRoi(
+            left: args["left"] as? Double,
+            top: args["top"] as? Double,
+            right: args["right"] as? Double,
+            bottom: args["bottom"] as? Double
+          )
+          result(nil)
+        } else {
+          self.yoloView?.setLockedRoi(left: nil, top: nil, right: nil, bottom: nil)
+          result(nil)
+        }
+
+      case "setPortraitFaceAnalysisThrottle":
+        if let args = call.arguments as? [String: Any] {
+          self.yoloView?.setPortraitFaceAnalysisThrottle(
+            intervalMs: args["intervalMs"] as? Int,
+            intervalFrames: args["intervalFrames"] as? Int
+          )
+        }
+        result(nil)
+
+      case "setDeviceOrientation":
+        if let args = call.arguments as? [String: Any],
+          let degrees = args["degrees"] as? Int
+        {
+          self.yoloView?.setVideoOrientation(degrees: degrees)
+          result(nil)
+        } else {
+          result(
+            FlutterError(
+              code: "invalid_args", message: "Invalid arguments for setDeviceOrientation",
+              details: nil))
+        }
+
+      case "restartCamera":
+        self.yoloView?.resume()
+        result(nil)
+
       case "stop":
         // Method to stop camera and inference
 
@@ -463,6 +543,15 @@ public class SwiftYOLOPlatformView: NSObject, FlutterPlatformView, FlutterStream
     }
   }
 
+  private func setupNativeCoachingCallbacks() {
+    yoloView?.onImageMetrics = { [weak self] metrics in
+      self?.metricsStreamHandler.send(metrics)
+    }
+    yoloView?.onPortraitFaceResults = { [weak self] payload in
+      self?.portraitFaceResultsStreamHandler.send(payload)
+    }
+  }
+
   /// Send stream data to Flutter via event channel
   private func sendStreamDataToFlutter(_ streamData: [String: Any]) {
     guard let eventSink = self.eventSink else { return }
@@ -499,6 +588,8 @@ public class SwiftYOLOPlatformView: NSObject, FlutterPlatformView, FlutterStream
 
     // Clear callbacks to prevent retain cycles
     yoloView?.onDetection = nil
+    yoloView?.onImageMetrics = nil
+    yoloView?.onPortraitFaceResults = nil
     yoloView?.onZoomChanged = nil
     yoloView?.setStreamCallback(nil)
 
@@ -511,6 +602,10 @@ public class SwiftYOLOPlatformView: NSObject, FlutterPlatformView, FlutterStream
     // Clean up event channel
     eventSink = nil
     eventChannel.setStreamHandler(nil)
+    metricsStreamHandler.eventSink = nil
+    portraitFaceResultsStreamHandler.eventSink = nil
+    metricsEventChannel.setStreamHandler(nil)
+    portraitFaceResultsEventChannel.setStreamHandler(nil)
 
     // Clean up method channel
     methodChannel.setMethodCallHandler(nil)
@@ -527,6 +622,8 @@ public class SwiftYOLOPlatformView: NSObject, FlutterPlatformView, FlutterStream
 
       // Clear callbacks to prevent retain cycles
       yoloViewToClean?.onDetection = nil
+      yoloViewToClean?.onImageMetrics = nil
+      yoloViewToClean?.onPortraitFaceResults = nil
       yoloViewToClean?.onZoomChanged = nil
       yoloViewToClean?.setStreamCallback(nil)
 

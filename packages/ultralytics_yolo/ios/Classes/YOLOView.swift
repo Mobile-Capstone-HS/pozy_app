@@ -40,6 +40,7 @@ public class YOLOView: UIView, VideoCaptureDelegate {
 
     showBoxes(predictions: result)
     onDetection?(result)
+    processImageMetrics(result: result)
 
     // Streaming callback (with output throttling)
     if let streamCallback = onStream {
@@ -104,10 +105,16 @@ public class YOLOView: UIView, VideoCaptureDelegate {
   }
 
   var onDetection: ((YOLOResult) -> Void)?
+  var onImageMetrics: (([String: Any]) -> Void)?
+  var onPortraitFaceResults: (([String: Any]) -> Void)?
 
   // Streaming functionality
   private var streamConfig: YOLOStreamConfig?
   var onStream: (([String: Any]) -> Void)?
+  private let portraitNativeAnalyzer = PortraitNativeAnalyzer()
+  private let lockedRoiTracker = LockedRoiTracker()
+  private var metricsFrameCount = 0
+  private let metricsFrameInterval = 2
 
   // Frame counter for streaming
   private var frameNumberCounter: Int64 = 0
@@ -418,6 +425,7 @@ public class YOLOView: UIView, VideoCaptureDelegate {
   public func stop() {
     videoCapture.stop()
     videoCapture.delegate = nil
+    portraitNativeAnalyzer.dispose()
     // Release predictor to prevent memory leak
     videoCapture.predictor = nil
   }
@@ -1306,8 +1314,11 @@ public class YOLOView: UIView, VideoCaptureDelegate {
 
     // Clear all callbacks to prevent retain cycles
     onDetection = nil
+    onImageMetrics = nil
+    onPortraitFaceResults = nil
     onStream = nil
     onZoomChanged = nil
+    portraitNativeAnalyzer.dispose()
 
     // Remove notification observers
     NotificationCenter.default.removeObserver(self)
@@ -1607,6 +1618,116 @@ extension YOLOView: AVCapturePhotoCaptureDelegate {
   /// Update the last inference time (call this when actually processing)
   private func updateLastInferenceTime() {
     lastInferenceTime = CACurrentMediaTime()
+  }
+
+  func setLockedRoi(left: Double?, top: Double?, right: Double?, bottom: Double?) {
+    if let left = left, let top = top, let right = right, let bottom = bottom,
+      right > left, bottom > top
+    {
+      lockedRoiTracker.setLockedRoi(CGRect(
+        x: CGFloat(left),
+        y: CGFloat(top),
+        width: CGFloat(right - left),
+        height: CGFloat(bottom - top)
+      ))
+    } else {
+      lockedRoiTracker.setLockedRoi(nil)
+    }
+  }
+
+  func setPortraitFaceAnalysisThrottle(intervalMs: Int?, intervalFrames: Int?) {
+    portraitNativeAnalyzer.setFaceAnalysisThrottle(
+      intervalMs: intervalMs,
+      intervalFrames: intervalFrames
+    )
+  }
+
+  func setVideoOrientation(degrees: Int) {
+    let orientation: AVCaptureVideoOrientation
+    switch degrees {
+    case 90:
+      orientation = .landscapeRight
+    case 180:
+      orientation = .portraitUpsideDown
+    case 270:
+      orientation = .landscapeLeft
+    default:
+      orientation = .portrait
+    }
+    videoCapture.updateVideoOrientation(orientation: orientation)
+  }
+
+  private func processImageMetrics(result: YOLOResult) {
+    guard let callback = onImageMetrics, let pixelBuffer = videoCapture.latestPixelBuffer else {
+      return
+    }
+
+    metricsFrameCount += 1
+    guard metricsFrameCount >= metricsFrameInterval else { return }
+    metricsFrameCount = 0
+
+    let trackedLockedRoi = lockedRoiTracker.update(pixelBuffer: pixelBuffer)
+    let lockedRoi = trackedLockedRoi?.roi ?? lockedRoiTracker.currentRoi()
+    let detectionRoi = preferredDetectionRoi(result: result)
+    let roi = lockedRoi ?? detectionRoi
+    var metrics = ImageMetricsAnalyzer.analyze(
+      pixelBuffer: pixelBuffer,
+      roiLeft: roi.map { Double($0.minX) },
+      roiTop: roi.map { Double($0.minY) },
+      roiRight: roi.map { Double($0.maxX) },
+      roiBottom: roi.map { Double($0.maxY) }
+    )
+
+    if task == .pose {
+      portraitNativeAnalyzer.schedule(
+        sampleBuffer: videoCapture.latestSampleBuffer,
+        pixelBuffer: pixelBuffer,
+        isFrontCamera: isUsingFrontCamera(),
+        roiLeft: detectionRoi.map { Double($0.minX) },
+        roiTop: detectionRoi.map { Double($0.minY) },
+        roiRight: detectionRoi.map { Double($0.maxX) },
+        roiBottom: detectionRoi.map { Double($0.maxY) }
+      )
+      portraitNativeAnalyzer.latestMetrics().forEach { key, value in
+        metrics[key] = value
+      }
+      onPortraitFaceResults?(portraitNativeAnalyzer.latestFaceResults())
+    }
+
+    if let locked = lockedRoi {
+      metrics["subjectLocked"] = 1.0
+      metrics["trackedRoiLeft"] = Double(locked.minX)
+      metrics["trackedRoiTop"] = Double(locked.minY)
+      metrics["trackedRoiRight"] = Double(locked.maxX)
+      metrics["trackedRoiBottom"] = Double(locked.maxY)
+      metrics["trackedRoiConfidence"] = Double(trackedLockedRoi?.confidence ?? 1.0)
+      let visible = result.boxes.contains { box in
+        normalizedOverlapArea(a: locked, b: box.xywhn) >= locked.width * locked.height * 0.20
+      }
+      metrics["subjectVisible"] = visible ? 1.0 : 0.0
+    }
+
+    callback(metrics)
+  }
+
+  private func preferredDetectionRoi(result: YOLOResult) -> CGRect? {
+    if let person = result.boxes.first(where: { $0.cls.lowercased() == "person" }) {
+      return person.xywhn
+    }
+    return result.boxes.first?.xywhn
+  }
+
+  private func normalizedOverlapArea(a: CGRect, b: CGRect) -> CGFloat {
+    let left = max(a.minX, b.minX)
+    let top = max(a.minY, b.minY)
+    let right = min(a.maxX, b.maxX)
+    let bottom = min(a.maxY, b.maxY)
+    guard right > left, bottom > top else { return 0.0 }
+    return (right - left) * (bottom - top)
+  }
+
+  private func isUsingFrontCamera() -> Bool {
+    videoCapture.videoInput?.device.position == .front
   }
 
   /// Convert YOLOResult to a Dictionary for streaming (ported from Android implementation)
