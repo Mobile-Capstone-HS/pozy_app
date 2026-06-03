@@ -41,6 +41,7 @@ import 'package:pose_camera_app/segmentation/composition_temporal_filter.dart';
 import 'package:pose_camera_app/segmentation/fastscnn_view.dart';
 import 'package:pose_camera_app/segmentation/landscape_analyzer.dart';
 import 'package:pose_camera_app/utils/debug_log_flags.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 const String poseModelPath = 'yolov8n-pose_float16.tflite';
 const double poseConfidenceThreshold = 0.15;
@@ -79,6 +80,8 @@ class CameraScreen extends StatefulWidget {
 }
 
 class _CameraScreenState extends State<CameraScreen> {
+  bool _cameraPermissionChecked = false;
+  bool _cameraPermissionGranted = false;
   static const _cameraAspect = 3.0 / 4.0;
   static const bool _debugUseImageAnalysisFace = true;
   static const int _portraitNativeFaceIntervalMs = 180;
@@ -282,71 +285,112 @@ class _CameraScreenState extends State<CameraScreen> {
   portrait.PortraitIntent _portraitIntent = portrait.PortraitIntent.single;
   SilhouetteType _selectedSilhouette = SilhouetteType.none;
 
-  @override
-  void initState() {
-    super.initState();
-    isCameraScreenActive = true;
-    _shootingMode = widget.initialMode;
+Future<void> _requestCameraPermission() async {
+  var status = await Permission.camera.status;
+  debugPrint('[CAMERA_PERMISSION] before=$status');
+
+  if (!status.isGranted) {
+    status = await Permission.camera.request();
+  }
+
+  debugPrint('[CAMERA_PERMISSION] after=$status');
+
+  if (!mounted) return;
+
+  setState(() {
+    _cameraPermissionChecked = true;
+    _cameraPermissionGranted = status.isGranted;
+  });
+
+  if (status.isGranted) {
+    _scheduleCameraStartupAfterPermission();
+  }
+}
+
+void _scheduleCameraStartupAfterPermission() {
+  WidgetsBinding.instance.addPostFrameCallback((_) async {
     _acutCameraLog(
-      'CameraScreen.initState start mode=${_shootingMode.name} '
-      'front=$_isFrontCamera',
+      'CameraScreen.addPostFrameCallback start mounted=$mounted '
+      'mode=${_shootingMode.name} front=$_isFrontCamera',
     );
-    _applyIdleCoachingForMode(_shootingMode);
+
     if (DebugLogFlags.yoloDebug) {
-      debugPrint('[YOLO_DEBUG][screen] initState mode=${_shootingMode.name}');
+      debugPrint('[YOLO_DEBUG][startup] native camera auto-start expected');
     }
 
-    unawaited(_portraitHandler.init());
+    await Future<void>.delayed(const Duration(milliseconds: 300));
 
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
+    if (!mounted || !_cameraPermissionGranted) {
       _acutCameraLog(
-        'CameraScreen.addPostFrameCallback start mounted=$mounted '
+        'CameraScreen startup skipped because '
+        'mounted=$mounted permission=$_cameraPermissionGranted',
+      );
+      return;
+    }
+
+    try {
+      _acutCameraLog(
+        'CameraScreen startup skip restartCamera; '
+        'native YOLOView auto-start handles first entry '
         'mode=${_shootingMode.name} front=$_isFrontCamera',
       );
+
+      await _cameraController.setZoomLevel(_selectedZoom);
+
       if (DebugLogFlags.yoloDebug) {
-        debugPrint('[YOLO_DEBUG][startup] native camera auto-start expected');
-      }
-      await Future<void>.delayed(const Duration(milliseconds: 300));
-      if (!mounted) {
-        _acutCameraLog('CameraScreen startup skipped because unmounted');
-        return;
+        debugPrint(
+          '[YOLO_DEBUG][startup] setZoomLevel done zoom=$_selectedZoom',
+        );
       }
 
-      try {
-        _acutCameraLog(
-          'CameraScreen startup skip restartCamera; '
-          'native YOLOView auto-start handles first entry '
-          'mode=${_shootingMode.name} front=$_isFrontCamera',
-        );
-        await _cameraController.setZoomLevel(_selectedZoom);
-        if (DebugLogFlags.yoloDebug) {
-          debugPrint(
-            '[YOLO_DEBUG][startup] setZoomLevel done zoom=$_selectedZoom',
-          );
-        }
-        await _cameraController.setPortraitFaceAnalysisThrottle(
-          intervalMs: _portraitNativeFaceIntervalMs,
-          intervalFrames: _portraitNativeFaceIntervalFrames,
-        );
-        await _configureZoomPresets();
-        if (DebugLogFlags.yoloDebug) {
-          debugPrint(
-            '[YOLO_DEBUG][startup] configureZoomPresets done presets=$_zoomPresets',
-          );
-        }
-      } catch (error, stackTrace) {
-        if (DebugLogFlags.yoloDebug) {
-          debugPrint('[YOLO_DEBUG][startup] startup error: $error');
-          debugPrintStack(stackTrace: stackTrace);
-        }
-      }
-    });
+      await _cameraController.setPortraitFaceAnalysisThrottle(
+        intervalMs: _portraitNativeFaceIntervalMs,
+        intervalFrames: _portraitNativeFaceIntervalFrames,
+      );
 
-    _startTiltMonitoring();
-    _startPortraitNoResultWatchdog();
-    _cameraController.onImageMetrics = _onImageMetrics;
-    _cameraController.onPortraitFaceResults = _onPortraitFaceResults;
+      await _configureZoomPresets();
+
+      if (DebugLogFlags.yoloDebug) {
+        debugPrint(
+          '[YOLO_DEBUG][startup] configureZoomPresets done presets=$_zoomPresets',
+        );
+      }
+    } catch (error, stackTrace) {
+      if (DebugLogFlags.yoloDebug) {
+        debugPrint('[YOLO_DEBUG][startup] startup error: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }
+    }
+  });
+}
+
+@override
+void initState() {
+  super.initState();
+
+  isCameraScreenActive = true;
+  _shootingMode = widget.initialMode;
+
+  _acutCameraLog(
+    'CameraScreen.initState start mode=${_shootingMode.name} '
+    'front=$_isFrontCamera',
+  );
+
+  _applyIdleCoachingForMode(_shootingMode);
+
+  if (DebugLogFlags.yoloDebug) {
+    debugPrint('[YOLO_DEBUG][screen] initState mode=${_shootingMode.name}');
   }
+
+  unawaited(_portraitHandler.init());
+  unawaited(_requestCameraPermission());
+
+  _startTiltMonitoring();
+  _startPortraitNoResultWatchdog();
+
+  _cameraController.onImageMetrics = _onImageMetrics;
+  _cameraController.onPortraitFaceResults = _onPortraitFaceResults;
+}
 
   void _startPortraitNoResultWatchdog() {
     _portraitNoResultTimer?.cancel();
@@ -2273,6 +2317,15 @@ class _CameraScreenState extends State<CameraScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_cameraPermissionChecked || !_cameraPermissionGranted) {
+      return const Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
     if (!_loggedFirstBuild) {
       _loggedFirstBuild = true;
       if (DebugLogFlags.yoloDebug) {
@@ -2281,6 +2334,7 @@ class _CameraScreenState extends State<CameraScreen> {
         );
       }
     }
+
     final screenWidth = MediaQuery.sizeOf(context).width;
     final isNarrowScreen = screenWidth <= 360;
     final selectorTopInset = isNarrowScreen ? 50.0 : 54.0;
