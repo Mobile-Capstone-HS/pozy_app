@@ -397,15 +397,6 @@ class PortraitCoachEngine {
       }
     }
 
-    if (s.personCount == 2 && s.secondPersonSizeRatio < 0.35) {
-      return const CoachingResult(
-        message: '두 사람 크기 차이가 커요',
-        priority: CoachingPriority.composition,
-        confidence: 0.82,
-        reason: '비슷한 거리에서 서보세요',
-      );
-    }
-
     // 얼굴/눈은 멀어질수록 불안정하므로 프레이밍 이후의 보조 안내로만 사용합니다.
     if (s.faceHiddenCount > 0) {
       return CoachingResult(
@@ -438,48 +429,12 @@ class PortraitCoachEngine {
   }
 
   CoachingResult _evaluateCoupleShot(PortraitSceneState s) {
-    if (s.groupCroppedCount > 0) {
-      return const CoachingResult(
-        message: '두 사람이 모두 잘 보이게 조금만 여유를 주세요',
-        priority: CoachingPriority.composition,
-        confidence: 0.86,
-        reason: '가장자리 잘림만 줄여도 훨씬 자연스러워져요',
-      );
-    }
-
     if (s.headroomRatio < 0.03) {
       return const CoachingResult(
         message: '머리 위가 너무 붙었어요',
         priority: CoachingPriority.composition,
         confidence: 0.72,
         reason: '카메라를 살짝 올려 윗부분 여유를 만들어주세요',
-      );
-    }
-
-    if (s.footSpaceRatio < 0.025 &&
-        (s.shotType == ShotType.fullBody || s.shotType == ShotType.kneeShot)) {
-      return const CoachingResult(
-        message: '아래쪽 여유를 조금 더 넣어주세요',
-        priority: CoachingPriority.composition,
-        confidence: 0.70,
-        reason: '카메라를 살짝 내리거나 한 걸음 뒤로 가보세요',
-      );
-    }
-
-    if (s.secondPersonSizeRatio < 0.28) {
-      return const CoachingResult(
-        message: '두 사람 크기가 조금 차이 나 보여요',
-        priority: CoachingPriority.composition,
-        confidence: 0.72,
-        reason: '서 있는 위치를 살짝만 맞추면 더 자연스러워요',
-      );
-    }
-
-    if (s.faceHiddenCount > 0) {
-      return const CoachingResult(
-        message: '두 사람 얼굴이 모두 잘 보이게 맞춰보세요',
-        priority: CoachingPriority.composition,
-        confidence: 0.70,
       );
     }
 
@@ -664,18 +619,6 @@ class PortraitCoachEngine {
     }
 
     // ─── 6. 전신 발 아래 공간 ─────────────────────────────────
-    if (s.shotType == ShotType.fullBody &&
-        intent == _PoseIntent.standingBasic) {
-      if (s.footSpaceRatio < 0.05) {
-        return const CoachingResult(
-          message: '발 아래 여유를 조금 더 넣어주세요',
-          priority: CoachingPriority.composition,
-          confidence: 0.8,
-          reason: '카메라를 살짝 내리거나 한 걸음 뒤로 가보세요',
-        );
-      }
-    }
-
     if (s.intent == PortraitIntent.environmental) {
       final environmentalResult = _evaluateEnvironmentalComposition(s);
       if (environmentalResult != null) return environmentalResult;
@@ -860,14 +803,6 @@ class PortraitCoachEngine {
     }
 
     // (2) 발 아래 공간
-    if (s.hasReliableAnkles && s.footSpaceRatio < 0.04) {
-      return const CoachingResult(
-        message: '발끝 아래 여유가 부족해요',
-        priority: CoachingPriority.composition,
-        confidence: 0.85,
-        reason: '카메라를 살짝 내려 발끝 아래 공간을 넣어주세요',
-      );
-    }
     if (s.hasReliableAnkles && s.footSpaceRatio > 0.18) {
       return const CoachingResult(
         message: '발끝을 화면 하단선에 맞춰보세요',
@@ -945,16 +880,6 @@ class PortraitCoachEngine {
         priority: CoachingPriority.composition,
         confidence: 0.88,
         reason: '무릎선보다 살짝 위나 아래로 프레임을 맞춰보세요',
-      );
-    }
-
-    // 발 아래 공간이 너무 없으면 (무릎샷에서 약간의 여유는 필요)
-    if (s.hasReliableAnkles && s.footSpaceRatio < 0.03) {
-      return const CoachingResult(
-        message: '아래쪽 여유가 부족해요',
-        priority: CoachingPriority.composition,
-        confidence: 0.72,
-        reason: '한 걸음 뒤로 가서 다리 아래 공간을 더 넣어주세요',
       );
     }
 
