@@ -54,11 +54,25 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _dataFuture = _cache != null ? Future.value(_cache) : _loadData();
+    final cached = _cache;
+    _dataFuture = cached != null && _isCurrentWeeklyCache(cached)
+        ? Future.value(cached)
+        : _loadData();
+  }
+
+  bool _isCurrentWeeklyCache(_HomeData data) {
+    final areaCode = TourApiService.weeklyAreaCode;
+    return data.areaCode == areaCode &&
+        data.weeklySpots.every((place) => place.matchesAreaCode(areaCode));
   }
 
   Future<_HomeData> _loadData() async {
-    final data = _HomeData(weeklySpots: await _api.fetchWeeklySpots(count: 10));
+    final areaCode = TourApiService.weeklyAreaCode;
+    final data = _HomeData(
+      areaCode: areaCode,
+      areaName: TourApiService.weeklyAreaName,
+      weeklySpots: await _api.fetchWeeklySpots(count: 10),
+    );
     _cache = data;
     return data;
   }
@@ -83,13 +97,15 @@ class _HomeScreenState extends State<HomeScreen> {
     ).push(MaterialPageRoute(builder: (_) => MapSpotScreen(focusPlace: place)));
   }
 
-  void _openWeeklyAreaMap(List<TourPlace> places) {
+  void _openWeeklyAreaMap(_HomeData data) {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => MapSpotScreen(
-          initialAreaCode: TourApiService.weeklyAreaCode,
-          initialAreaName: TourApiService.weeklyAreaName,
-          initialAreaPlaces: places,
+          initialAreaCode: data.areaCode,
+          initialAreaName: data.areaName,
+          initialAreaPlaces: data.weeklySpots
+              .where((place) => place.matchesAreaCode(data.areaCode))
+              .toList(),
         ),
       ),
     );
@@ -151,9 +167,15 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 class _HomeData {
+  final String areaCode;
+  final String areaName;
   final List<TourPlace> weeklySpots;
 
-  const _HomeData({required this.weeklySpots});
+  const _HomeData({
+    required this.areaCode,
+    required this.areaName,
+    required this.weeklySpots,
+  });
 }
 
 class _Header extends StatelessWidget {
@@ -372,7 +394,7 @@ class _ActionButton extends StatelessWidget {
 class _Body extends StatelessWidget {
   final _HomeData data;
   final VoidCallback onMap;
-  final ValueChanged<List<TourPlace>> onWeeklyAreaMap;
+  final ValueChanged<_HomeData> onWeeklyAreaMap;
   final ValueChanged<TourPlace> onPlaceTap;
 
   const _Body({
@@ -397,10 +419,9 @@ class _Body extends StatelessWidget {
           if (weekly.isNotEmpty) const SizedBox(height: 14),
           if (weekly.length > 1)
             _PlaceSection(
-              title:
-                  '이번 주 사진 찍으러 가기 좋은\n${TourApiService.weeklyAreaName} 추천 스팟 📸',
+              title: '이번 주 사진 찍으러 가기 좋은\n${data.areaName} 추천 스팟 📸',
               places: weekly.skip(1).toList(),
-              onMoreTap: () => onWeeklyAreaMap(weekly),
+              onMoreTap: () => onWeeklyAreaMap(data),
               onPlaceTap: onPlaceTap,
             ),
           if (weekly.length > 1) const SizedBox(height: 14),
@@ -830,7 +851,7 @@ class _PhotoPlaceholder extends StatelessWidget {
 }
 
 String _placeRegionLabel(TourPlace place) {
-  if (place.areaName.isNotEmpty) return place.areaName;
+  if (place.resolvedAreaName.isNotEmpty) return place.resolvedAreaName;
 
   final parts = place.addr1
       .split(' ')
