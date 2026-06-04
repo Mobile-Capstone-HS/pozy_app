@@ -81,7 +81,8 @@ AI 기술을 통해 촬영 코칭부터 베스트컷 선정, 촬영지 추천까
 </p>
 
 ## 🧱 시스템 구조도
-<img width="311" height="251" alt="image" src="https://github.com/user-attachments/assets/fa5c5ebb-861c-4455-86f9-6239f2f66a22" />
+<img width="1494" height="1204" alt="Frame 1 (4)" src="https://github.com/user-attachments/assets/e5019f84-6324-44b3-a4ab-19fee84a6221" />
+
 
 ## 🚀 설치 및 실행 방법
 ```
