@@ -1,4 +1,4 @@
-<img width="2880" height="3088" alt="Group 14" src="https://github.com/user-attachments/assets/0dd5208b-c13e-4072-857e-944d9632abe6" /><img width="1672" height="941" alt="KakaoTalk_20260604_143329935" src="https://github.com/user-attachments/assets/614b2a47-8f03-4635-8394-d00c47c6af72" />
+<img width="1672" height="941" alt="KakaoTalk_20260604_143329935" src="https://github.com/user-attachments/assets/614b2a47-8f03-4635-8394-d00c47c6af72" />
 
 <div align="center">
 <h1>📌 AI 기반 스마트 카메라 및 사진 어시스턴트 앱 "Pozy"</h1>
