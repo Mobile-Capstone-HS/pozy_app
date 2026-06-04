@@ -53,6 +53,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
   bool _isPreparingImage = false;
   bool _isRenderingPreview = false;
+  bool _isAiEditing = false;
   bool _isSaving = false;
   bool _showOriginalPreview = false;
   bool _comparisonMode = false;
@@ -301,7 +302,7 @@ class _EditorScreenState extends State<EditorScreen> {
   Future<void> _runAiEdit(String prompt) async {
     debugPrint('[EditorScreen] _runAiEdit 호출됨, 프롬프트: $prompt');
 
-    if (_previewSourceBytes == null) {
+    if (_previewSourceBytes == null || _isAiEditing) {
       debugPrint('[EditorScreen] _previewSourceBytes가 null → 조기 반환');
       return;
     }
@@ -309,6 +310,8 @@ class _EditorScreenState extends State<EditorScreen> {
     debugPrint(
       '[EditorScreen] _previewSourceBytes 크기: ${_previewSourceBytes!.lengthInBytes} bytes',
     );
+
+    setState(() => _isAiEditing = true);
 
     try {
       final result = await _geminiService.editImage(
@@ -340,6 +343,10 @@ class _EditorScreenState extends State<EditorScreen> {
       debugPrint('[EditorScreen] _runAiEdit 오류: $e');
       debugPrint('[EditorScreen] 스택트레이스: $stackTrace');
       rethrow;
+    } finally {
+      if (mounted) {
+        setState(() => _isAiEditing = false);
+      }
     }
   }
 
@@ -437,6 +444,7 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   void _showAiEditSheet() {
+    if (_isAiEditing) return;
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -491,10 +499,11 @@ class _EditorScreenState extends State<EditorScreen> {
         context,
       ).showSnackBar(SnackBar(content: Text('사진 저장에 실패했습니다: $error')));
     } finally {
-      if (!mounted) return;
-      setState(() {
-        _isSaving = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
     }
   }
 
@@ -784,38 +793,7 @@ class _EditorScreenState extends State<EditorScreen> {
                       Container(
                         color: Colors.black.withValues(alpha: 0.25),
                         child: Center(
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 20,
-                              vertical: 16,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.7),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const SizedBox(
-                                  width: 24,
-                                  height: 24,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2.5,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-                                Text(
-                                  _isSaving ? '저장 중...' : '미리보기 적용 중...',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
+                          child: _EditorLoadingOverlay(),
                         ),
                       ),
                   ],
@@ -870,7 +848,7 @@ class _EditorScreenState extends State<EditorScreen> {
         children: [
           _ActionChip(
             icon: Icons.photo_library_outlined,
-            label: _selectedImagePath == null ? '사진' : '바꾸기',
+            label: _selectedImagePath == null ? '사진' : '변경',
             onTap: _pickImage,
           ),
           if (_hasImage) ...[
@@ -1338,6 +1316,97 @@ class _ZoomBadge extends StatelessWidget {
 }
 
 // ── AI 편집 시트 ──
+class _EditorLoadingOverlay extends StatelessWidget {
+  const _EditorLoadingOverlay();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 260),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: const [
+          SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.5,
+              color: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AnimatedAiEditLoadingText extends StatefulWidget {
+  final Color color;
+  final double fontSize;
+
+  const _AnimatedAiEditLoadingText({
+    required this.color,
+    required this.fontSize,
+  });
+
+  static const _messages = [
+    'Pozy AI가 편집하고 있어요',
+    '요청한 수정사항을 반영하고 있어요',
+    '이미지를 새로 만드는 중이에요',
+    '최대 30초까지 걸릴 수 있어요',
+  ];
+
+  @override
+  State<_AnimatedAiEditLoadingText> createState() =>
+      _AnimatedAiEditLoadingTextState();
+}
+
+class _AnimatedAiEditLoadingTextState
+    extends State<_AnimatedAiEditLoadingText> {
+  Timer? _timer;
+  int _messageIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!mounted) return;
+      setState(() {
+        _messageIndex =
+            (_messageIndex + 1) % _AnimatedAiEditLoadingText._messages.length;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 220),
+      child: Text(
+        _AnimatedAiEditLoadingText._messages[_messageIndex],
+        key: ValueKey(_messageIndex),
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          color: widget.color,
+          fontSize: widget.fontSize,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
 class _AiEditSheet extends StatefulWidget {
   final Future<void> Function(String prompt) onGenerate;
 
@@ -1471,30 +1540,59 @@ class _AiEditSheetState extends State<_AiEditSheet> {
               width: double.infinity,
               height: 52,
               decoration: BoxDecoration(
-                color: canSubmit ? _kBlue : _kGrey100,
+                color: _isLoading || canSubmit ? _kBlue : _kGrey100,
                 borderRadius: BorderRadius.circular(14),
               ),
               alignment: Alignment.center,
-              child: _isLoading
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.5,
-                        color: Colors.white,
-                      ),
-                    )
-                  : Text(
-                      '생성하기',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: canSubmit ? Colors.white : _kGrey400,
-                      ),
-                    ),
+              child: _AiEditSubmitContent(
+                loading: _isLoading,
+                enabled: canSubmit,
+              ),
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _AiEditSubmitContent extends StatelessWidget {
+  final bool loading;
+  final bool enabled;
+
+  const _AiEditSubmitContent({required this.loading, required this.enabled});
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) {
+      return const Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: Colors.white,
+            ),
+          ),
+          SizedBox(width: 8),
+          Flexible(
+            child: _AnimatedAiEditLoadingText(
+              color: Colors.white,
+              fontSize: 14,
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Text(
+      '생성하기',
+      style: TextStyle(
+        fontSize: 15,
+        fontWeight: FontWeight.w700,
+        color: enabled ? Colors.white : _kGrey400,
       ),
     );
   }
