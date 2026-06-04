@@ -15,8 +15,6 @@ Flutter plugin for YOLO (You Only Look Once) models, supporting object detection
   s.source           = { :path => '.' }
   s.source_files = 'Classes/**/*'
   s.dependency 'Flutter'
-  s.dependency 'GoogleMLKit/FaceDetection'
-  s.dependency 'TensorFlowLiteSwift'
   s.platform = :ios, '13.0'
 
   # Flutter.framework does not contain a i386 slice.

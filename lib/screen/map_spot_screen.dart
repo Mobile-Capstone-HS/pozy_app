@@ -148,13 +148,22 @@ class _MapSpotScreenState extends State<MapSpotScreen>
           ),
         );
 
+    final initialAreaCode = widget.initialAreaCode;
     if (widget.focusPlace != null) {
       _focusedPlace = widget.focusPlace;
-    } else if (widget.initialAreaPlaces.isNotEmpty) {
+    } else if (widget.initialAreaPlaces.isNotEmpty ||
+        (initialAreaCode != null && initialAreaCode.isNotEmpty)) {
       _isAreaMode = true;
       _activeSearchKeyword = widget.initialAreaName ?? '추천 지역';
       _keywordPlaces = widget.initialAreaPlaces
-          .where((place) => place.latitude != null && place.longitude != null)
+          .where(
+            (place) =>
+                place.latitude != null &&
+                place.longitude != null &&
+                (initialAreaCode == null ||
+                    initialAreaCode.isEmpty ||
+                    place.matchesAreaCode(initialAreaCode)),
+          )
           .toList();
     }
 
@@ -256,7 +265,12 @@ class _MapSpotScreenState extends State<MapSpotScreen>
       if (!mounted || !_isAreaMode) return;
 
       final filtered = places
-          .where((place) => place.latitude != null && place.longitude != null)
+          .where(
+            (place) =>
+                place.latitude != null &&
+                place.longitude != null &&
+                place.matchesAreaCode(areaCode),
+          )
           .toList();
       if (filtered.isEmpty) {
         setState(() => _isLoadingKeywords = false);

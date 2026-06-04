@@ -18,11 +18,11 @@ class TourApiService {
     '39',
     '32',
     '6',
-    '38',
-    '31',
-    '35',
     '36',
+    '31',
     '37',
+    '38',
+    '35',
     '34',
     '33',
     '4',
@@ -74,11 +74,11 @@ class TourApiService {
       '39': '\uC81C\uC8FC',
       '32': '\uAC15\uC6D0',
       '6': '\uBD80\uC0B0',
-      '38': '\uACBD\uB0A8',
+      '38': '\uC804\uB0A8',
       '31': '\uACBD\uAE30',
-      '35': '\uC804\uBD81',
-      '36': '\uC804\uB0A8',
-      '37': '\uACBD\uBD81',
+      '35': '\uACBD\uBD81',
+      '36': '\uACBD\uB0A8',
+      '37': '\uC804\uBD81',
       '34': '\uCDA9\uB0A8',
       '33': '\uCDA9\uBD81',
       '4': '\uB300\uAD6C',
@@ -340,7 +340,10 @@ class TourApiService {
         }
       }
 
-      final prioritized = _prioritizePhotoSpots(merged);
+      final areaScoped = areaCode.isEmpty
+          ? merged
+          : merged.where((place) => place.matchesAreaCode(areaCode)).toList();
+      final prioritized = _prioritizePhotoSpots(areaScoped);
       final withPhoto = prioritized
           .where((place) => place.photoUrl != null)
           .toList();
@@ -359,9 +362,12 @@ class TourApiService {
     required int count,
     required String areaCode,
   }) {
-    if (places.length <= count) return places;
+    final areaScoped = areaCode.isEmpty
+        ? places
+        : places.where((place) => place.matchesAreaCode(areaCode)).toList();
+    if (areaScoped.length <= count) return areaScoped;
 
-    final pool = (_prioritizePhotoSpots(places).where((p) {
+    final pool = (_prioritizePhotoSpots(areaScoped).where((p) {
       return p.photoUrl != null && p.isPhotoSpotCandidate;
     }).toList()..shuffle(Random()));
 

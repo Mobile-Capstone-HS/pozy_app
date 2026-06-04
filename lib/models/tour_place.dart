@@ -32,10 +32,10 @@ class TourPlace {
   });
 
   factory TourPlace.fromJson(Map<String, dynamic> json) {
-    final mapx = json['mapx']?.toString() ?? '';
-    final mapy = json['mapy']?.toString() ?? '';
+    final mapx = _jsonText(json, const ['mapx', 'mapX', 'longitude']);
+    final mapy = _jsonText(json, const ['mapy', 'mapY', 'latitude']);
     return TourPlace(
-      contentId: json['contentid']?.toString() ?? '',
+      contentId: _jsonText(json, const ['contentid', 'contentId']),
       title: json['title']?.toString() ?? '',
       addr1: json['addr1']?.toString() ?? '',
       addr2: json['addr2']?.toString() ?? '',
@@ -43,8 +43,8 @@ class TourPlace {
       firstImage2: _nonEmpty(json['firstimage2']?.toString()),
       latitude: mapy.isNotEmpty ? double.tryParse(mapy) : null,
       longitude: mapx.isNotEmpty ? double.tryParse(mapx) : null,
-      areaCode: json['areacode']?.toString() ?? '',
-      contentTypeId: json['contenttypeid']?.toString() ?? '',
+      areaCode: _jsonText(json, const ['areacode', 'areaCode', 'area_code']),
+      contentTypeId: _jsonText(json, const ['contenttypeid', 'contentTypeId']),
       cat1: json['cat1']?.toString() ?? '',
       cat2: json['cat2']?.toString() ?? '',
       cat3: json['cat3']?.toString() ?? '',
@@ -329,6 +329,16 @@ class TourPlace {
   static String? _nonEmpty(String? s) =>
       (s == null || s.trim().isEmpty) ? null : s.trim();
 
+  static String _jsonText(Map<String, dynamic> json, List<String> keys) {
+    for (final key in keys) {
+      final value = json[key];
+      if (value == null) continue;
+      final text = value.toString().trim();
+      if (text.isNotEmpty) return text;
+    }
+    return '';
+  }
+
   String get address {
     final parts = [addr1, addr2].where((s) => s.isNotEmpty).toList();
     return parts.join(' ');
@@ -336,7 +346,33 @@ class TourPlace {
 
   String get areaName => _areaNames[areaCode] ?? '';
 
+  String get resolvedAreaName {
+    final addressAreaCode = _areaCodeFromAddress;
+    return _areaNames[addressAreaCode] ?? areaName;
+  }
+
   String? get photoUrl => firstImage ?? firstImage2;
+
+  bool matchesAreaCode(String expectedAreaCode) {
+    if (expectedAreaCode.isEmpty) return true;
+
+    final addressAreaCode = _areaCodeFromAddress;
+    if (addressAreaCode != null) return addressAreaCode == expectedAreaCode;
+
+    return areaCode == expectedAreaCode;
+  }
+
+  String? get _areaCodeFromAddress {
+    final fullAddress = '$addr1 $addr2'.trim();
+    if (fullAddress.isEmpty) return null;
+
+    for (final entry in _areaAddressTokens.entries) {
+      if (entry.value.any(fullAddress.contains)) return entry.key;
+    }
+    return null;
+  }
+
+  static String areaNameForCode(String areaCode) => _areaNames[areaCode] ?? '';
 
   static const _areaNames = {
     '1': '서울',
@@ -351,10 +387,30 @@ class TourPlace {
     '32': '강원',
     '33': '충북',
     '34': '충남',
-    '35': '전북',
-    '36': '전남',
-    '37': '경북',
-    '38': '경남',
+    '35': '경북',
+    '36': '경남',
+    '37': '전북',
+    '38': '전남',
     '39': '제주',
+  };
+
+  static const _areaAddressTokens = {
+    '1': ['서울'],
+    '2': ['인천'],
+    '3': ['대전'],
+    '4': ['대구'],
+    '5': ['광주'],
+    '6': ['부산'],
+    '7': ['울산'],
+    '8': ['세종'],
+    '31': ['경기'],
+    '32': ['강원'],
+    '33': ['충북', '충청북도'],
+    '34': ['충남', '충청남도'],
+    '35': ['경북', '경상북도'],
+    '36': ['경남', '경상남도'],
+    '37': ['전북', '전라북도', '전북특별자치도'],
+    '38': ['전남', '전라남도'],
+    '39': ['제주'],
   };
 }
