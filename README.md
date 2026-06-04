@@ -1,4 +1,4 @@
-<img width="1672" height="941" alt="KakaoTalk_20260604_143329935" src="https://github.com/user-attachments/assets/614b2a47-8f03-4635-8394-d00c47c6af72" />
+<img width="2880" height="3088" alt="Group 14" src="https://github.com/user-attachments/assets/0dd5208b-c13e-4072-857e-944d9632abe6" /><img width="1672" height="941" alt="KakaoTalk_20260604_143329935" src="https://github.com/user-attachments/assets/614b2a47-8f03-4635-8394-d00c47c6af72" />
 
 <div align="center">
 <h1>📌 AI 기반 스마트 카메라 및 사진 어시스턴트 앱 "Pozy"</h1>
@@ -11,7 +11,7 @@ AI 기술을 통해 촬영 코칭부터 베스트컷 선정, 촬영지 추천까
 |:---:|:---:|
 | 촬영 장소 추천 기능 | 인물 모드 |
 
-| <img src="https://github.com/user-attachments/assets/9dd53844-8ed3-4f26-8c10-c20aa846f194" width="500" /> | <img src="https://github.com/user-attachments/assets/4fc47d60-65dc-4482-8077-9b8609de2393" width="500" /> |
+| <img width="500" src="https://github.com/user-attachments/assets/2cb3b518-aeb3-4110-85ce-af38d7e071d7" /> | <img width="500" src="https://github.com/user-attachments/assets/53eef643-b3f9-4fe1-8447-899fe8ec5974" /> |
 |:---:|:---:|
 | 객체 모드 | 풍경 모드 |
 
