@@ -1,3 +1,6 @@
+<img width="1672" height="941" alt="KakaoTalk_20260604_133424081" src="https://github.com/user-attachments/assets/3dfb0cba-e079-40b5-9af9-1b650b7e4ca3" />
+
+
 # 📌 AI 기반 스마트 카메라 및 사진 어시스턴트 앱 "Pozy App"
 AI 기술을 통해 촬영 코칭부터 베스트컷 선정, 촬영지 추천까지
 
