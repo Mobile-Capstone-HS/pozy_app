@@ -7,28 +7,20 @@ AI 기술을 통해 촬영 코칭부터 베스트컷 선정, 촬영지 추천까
   
 ## 🖼️ 예시 화면
 
-| <img width="2880" height="3120" alt="Group 2" src="https://github.com/user-attachments/assets/cee61103-f754-4b5a-96a2-646c0b0342d7" /> |
-|:--------------------:|
-| 촬영 장소 추천 기능 |
+| <img src="https://github.com/user-attachments/assets/cee61103-f754-4b5a-96a2-646c0b0342d7" width="500" /> | <img src="https://github.com/user-attachments/assets/277a8814-1ef5-4cb1-8bec-017d65bf284f" width="500" /> |
+|:---:|:---:|
+| 촬영 장소 추천 기능 | 인물 모드 |
 
-| <img width="2888" height="3100" alt="Group 11" src="https://github.com/user-attachments/assets/277a8814-1ef5-4cb1-8bec-017d65bf284f" />|
-|:--------------------:|
-| 인물 모드 |
+| <img src="https://github.com/user-attachments/assets/9dd53844-8ed3-4f26-8c10-c20aa846f194" width="500" /> | <img src="https://github.com/user-attachments/assets/4fc47d60-65dc-4482-8077-9b8609de2393" width="500" /> |
+|:---:|:---:|
+| 객체 모드 | 풍경 모드 |
 
-| <img width="2880" height="3088" alt="Group 3" src="https://github.com/user-attachments/assets/9dd53844-8ed3-4f26-8c10-c20aa846f194" />|
-|:--------------------:|
-| 객체 모드 |
-
-| <img width="2880" height="3088" alt="Group 9" src="https://github.com/user-attachments/assets/4fc47d60-65dc-4482-8077-9b8609de2393" />|
-|:--------------------:|
-| 풍경 모드 |
-
-| <img width="5748" height="3088" alt="Group 7" src="https://github.com/user-attachments/assets/58ba1fd8-1da8-4a06-8fc6-bfc232b48d43" />|
-|:--------------------:|
+| <img src="https://github.com/user-attachments/assets/58ba1fd8-1da8-4a06-8fc6-bfc232b48d43" width="900" /> |
+|:---:|
 | 에디터 기능 |
 
-| <img width="5760" height="3088" alt="Group 8" src="https://github.com/user-attachments/assets/abab744e-c29d-453f-9c13-7e84545c4d04" />|
-|:--------------------:|
+| <img src="https://github.com/user-attachments/assets/abab744e-c29d-453f-9c13-7e84545c4d04" width="900" /> |
+|:---:|
 | 베스트컷 기능 |
 
 ## 🎯 주요 기능
@@ -99,13 +91,49 @@ flutter pub get
 # 4. 실행 
 flutter run
 ```
-## 👥 Team
 
-| 이름 | 담당 |
-|------|------|
-| 강승원 | 팀장, UI/UX 설계 및 구현, 카메라 객체모드 설계 및 개발 |
-| 김관중 | 이미지 평가 AI 모델 구현 및 파인튜닝 |
-| 고명준 | 카메라 풍경모드 설계 및 개발 |
-| 서정원 | 카메라 구조 설계 및 리팩토링, 에디터 기능 개발 |
-| 이승비 | 카메라 인물모드 설계 및 개발 |
+<h2>👥 Team</h2>
 
+<table align="center">
+<tr>
+
+<td align="center" width="20%">
+<img  width="120px" alt="image" src="https://github.com/user-attachments/assets/6b198b65-41d9-401c-8b16-de0cef17575f" /><br/>
+<a href="https://github.com/ksw095"><b>강승원</b></a><br/>
+<sub>Team Leader</sub><br/><br/>
+UI/UX 설계 및<br/>
+객체 모드 개발
+</td>
+
+<td align="center" width="20%">
+<img width="120px" alt="image" src="https://github.com/user-attachments/assets/ff56a2e5-e9a8-4854-9645-0971f2591fef" /><br/>
+<a href="https://github.com/kmj0973"><b>고명준</b></a><br/>
+<sub>Developer</sub><br/><br/>
+풍경 모드<br/> 설계 및 개발
+</td>
+
+<td align="center" width="20%">
+<img width="120px" alt="image" src="https://github.com/user-attachments/assets/72e31880-20c0-4844-a855-a03fe64c83d9" /><br/>
+<a href="https://github.com/gwanjongkim"><b>김관중</b></a><br/>
+<sub>Developer</sub><br/><br/>
+이미지 평가 모델<br/>
+구현 및 파인튜닝
+</td>
+
+<td align="center" width="20%">
+<img width="120px" alt="image" src="https://github.com/user-attachments/assets/212a3cc3-4997-4f35-b1ac-45d7eb560792" /><br/>
+<a href="https://github.com/Seojw0108"><b>서정원</b></a><br/>
+<sub>Developer</sub><br/><br/>
+카메라 구조 설계<br/>
+에디터 기능 개발
+</td>
+
+<td align="center" width="20%">
+<img width="120px" alt="image" src="https://github.com/user-attachments/assets/82dc4c04-d7d3-424a-a6e8-5ed17a782711" /><br/>
+<a href="https://github.com/lime13579"><b>이승비</b></a><br/>
+<sub>Developer</sub><br/><br/>
+카메라 인물모드<br/> 설계 및 개발
+</td>
+
+</tr>
+</table>
