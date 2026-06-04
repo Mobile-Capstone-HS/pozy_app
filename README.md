@@ -1,44 +1,36 @@
-# 📌 AI 기반 스마트 카메라 및 사진 어시스턴트 앱 "Pozy App"
-AI 기술을 통해 촬영 코칭부터 베스트컷 선정, 촬영지 추천까지
+<img width="1672" height="941" alt="KakaoTalk_20260604_143329935" src="https://github.com/user-attachments/assets/614b2a47-8f03-4635-8394-d00c47c6af72" />
 
+<div align="center">
+<h1>📌 AI 기반 스마트 카메라 및 사진 어시스턴트 앱 "Pozy"</h1>
+AI 기술을 통해 촬영 코칭부터 베스트컷 선정, 촬영지 추천까지
+</div>
+  
 ## 🖼️ 예시 화면
 
-- 실시간 카메라 구도 코칭
-- 갤러리 사진 A-cut 평가
-- 기술/미적/구도 점수 기반 설명 생성
-- 선택적으로 Gemma LiteRT-LM 온디바이스 텍스트/VLM 설명 probe
-- 선택적으로 A-cut contact sheet 생성 도구 사용
+| <img src="https://github.com/user-attachments/assets/cee61103-f754-4b5a-96a2-646c0b0342d7" width="500" /> | <img src="https://github.com/user-attachments/assets/277a8814-1ef5-4cb1-8bec-017d65bf284f" width="500" /> |
+|:---:|:---:|
+| 촬영 장소 추천 기능 | 인물 모드 |
+
+| <img width="500" src="https://github.com/user-attachments/assets/2cb3b518-aeb3-4110-85ce-af38d7e071d7" /> | <img width="500" src="https://github.com/user-attachments/assets/53eef643-b3f9-4fe1-8447-899fe8ec5974" /> |
+|:---:|:---:|
+| 객체 모드 | 풍경 모드 |
+
+| <img src="https://github.com/user-attachments/assets/58ba1fd8-1da8-4a06-8fc6-bfc232b48d43" width="900" /> |
+|:---:|
+| 에디터 기능 |
+
+| <img src="https://github.com/user-attachments/assets/abab744e-c29d-453f-9c13-7e84545c4d04" width="900" /> |
+|:---:|
+| 베스트컷 기능 |
 
 ## 🎯 주요 기능
-### 📷 AI 촬영 코칭
-- 실시간 객체 인식
-- 구도 추천 가이드
-- 수평선 보정 가이드
-- 피사체 위치 추천
+- <strong>📷 AI 촬영 코칭</strong> : 실시간 객체 인식과 장면 분석을 통해 최적의 구도 가이드 제공
 
-### 🧍 인물 모드
-- 인물 중심 구도 분석
-- 얼굴 위치 기반 촬영 가이드
+- <strong>⭐ 베스트컷 추천</strong> : 이미지 품질 평가 AI로 여러 사진 중 가장 잘 나온 사진을 자동 추천
 
-### 🌄 풍경 모드
-- 장면 분석 기반 구도 추천
-- 풍경 촬영 최적화 가이드
+- <strong>🗺️ 촬영장소 추천</strong> : 지도 기반으로 주변 관광지와 포토스팟을 탐색하고 추천
 
-### 📦 객체 모드
-- 객체 인식 기반 촬영 코칭
-- 피사체 중심 프레이밍 지원
-
-### ⭐ 베스트컷 추천
-- 이미지 품질 평가 AI 활용
-- 여러 장의 사진 중 최적 사진 추천
-
-### 🗺️ 촬영지 추천
-- 지도 기반 촬영 명소 탐색
-- 관광지 및 포토스팟 추천
-
-### 🎨 사진 편집
-- 이미지 편집 기능 제공
-- 촬영 후 사진 보정 지원
+- <strong>🎨 사진 편집</strong> : 다양한 편집 기능을 통해 촬영한 사진을 손쉽게 보정 가능
 
 ## 🛠 Tech Stack
 
@@ -82,7 +74,8 @@ AI 기술을 통해 촬영 코칭부터 베스트컷 선정, 촬영지 추천까
 </p>
 
 ## 🧱 시스템 구조도
-<img width="311" height="251" alt="image" src="https://github.com/user-attachments/assets/fa5c5ebb-861c-4455-86f9-6239f2f66a22" />
+<img width="1494" height="1204" alt="Frame 1 (4)" src="https://github.com/user-attachments/assets/e5019f84-6324-44b3-a4ab-19fee84a6221" />
+
 
 ## 🚀 설치 및 실행 방법
 ```
@@ -98,13 +91,49 @@ flutter pub get
 # 4. 실행 
 flutter run
 ```
-## 👥 Team
 
-| 이름 | 담당 |
-|------|------|
-| 강승원 | 팀장, UI/UX 설계 및 구현, 카메라 객체모드 설계 및 개발 |
-| 김관중 | 이미지 평가 AI 모델 구현 및 파인튜닝 |
-| 고명준 | 카메라 풍경모드 설계 및 개발 |
-| 서정원 | 카메라 구조 설계 및 리팩토링, 에디터 기능 개발 |
-| 이승비 | 카메라 인물모드 설계 및 개발 |
+<h2>👥 Team</h2>
 
+<table align="center">
+<tr>
+
+<td align="center" width="20%">
+<img  width="120px" alt="image" src="https://github.com/user-attachments/assets/6b198b65-41d9-401c-8b16-de0cef17575f" /><br/>
+<a href="https://github.com/ksw095"><b>강승원</b></a><br/>
+<sub>Team Leader</sub><br/><br/>
+UI/UX 설계 및<br/>
+객체 모드 개발
+</td>
+
+<td align="center" width="20%">
+<img width="120px" alt="image" src="https://github.com/user-attachments/assets/ff56a2e5-e9a8-4854-9645-0971f2591fef" /><br/>
+<a href="https://github.com/kmj0973"><b>고명준</b></a><br/>
+<sub>Developer</sub><br/><br/>
+풍경 모드<br/> 설계 및 개발
+</td>
+
+<td align="center" width="20%">
+<img width="120px" alt="image" src="https://github.com/user-attachments/assets/72e31880-20c0-4844-a855-a03fe64c83d9" /><br/>
+<a href="https://github.com/gwanjongkim"><b>김관중</b></a><br/>
+<sub>Developer</sub><br/><br/>
+이미지 평가 모델<br/>
+구현 및 파인튜닝
+</td>
+
+<td align="center" width="20%">
+<img width="120px" alt="image" src="https://github.com/user-attachments/assets/212a3cc3-4997-4f35-b1ac-45d7eb560792" /><br/>
+<a href="https://github.com/Seojw0108"><b>서정원</b></a><br/>
+<sub>Developer</sub><br/><br/>
+카메라 구조 설계<br/>
+에디터 기능 개발
+</td>
+
+<td align="center" width="20%">
+<img width="120px" alt="image" src="https://github.com/user-attachments/assets/82dc4c04-d7d3-424a-a6e8-5ed17a782711" /><br/>
+<a href="https://github.com/lime13579"><b>이승비</b></a><br/>
+<sub>Developer</sub><br/><br/>
+카메라 인물모드<br/> 설계 및 개발
+</td>
+
+</tr>
+</table>
