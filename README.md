@@ -1,4 +1,4 @@
-<img width="1672" height="941" alt="KakaoTalk_20260604_133424081" src="https://github.com/user-attachments/assets/3dfb0cba-e079-40b5-9af9-1b650b7e4ca3" />
+<img width="1672" height="941" alt="KakaoTalk_20260604_143329935" src="https://github.com/user-attachments/assets/614b2a47-8f03-4635-8394-d00c47c6af72" />
 
 <div align="center">
 <h1>📌 AI 기반 스마트 카메라 및 사진 어시스턴트 앱 "Pozy"</h1>
@@ -7,18 +7,36 @@ AI 기술을 통해 촬영 코칭부터 베스트컷 선정, 촬영지 추천까
   
 ## 🖼️ 예시 화면
 
-- 실시간 카메라 구도 코칭
-- 갤러리 사진 A-cut 평가
-- 기술/미적/구도 점수 기반 설명 생성
-- 선택적으로 Gemma LiteRT-LM 온디바이스 텍스트/VLM 설명 probe
-- 선택적으로 A-cut contact sheet 생성 도구 사용
+| <img width="2880" height="3120" alt="Group 2" src="https://github.com/user-attachments/assets/cee61103-f754-4b5a-96a2-646c0b0342d7" /> |
+|:--------------------:|
+| 촬영 장소 추천 기능 |
+
+| <img width="2888" height="3100" alt="Group 11" src="https://github.com/user-attachments/assets/277a8814-1ef5-4cb1-8bec-017d65bf284f" />|
+|:--------------------:|
+| 인물 모드 |
+
+| <img width="2880" height="3088" alt="Group 3" src="https://github.com/user-attachments/assets/9dd53844-8ed3-4f26-8c10-c20aa846f194" />|
+|:--------------------:|
+| 객체 모드 |
+
+| <img width="2880" height="3088" alt="Group 9" src="https://github.com/user-attachments/assets/4fc47d60-65dc-4482-8077-9b8609de2393" />|
+|:--------------------:|
+| 풍경 모드 |
+
+| <img width="5748" height="3088" alt="Group 7" src="https://github.com/user-attachments/assets/58ba1fd8-1da8-4a06-8fc6-bfc232b48d43" />|
+|:--------------------:|
+| 에디터 기능 |
+
+| <img width="5760" height="3088" alt="Group 8" src="https://github.com/user-attachments/assets/abab744e-c29d-453f-9c13-7e84545c4d04" />|
+|:--------------------:|
+| 베스트컷 기능 |
 
 ## 🎯 주요 기능
 - <strong>📷 AI 촬영 코칭</strong> : 실시간 객체 인식과 장면 분석을 통해 최적의 구도 가이드 제공
 
 - <strong>⭐ 베스트컷 추천</strong> : 이미지 품질 평가 AI로 여러 사진 중 가장 잘 나온 사진을 자동 추천
 
-- <strong>🗺️ 촬영지 추천</strong> : 지도 기반으로 주변 관광지와 포토스팟을 탐색하고 추천
+- <strong>🗺️ 촬영장소 추천</strong> : 지도 기반으로 주변 관광지와 포토스팟을 탐색하고 추천
 
 - <strong>🎨 사진 편집</strong> : 다양한 편집 기능을 통해 촬영한 사진을 손쉽게 보정 가능
 
