@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:collection';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:photo_manager/photo_manager.dart';
 
@@ -43,6 +43,10 @@ class _OriginalImageLoadRequest {
 
   final AssetEntity asset;
   final Completer<_OriginalImagePayload?> completer;
+}
+
+bool _isMissedOrRejected(PhotoEvaluationResult result) {
+  return result.acutLabel == '아쉬움' || result.acutLabel == '탈락';
 }
 
 class ACutResultScreen extends StatefulWidget {
@@ -321,9 +325,9 @@ class _ACutResultScreenState extends State<ACutResultScreen> {
     });
 
     if (successCount > 0) {
-      String message = '사진 ${successCount}장을 삭제했어요.';
+      String message = '사진 $successCount장을 삭제했어요.';
       if (failedCount > 0) {
-        message += ' (${failedCount}장은 삭제하지 못했습니다.)';
+        message += ' ($failedCount장은 삭제하지 못했습니다.)';
       }
       ScaffoldMessenger.of(
         context,
@@ -912,7 +916,8 @@ class _BestCutResultContent extends StatelessWidget {
     final recommended = ranking.recommendedPicks
         .where((result) => result.asset.id != bestId)
         .toList(growable: false);
-    final fallbackCandidates = ranking.topPicks
+    final topPicks = ranking.topPicks;
+    final fallbackCandidates = topPicks
         .where((result) => result.asset.id != bestId)
         .toList(growable: false);
     final candidateResults = recommended.isNotEmpty
@@ -922,13 +927,21 @@ class _BestCutResultContent extends StatelessWidget {
       ?bestId,
       for (final result in candidateResults) result.asset.id,
     };
-    final missedResults = ranking.rankedItems
-        .where(
-          (result) =>
-              result.acutLabel == '아쉬움' &&
-              !candidateIds.contains(result.asset.id),
-        )
+    final rankedItems = ranking.rankedItems;
+    final missedResults = rankedItems
+        .where((result) {
+          final evaluation = result.evaluation;
+          return evaluation != null &&
+              _isMissedOrRejected(evaluation) &&
+              !candidateIds.contains(result.asset.id);
+        })
         .toList(growable: false);
+    _logAcutResultImageListDebug(
+      ranking: ranking,
+      rankedItems: rankedItems,
+      top3Count: topPicks.length,
+      missedResults: missedResults,
+    );
 
     final bestList = best != null ? [best] : <ScoredPhotoResult>[];
 
@@ -992,6 +1005,59 @@ class _BestCutResultContent extends StatelessWidget {
       ],
     );
   }
+}
+
+void _logAcutResultImageListDebug({
+  required MultiPhotoRankingResult ranking,
+  required List<ScoredPhotoResult> rankedItems,
+  required int top3Count,
+  required List<ScoredPhotoResult> missedResults,
+}) {
+  if (!kDebugMode && !kProfileMode) {
+    return;
+  }
+
+  const prefix = '[AcutResultImageListDebug]';
+  final labelDistribution = <String, int>{};
+  for (final result in ranking.items) {
+    final label = result.acutLabel;
+    labelDistribution[label] = (labelDistribution[label] ?? 0) + 1;
+  }
+
+  debugPrint(
+    '$prefix total_result_count=${ranking.items.length} '
+    'ranked_result_count=${rankedItems.length} '
+    'top3_count=$top3Count '
+    'missed_rejected_count=${missedResults.length} '
+    'label_distribution=$labelDistribution',
+  );
+
+  for (final entry in missedResults.asMap().entries) {
+    final result = entry.value;
+    final score = result.finalScore;
+    debugPrint(
+      '$prefix missed_rejected_item '
+      'list_index=${entry.key} '
+      'selected_index=${result.selectedIndex} '
+      'rank=${result.rank ?? '-'} '
+      'label="${result.acutLabel}" '
+      'score=${score == null ? '-' : score.toStringAsFixed(4)} '
+      'path="${_debugPathForResult(result) ?? '-'}" '
+      'file="${result.fileName}"',
+    );
+  }
+}
+
+String? _debugPathForResult(ScoredPhotoResult result) {
+  try {
+    final relativePath = result.asset.relativePath;
+    if (relativePath != null && relativePath.trim().isNotEmpty) {
+      return relativePath;
+    }
+  } catch (_) {
+    return null;
+  }
+  return null;
 }
 
 class _SinglePhotoResultContent extends StatelessWidget {
