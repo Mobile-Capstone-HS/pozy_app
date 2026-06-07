@@ -1,0 +1,65 @@
+{
+  "preset": "nima",
+  "display_name": "NIMA Distribution Model",
+  "task": "aesthetic_distribution_regression",
+  "input": {
+    "image_size": [
+      224,
+      224
+    ],
+    "dtype": "float32",
+    "color_format": "RGB",
+    "tensor_layout": "NHWC",
+    "normalization": "pixel_value / 255.0"
+  },
+  "output": {
+    "shape": [
+      1,
+      10
+    ],
+    "summary": "10-bin aesthetic score distribution over scores 1..10.",
+    "interpretation": "Softmax distribution. Derive mean score with sum(prob[i] * (i + 1)).",
+    "postprocess": "Use distribution directly or compute mean_score = sum(distribution * [1..10])."
+  },
+  "source": {
+    "checkpoint_path": "checkpoints/nima_ava_gpu_fixed_preproc_20260525/final_model.keras",
+    "weights_path": "checkpoints/nima_ava_gpu_fixed_preproc_20260525/best.weights.h5",
+    "saved_model_dir": "checkpoints/nima_ava_gpu_fixed_preproc_20260525/saved_model"
+  },
+  "export": {
+    "requested_export_source": "auto",
+    "used_export_source": "rebuild",
+    "rebuild_failure": null,
+    "requested_conversion_mode": "auto",
+    "used_conversion_mode": "builtin",
+    "requires_select_tf_ops": false,
+    "tflite_path": "outputs/nima_fixed_preproc_eval_20260525/nima_mobile_fixed_preproc_fp32.tflite",
+    "tflite_size_bytes": 24763968,
+    "builtin_failure": null
+  },
+  "saved_model_signature": null,
+  "export_model_io": {
+    "inputs": [
+      {
+        "name": "keras_tensor_268",
+        "shape": [
+          null,
+          224,
+          224,
+          3
+        ],
+        "dtype": "float32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "keras_tensor_273",
+        "shape": [
+          null,
+          10
+        ],
+        "dtype": "float32"
+      }
+    ]
+  }
+}

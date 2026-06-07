@@ -1,0 +1,16 @@
+{
+  "name": "rgnet_pil_resize_aadb",
+  "format": "tflite",
+  "precision": [
+    "fp32",
+    "fp16"
+  ],
+  "input_shape": [
+    1,
+    256,
+    256,
+    3
+  ],
+  "preprocessing": "PIL Bilinear, RGB, float32, /255.0",
+  "created_at": "2026-05-24T05:16:19.863019"
+}

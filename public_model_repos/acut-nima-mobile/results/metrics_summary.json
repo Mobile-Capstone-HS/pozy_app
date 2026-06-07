@@ -1,0 +1,31 @@
+{
+  "old_broken_nima": {
+    "accuracy": 0.715,
+    "srcc": 0.3449,
+    "plcc": 0.3527,
+    "mae": 0.5781,
+    "emd": 0.0902,
+    "pred_positive_ratio": 0.968
+  },
+  "new_fixed_nima": {
+    "accuracy": 0.6025,
+    "srcc": 0.5894,
+    "plcc": 0.5929,
+    "mae": 0.6581,
+    "emd": 0.0998,
+    "auc": 0.8018,
+    "pred_positive_ratio": 0.367,
+    "gt_positive_ratio": 0.7115
+  },
+  "delta": {
+    "srcc": 0.2445,
+    "plcc": 0.2402,
+    "auc": 0.1428
+  },
+  "paper_reference_mobilenet": {
+    "accuracy": 0.8036,
+    "srcc": 0.510,
+    "plcc": 0.518
+  },
+  "verdict": "SIGNIFICANT IMPROVEMENT IN RANKING. Preprocessing bug fix confirmed. Discriminative power (AUC 0.80) is high. Score bias requires threshold recalibration."
+}

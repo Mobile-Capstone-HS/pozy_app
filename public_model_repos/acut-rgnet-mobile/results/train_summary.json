@@ -1,0 +1,139 @@
+{
+  "created_at_local": "2026-05-24T04:02:10.693888+09:00",
+  "model_variant": "RGNet-paper-v1 approximation",
+  "official_reproduction": false,
+  "paper_comparability_note": "Uses DenseNet121, ASPP approximation, spatial region nodes, cosine adjacency, residual graph convolution, region-level scores, and configurable aggregation. This is not the official paper implementation.",
+  "train_csv": "data/processed/aadb/train.csv",
+  "val_csv": "data/processed/aadb/val.csv",
+  "image_col": "image_path",
+  "target_col": "score",
+  "train_samples": 7612,
+  "val_samples": 846,
+  "image_size": 256,
+  "preprocess_backend": "pil_bilinear",
+  "preprocessing": {
+    "backend": "pil_bilinear",
+    "normalization": "float32_rgb_0_1",
+    "resize": "PIL.Image.BILINEAR"
+  },
+  "batch_size": 8,
+  "epochs_requested": 20,
+  "epochs_completed": 9,
+  "learning_rate": 0.0001,
+  "early_stopping": {
+    "monitor": "val_loss",
+    "patience": 3,
+    "restore_best_weights": true
+  },
+  "model": {
+    "backbone": "DenseNet121",
+    "backbone_weights_requested": "imagenet",
+    "context_module": "ASPP approximation",
+    "dilation_rates": [
+      1,
+      3,
+      6,
+      12,
+      18
+    ],
+    "region_dim": 256,
+    "graph_units": 256,
+    "graph_blocks": 3,
+    "graph_temperature": 0.25,
+    "graph_dropout": 0.1,
+    "head_dropout": 0.3,
+    "adjacency": "cosine similarity, softmax-normalized",
+    "graph_convolution": "residual graph convolution",
+    "region_score_head": "per-node sigmoid scalar score",
+    "aggregation": "lse",
+    "lse_r": 4.0,
+    "aggregation_formula": "(1 / r) * log(mean(exp(r * region_scores))) for aggregation=lse",
+    "output_activation": "region sigmoid before aggregation"
+  },
+  "tensorflow": {
+    "visible_gpus": [
+      "PhysicalDevice(name='/physical_device:GPU:0', device_type='GPU')"
+    ],
+    "mixed_precision_policy": "<DTypePolicy \"float32\">",
+    "tensorflow_version": "2.21.0"
+  },
+  "forward_check": {
+    "input_shape": [
+      8,
+      256,
+      256,
+      3
+    ],
+    "output_shape": [
+      8,
+      1
+    ],
+    "prediction_min": 0.4518014192581177,
+    "prediction_max": 0.6601474285125732,
+    "all_finite": true,
+    "in_unit_range": true
+  },
+  "save_load_check": {
+    "loaded_model_name": "rgnet_paper_v1_aadb_regression",
+    "loaded_output_shape": [
+      8,
+      1
+    ],
+    "max_abs_diff_vs_trained_forward_sample": 0.0
+  },
+  "outputs": {
+    "final_model": "outputs/rgnet_v1_aadb_pil_resize_retrain_20260524/final_model.keras",
+    "best_weights": "outputs/rgnet_v1_aadb_pil_resize_retrain_20260524/best.weights.h5",
+    "training_history_csv": "outputs/rgnet_v1_aadb_pil_resize_retrain_20260524/training_history.csv",
+    "train_summary_json": "outputs/rgnet_v1_aadb_pil_resize_retrain_20260524/train_summary.json"
+  },
+  "best_epoch": 6,
+  "best_val_loss": 0.022204997017979622,
+  "best_val_mae": 0.11744552105665207,
+  "history": {
+    "loss": [
+      0.027979182079434395,
+      0.02281811647117138,
+      0.0201271865516901,
+      0.01822376251220703,
+      0.016176821663975716,
+      0.014428684487938881,
+      0.011868183501064777,
+      0.010583650320768356,
+      0.009201070293784142
+    ],
+    "mae": [
+      0.13192340731620789,
+      0.11934655159711838,
+      0.11152178049087524,
+      0.10647548735141754,
+      0.099840447306633,
+      0.09466680139303207,
+      0.08565466850996017,
+      0.08128269016742706,
+      0.07546401023864746
+    ],
+    "val_loss": [
+      0.029918666929006577,
+      0.02350677363574505,
+      0.02415352687239647,
+      0.022306252270936966,
+      0.027905968949198723,
+      0.022204997017979622,
+      0.02636539377272129,
+      0.025306779891252518,
+      0.02534082904458046
+    ],
+    "val_mae": [
+      0.13583175837993622,
+      0.12274229526519775,
+      0.12180572748184204,
+      0.11868146061897278,
+      0.13060954213142395,
+      0.11744552105665207,
+      0.1282588541507721,
+      0.1262347251176834,
+      0.12468279153108597
+    ]
+  }
+}

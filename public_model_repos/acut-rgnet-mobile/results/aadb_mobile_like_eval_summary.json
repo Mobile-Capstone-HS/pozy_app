@@ -1,0 +1,128 @@
+{
+  "timestamp": "2026-05-24T05:16:19.862638",
+  "export_source": {
+    "weights": "outputs/rgnet_v1_aadb_pil_resize_retrain_20260524/best.weights.h5",
+    "reconstructed": true
+  },
+  "metrics": {
+    "keras_best_weights": {
+      "srcc": 0.6647812475751288,
+      "plcc": 0.6707980875347894,
+      "mae": 0.12189362692129613,
+      "rmse": 0.1521546156335994
+    },
+    "tflite_fp32": {
+      "srcc": 0.6647899851650423,
+      "plcc": 0.6707976633712609,
+      "mae": 0.1218942808289528,
+      "rmse": 0.15215342692584816
+    },
+    "tflite_fp16": {
+      "srcc": 0.6647150230877092,
+      "plcc": 0.6707554596987384,
+      "mae": 0.12189718969953062,
+      "rmse": 0.15216294265510116
+    }
+  },
+  "parity": {
+    "fp32": {
+      "max_abs_diff": 0.00032889842987060547,
+      "mean_abs_diff": 5.892579257488251e-05,
+      "pearson": 0.9999999243299418
+    },
+    "fp16": {
+      "max_abs_diff": 0.001067817211151123,
+      "mean_abs_diff": 0.0001569153368473053,
+      "pearson": 0.9999993702964033,
+      "spearman": 0.9999967689967594
+    }
+  },
+  "worst_10_fp16_diff": [
+    {
+      "image_path": "/home/omen_pc1/photo_score_project/data/raw/aadb/images/farm1_378_19999461508_fb5b35066d_b.jpg",
+      "true_score": 0.1,
+      "keras_pred": 0.4444887042045593,
+      "fp32_pred": 0.44472065567970276,
+      "fp16_pred": 0.44555652141571045,
+      "abs_diff_fp16": 0.001067817211151123
+    },
+    {
+      "image_path": "/home/omen_pc1/photo_score_project/data/raw/aadb/images/farm1_295_19880032928_aedd4bbfa5_b.jpg",
+      "true_score": 0.25,
+      "keras_pred": 0.5887898206710815,
+      "fp32_pred": 0.5889332294464111,
+      "fp16_pred": 0.5895742774009705,
+      "abs_diff_fp16": 0.000784456729888916
+    },
+    {
+      "image_path": "/home/omen_pc1/photo_score_project/data/raw/aadb/images/farm1_375_20140752669_6aa531548b_b.jpg",
+      "true_score": 0.5,
+      "keras_pred": 0.49119335412979126,
+      "fp32_pred": 0.49125754833221436,
+      "fp16_pred": 0.491913378238678,
+      "abs_diff_fp16": 0.0007200241088867188
+    },
+    {
+      "image_path": "/home/omen_pc1/photo_score_project/data/raw/aadb/images/farm1_372_19645264354_6f85ff98f3_b.jpg",
+      "true_score": 0.45,
+      "keras_pred": 0.5856719017028809,
+      "fp32_pred": 0.5858031511306763,
+      "fp16_pred": 0.5863794088363647,
+      "abs_diff_fp16": 0.0007075071334838867
+    },
+    {
+      "image_path": "/home/omen_pc1/photo_score_project/data/raw/aadb/images/farm1_535_19895268770_849590250a_b.jpg",
+      "true_score": 0.6,
+      "keras_pred": 0.5581276416778564,
+      "fp32_pred": 0.5581907033920288,
+      "fp16_pred": 0.5588114261627197,
+      "abs_diff_fp16": 0.0006837844848632812
+    },
+    {
+      "image_path": "/home/omen_pc1/photo_score_project/data/raw/aadb/images/farm1_356_20177264126_4dbe849314_b.jpg",
+      "true_score": 0.3,
+      "keras_pred": 0.2887038588523865,
+      "fp32_pred": 0.2887928783893585,
+      "fp16_pred": 0.2893519401550293,
+      "abs_diff_fp16": 0.0006480813026428223
+    },
+    {
+      "image_path": "/home/omen_pc1/photo_score_project/data/raw/aadb/images/farm1_306_20190003345_b5c47e5144_b.jpg",
+      "true_score": 0.25,
+      "keras_pred": 0.46763864159584045,
+      "fp32_pred": 0.4676932394504547,
+      "fp16_pred": 0.467000275850296,
+      "abs_diff_fp16": 0.0006383657455444336
+    },
+    {
+      "image_path": "/home/omen_pc1/photo_score_project/data/raw/aadb/images/farm1_372_20193489382_358c1564d9_b.jpg",
+      "true_score": 0.6,
+      "keras_pred": 0.39267876744270325,
+      "fp32_pred": 0.3929654657840729,
+      "fp16_pred": 0.3933106064796448,
+      "abs_diff_fp16": 0.0006318390369415283
+    },
+    {
+      "image_path": "/home/omen_pc1/photo_score_project/data/raw/aadb/images/farm1_397_20076142025_74d3bed9cf_b.jpg",
+      "true_score": 0.7,
+      "keras_pred": 0.5250200033187866,
+      "fp32_pred": 0.5252196788787842,
+      "fp16_pred": 0.5256381630897522,
+      "abs_diff_fp16": 0.0006181597709655762
+    },
+    {
+      "image_path": "/home/omen_pc1/photo_score_project/data/raw/aadb/images/farm1_378_20210116871_609391707f_b.jpg",
+      "true_score": 0.1,
+      "keras_pred": 0.27163681387901306,
+      "fp32_pred": 0.2716987133026123,
+      "fp16_pred": 0.27224576473236084,
+      "abs_diff_fp16": 0.0006089508533477783
+    }
+  ],
+  "prediction_stats_fp16": {
+    "mean": 0.5245631997734308,
+    "std": 0.15639991551206522,
+    "min": 0.055542051792144775,
+    "max": 0.9314902424812317
+  }
+}

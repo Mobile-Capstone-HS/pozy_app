@@ -1,0 +1,17 @@
+image_path,score,dataset,split,relative_path,prediction,signed_error,abs_error
+/home/omen_pc1/photo_score_project/data/raw/aadb/images/farm1_286_20013434330_d99ab6b9a0_b.jpg,0.65,aadb,test,farm1_286_20013434330_d99ab6b9a0_b.jpg,0.8464583,0.19645834,0.19645834
+/home/omen_pc1/photo_score_project/data/raw/aadb/images/farm1_273_19900479178_9c64cca006_b.jpg,0.6,aadb,test,farm1_273_19900479178_9c64cca006_b.jpg,0.64279336,0.042793334,0.042793334
+/home/omen_pc1/photo_score_project/data/raw/aadb/images/farm1_285_19484842833_2ebfbc985e_b.jpg,0.5,aadb,test,farm1_285_19484842833_2ebfbc985e_b.jpg,0.37041646,-0.12958354,0.12958354
+/home/omen_pc1/photo_score_project/data/raw/aadb/images/farm1_344_19990824729_56e421dc46_b.jpg,0.35,aadb,test,farm1_344_19990824729_56e421dc46_b.jpg,0.39430195,0.044301957,0.044301957
+/home/omen_pc1/photo_score_project/data/raw/aadb/images/farm1_388_20301245466_fd4866a2d9_b.jpg,0.45,aadb,test,farm1_388_20301245466_fd4866a2d9_b.jpg,0.4782371,0.028237104,0.028237104
+/home/omen_pc1/photo_score_project/data/raw/aadb/images/farm1_324_20082073656_0a928e1dc5_b.jpg,0.25,aadb,test,farm1_324_20082073656_0a928e1dc5_b.jpg,0.450894,0.200894,0.200894
+/home/omen_pc1/photo_score_project/data/raw/aadb/images/farm1_338_20262308112_9a826f8d71_b.jpg,0.3,aadb,test,farm1_338_20262308112_9a826f8d71_b.jpg,0.4929629,0.19296288,0.19296288
+/home/omen_pc1/photo_score_project/data/raw/aadb/images/farm1_269_19546542944_89dc1fcd26_b.jpg,0.3,aadb,test,farm1_269_19546542944_89dc1fcd26_b.jpg,0.31126526,0.011265248,0.011265248
+/home/omen_pc1/photo_score_project/data/raw/aadb/images/farm1_392_20138260089_60d41675c9_b.jpg,0.6,aadb,test,farm1_392_20138260089_60d41675c9_b.jpg,0.5054537,-0.09454632,0.09454632
+/home/omen_pc1/photo_score_project/data/raw/aadb/images/farm1_312_20060992036_52e83c8234_b.jpg,0.85,aadb,test,farm1_312_20060992036_52e83c8234_b.jpg,0.8175403,-0.032459736,0.032459736
+/home/omen_pc1/photo_score_project/data/raw/aadb/images/farm1_429_20164497916_612b5cce64_b.jpg,0.35,aadb,test,farm1_429_20164497916_612b5cce64_b.jpg,0.41110027,0.061100274,0.061100274
+/home/omen_pc1/photo_score_project/data/raw/aadb/images/farm1_368_20183477926_ac4e2a3528_b.jpg,0.7,aadb,test,farm1_368_20183477926_ac4e2a3528_b.jpg,0.6732732,-0.026726782,0.026726782
+/home/omen_pc1/photo_score_project/data/raw/aadb/images/farm4_3728_20002843560_78f4cc626d_b.jpg,0.25,aadb,test,farm4_3728_20002843560_78f4cc626d_b.jpg,0.35631746,0.10631746,0.10631746
+/home/omen_pc1/photo_score_project/data/raw/aadb/images/farm1_391_19645963734_f7c6b68a40_b.jpg,0.5,aadb,test,farm1_391_19645963734_f7c6b68a40_b.jpg,0.36541262,-0.13458738,0.13458738
+/home/omen_pc1/photo_score_project/data/raw/aadb/images/farm4_3782_20257244016_f48605817a_b.jpg,0.6,aadb,test,farm4_3782_20257244016_f48605817a_b.jpg,0.66064274,0.06064272,0.06064272
+/home/omen_pc1/photo_score_project/data/raw/aadb/images/farm1_437_20163520542_f6d66c3bd6_b.jpg,0.7,aadb,test,farm1_437_20163520542_f6d66c3bd6_b.jpg,0.6350443,-0.06495571,0.06495571

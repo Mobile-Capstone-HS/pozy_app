@@ -1,0 +1,24 @@
+{
+  "dataset": "data/processed/ava/test.csv",
+  "sample_count": 2000,
+  "mean_score_mae": 0.6581177249958953,
+  "srcc": 0.5893975804956001,
+  "plcc": 0.592903705671264,
+  "accuracy": 0.6025,
+  "auc": 0.8018216451439644,
+  "mean_emd": 0.09978491812944412,
+  "gt_positive_ratio": 0.7115,
+  "pred_positive_ratio": 0.367,
+  "pred_mean_stats": {
+    "min": 3.2015576362609863,
+    "max": 6.544256210327148,
+    "mean": 4.8349385261535645,
+    "std": 0.5482705235481262
+  },
+  "gt_mean_stats": {
+    "min": 2.7526882,
+    "max": 7.420561,
+    "mean": 5.3922513728,
+    "std": 0.6997357992964222
+  }
+}
