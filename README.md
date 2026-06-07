@@ -88,7 +88,9 @@ cd pozy
 # 3. 의존성 설치
 flutter pub get
 
-# 4. 실행 
+# 4. 에뮬레이터 or 실제 기기를 연결
+
+# 5. 실행 
 flutter run
 ```
 
