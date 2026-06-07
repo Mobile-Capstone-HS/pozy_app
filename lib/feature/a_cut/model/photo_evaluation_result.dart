@@ -9,11 +9,9 @@ class PhotoEvaluationResult {
   final double? nimaScore;
   final double? rgnetScore;
   final double? alampScore;
-  final double? icaaScore;
   final double? nimaWeight;
   final double? rgnetWeight;
   final double? alampWeight;
-  final double? icaaWeight;
   final String verdict;
   final List<String> notes;
   final List<String> warnings;
@@ -50,11 +48,9 @@ class PhotoEvaluationResult {
     this.nimaScore,
     this.rgnetScore,
     this.alampScore,
-    this.icaaScore,
     this.nimaWeight,
     this.rgnetWeight,
     this.alampWeight,
-    this.icaaWeight,
     this.notes = const [],
     this.warnings = const [],
     this.scoreDetails = const [],
@@ -78,11 +74,9 @@ class PhotoEvaluationResult {
       nimaScore: (json['nima_score'] as num?)?.toDouble(),
       rgnetScore: (json['rgnet_score'] as num?)?.toDouble(),
       alampScore: (json['alamp_score'] as num?)?.toDouble(),
-      icaaScore: (json['icaa_score'] as num?)?.toDouble(),
       nimaWeight: (json['nima_weight'] as num?)?.toDouble(),
       rgnetWeight: (json['rgnet_weight'] as num?)?.toDouble(),
       alampWeight: (json['alamp_weight'] as num?)?.toDouble(),
-      icaaWeight: (json['icaa_weight'] as num?)?.toDouble(),
       verdict: json['verdict'] as String,
       notes: (json['notes'] as List<dynamic>?)?.cast<String>() ?? const [],
       warnings:
@@ -117,11 +111,9 @@ class PhotoEvaluationResult {
     if (nimaScore != null) 'nima_score': nimaScore,
     if (rgnetScore != null) 'rgnet_score': rgnetScore,
     if (alampScore != null) 'alamp_score': alampScore,
-    if (icaaScore != null) 'icaa_score': icaaScore,
     if (nimaWeight != null) 'nima_weight': nimaWeight,
     if (rgnetWeight != null) 'rgnet_weight': rgnetWeight,
     if (alampWeight != null) 'alamp_weight': alampWeight,
-    if (icaaWeight != null) 'icaa_weight': icaaWeight,
     'verdict': verdict,
     'notes': notes,
     'warnings': warnings,
@@ -147,11 +139,9 @@ class PhotoEvaluationResult {
     double? nimaScore,
     double? rgnetScore,
     double? alampScore,
-    double? icaaScore,
     double? nimaWeight,
     double? rgnetWeight,
     double? alampWeight,
-    double? icaaWeight,
     List<String> notes = const [],
     List<String> warnings = const [],
     List<ModelScoreDetail> scoreDetails = const [],
@@ -173,15 +163,11 @@ class PhotoEvaluationResult {
         ((finalAestheticScore ?? aestheticScore)?.clamp(0.0, 1.0) as num?)
             ?.toDouble();
     final normalizedWeights =
-        nimaWeight != null &&
-            rgnetWeight != null &&
-            alampWeight != null &&
-            icaaWeight != null
+        nimaWeight != null && rgnetWeight != null && alampWeight != null
         ? AestheticEnsembleWeights(
             nimaWeight: nimaWeight,
             rgnetWeight: rgnetWeight,
             alampWeight: alampWeight,
-            icaaWeight: icaaWeight,
           )
         : null;
 
@@ -193,11 +179,9 @@ class PhotoEvaluationResult {
       nimaScore: (nimaScore?.clamp(0.0, 1.0) as num?)?.toDouble(),
       rgnetScore: (rgnetScore?.clamp(0.0, 1.0) as num?)?.toDouble(),
       alampScore: (alampScore?.clamp(0.0, 1.0) as num?)?.toDouble(),
-      icaaScore: (icaaScore?.clamp(0.0, 1.0) as num?)?.toDouble(),
       nimaWeight: normalizedWeights?.nimaWeight,
       rgnetWeight: normalizedWeights?.rgnetWeight,
       alampWeight: normalizedWeights?.alampWeight,
-      icaaWeight: normalizedWeights?.icaaWeight,
       verdict: _verdictFor(normalizedFinal),
       notes: notes,
       warnings: warnings,
@@ -222,11 +206,9 @@ class PhotoEvaluationResult {
     double? nimaScore,
     double? rgnetScore,
     double? alampScore,
-    double? icaaScore,
     double? nimaWeight,
     double? rgnetWeight,
     double? alampWeight,
-    double? icaaWeight,
     String? verdict,
     List<String>? notes,
     List<String>? warnings,
@@ -249,11 +231,9 @@ class PhotoEvaluationResult {
       nimaScore: nimaScore ?? this.nimaScore,
       rgnetScore: rgnetScore ?? this.rgnetScore,
       alampScore: alampScore ?? this.alampScore,
-      icaaScore: icaaScore ?? this.icaaScore,
       nimaWeight: nimaWeight ?? this.nimaWeight,
       rgnetWeight: rgnetWeight ?? this.rgnetWeight,
       alampWeight: alampWeight ?? this.alampWeight,
-      icaaWeight: icaaWeight ?? this.icaaWeight,
       verdict: verdict ?? this.verdict,
       notes: notes ?? this.notes,
       warnings: warnings ?? this.warnings,
@@ -303,36 +283,25 @@ class PhotoEvaluationResult {
 
   int? get alampPct => _pctFromScore(alampScore);
 
-  int? get icaaPct => _pctFromScore(icaaScore);
-
   bool get hasAestheticEnsembleScores =>
-      nimaScore != null &&
-      rgnetScore != null &&
-      alampScore != null &&
-      icaaScore != null;
+      nimaScore != null && rgnetScore != null && alampScore != null;
 
   bool get hasAnyAestheticEnsembleScore =>
-      nimaScore != null ||
-      rgnetScore != null ||
-      alampScore != null ||
-      icaaScore != null;
+      nimaScore != null || rgnetScore != null || alampScore != null;
 
   AestheticEnsembleWeights get effectiveAestheticWeights {
     final currentNimaWeight = nimaWeight;
     final currentRgnetWeight = rgnetWeight;
     final currentAlampWeight = alampWeight;
-    final currentIcaaWeight = icaaWeight;
     if (currentNimaWeight == null ||
         currentRgnetWeight == null ||
-        currentAlampWeight == null ||
-        currentIcaaWeight == null) {
+        currentAlampWeight == null) {
       return AestheticEnsembleWeights.defaults;
     }
     return AestheticEnsembleWeights(
       nimaWeight: currentNimaWeight,
       rgnetWeight: currentRgnetWeight,
       alampWeight: currentAlampWeight,
-      icaaWeight: currentIcaaWeight,
     );
   }
 
@@ -343,14 +312,12 @@ class PhotoEvaluationResult {
       nimaWeight: weights.nimaWeight,
       rgnetWeight: weights.rgnetWeight,
       alampWeight: weights.alampWeight,
-      icaaWeight: weights.icaaWeight,
     );
     final recomputedAestheticScore = hasAestheticEnsembleScores
         ? normalizedWeights.weightedScore(
             nimaScore: nimaScore!,
             rgnetScore: rgnetScore!,
             alampScore: alampScore!,
-            icaaScore: icaaScore!,
           )
         : (finalAestheticScore ?? aestheticScore);
     final usesTechnicalFallback = recomputedAestheticScore == null;
@@ -368,11 +335,9 @@ class PhotoEvaluationResult {
       nimaScore: nimaScore,
       rgnetScore: rgnetScore,
       alampScore: alampScore,
-      icaaScore: icaaScore,
       nimaWeight: normalizedWeights.nimaWeight,
       rgnetWeight: normalizedWeights.rgnetWeight,
       alampWeight: normalizedWeights.alampWeight,
-      icaaWeight: normalizedWeights.icaaWeight,
       notes: notes,
       warnings: warnings,
       scoreDetails: _reweightedScoreDetails(normalizedWeights),
@@ -462,8 +427,6 @@ class PhotoEvaluationResult {
             case 'alamp_aadb_gpu':
             case 'mobile_alamp_v2':
               return detail.copyWith(weight: weights.alampWeight);
-            case 'icaa_color_aesthetic':
-              return detail.copyWith(weight: weights.icaaWeight);
             default:
               return detail;
           }

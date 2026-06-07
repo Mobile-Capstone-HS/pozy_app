@@ -159,7 +159,6 @@ class OnDevicePhotoEvaluationService implements PhotoEvaluationService {
         nimaScore: aestheticSummary?.nimaScore,
         rgnetScore: aestheticSummary?.rgnetScore,
         alampScore: aestheticSummary?.alampScore,
-        icaaScore: aestheticSummary?.icaaScore,
         finalAestheticScore: aestheticScore,
         technicalScore: technicalSummary.technicalScore,
         elapsedTotalAestheticMs: aestheticElapsedMs,
@@ -200,11 +199,9 @@ class OnDevicePhotoEvaluationService implements PhotoEvaluationService {
       nimaScore: aestheticSummary?.nimaScore,
       rgnetScore: aestheticSummary?.rgnetScore,
       alampScore: aestheticSummary?.alampScore,
-      icaaScore: aestheticSummary?.icaaScore,
       nimaWeight: aestheticSummary?.weights.nimaWeight,
       rgnetWeight: aestheticSummary?.weights.rgnetWeight,
       alampWeight: aestheticSummary?.weights.alampWeight,
-      icaaWeight: aestheticSummary?.weights.icaaWeight,
       notes: notes,
       warnings: warnings,
       scoreDetails: [
@@ -241,7 +238,6 @@ class OnDevicePhotoEvaluationService implements PhotoEvaluationService {
       nimaScore: result.nimaScore,
       rgnetScore: result.rgnetScore,
       alampScore: result.alampScore,
-      icaaScore: result.icaaScore,
       finalAestheticScore: result.finalAestheticScore,
       technicalScore: result.technicalScore,
       elapsedTotalAestheticMs: aestheticElapsedMs,
@@ -341,8 +337,7 @@ void _logImageFinalScoreParity({
     'flive=${_detailScore(technicalSummary, 'flive_image_mobile') ?? '-'} '
     'nima=${result.nimaScore ?? '-'} '
     'rgnet=${result.rgnetScore ?? '-'} '
-    'alamp=${result.alampScore ?? '-'} '
-    'icaa=${result.icaaScore ?? '-'}',
+    'alamp=${result.alampScore ?? '-'}',
   );
 }
 

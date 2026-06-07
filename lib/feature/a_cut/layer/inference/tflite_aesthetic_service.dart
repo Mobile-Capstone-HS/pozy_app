@@ -611,22 +611,6 @@ class TfliteAestheticService {
         '[AcutPerf] preprocess_${runtimeWidth}_ms=$pMs model=${contract.id} '
         'resize_mode=${contract.resizeMode.name}',
       );
-      if (contract.id == 'icaa_color_aesthetic') {
-        AcutAestheticTimingDebug.log(
-          imageLabel: debugImageLabel,
-          imageIndex: imageIndex,
-          modelId: contract.id,
-          phase: 'icaa_preprocessing',
-          elapsedMs: pMs,
-          tensorShape: '[1,$runtimeHeight,$runtimeWidth,3]',
-          imageDimensions: _sourceImageDimensions(bundle),
-          fields: <String, Object?>{
-            'normalization': contract.normalization.name,
-            'resize_mode': contract.resizeMode.name,
-            'bytes': preprocessed.lengthInBytes,
-          },
-        );
-      }
 
       if (preprocessed.lengthInBytes != expectedBytes) {
         throw Exception(
@@ -692,16 +676,6 @@ class TfliteAestheticService {
           'elapsedUs': inferSw.elapsedMicroseconds,
           'timing_tag': 'AcutTimingTechnicalModel',
         },
-      );
-    }
-    if (contract.id == 'icaa_color_aesthetic') {
-      AcutAestheticTimingDebug.log(
-        imageLabel: debugImageLabel,
-        imageIndex: imageIndex,
-        modelId: contract.id,
-        phase: 'icaa_inference',
-        elapsedMs: iMs,
-        tensorShape: _shapeString(outputDescriptors.first.shape),
       );
     }
 
@@ -1563,18 +1537,11 @@ class TfliteAestheticService {
       'koniq_mobile' => ExperimentalFeatures.disableKoniqDuringBatchScoring,
       'flive_image_mobile' =>
         ExperimentalFeatures.disableFliveDuringBatchScoring,
-      'icaa_color_aesthetic' => ExperimentalFeatures.skipIccaExperiment,
       'nima_mobile' || 'mobile_alamp_v2' || 'rgnet_pil_resize_aadb' => false,
       _ => false,
     };
 
     if (disabled) {
-      if (contract.id == 'icaa_color_aesthetic') {
-        debugPrint(
-          '[AcutPerf] aesthetic_model_skip model=icaa_color_aesthetic '
-          'reason=POZY_ACUT_SKIP_ICAA_EXPERIMENT image_index=$imageIndex',
-        );
-      }
       debugPrint(
         '[AcutPerf] model_skipped image_index=$imageIndex '
         'model=${contract.id} reason=debug_flag',
