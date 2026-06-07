@@ -50,10 +50,6 @@ abstract final class ExperimentalFeatures {
     'POZY_DISABLE_ALAMP_DURING_BATCH_SCORING',
     defaultValue: true,
   );
-  static const bool skipIccaExperiment = bool.fromEnvironment(
-    'POZY_ACUT_SKIP_ICAA_EXPERIMENT',
-    defaultValue: false,
-  );
   static const bool acutVerboseModelLogs = bool.fromEnvironment(
     'POZY_ACUT_VERBOSE_MODEL_LOGS',
     defaultValue: false,
@@ -88,7 +84,7 @@ abstract final class ExperimentalFeatures {
   );
   static const String acutTfliteExperimentMode = String.fromEnvironment(
     'POZY_ACUT_TFLITE_EXPERIMENT_MODE',
-    defaultValue: 'threads_icaa_rgnet',
+    defaultValue: 'threads_rgnet',
   );
   static const int _acutTfliteNumThreadsRaw = int.fromEnvironment(
     'POZY_ACUT_TFLITE_NUM_THREADS',

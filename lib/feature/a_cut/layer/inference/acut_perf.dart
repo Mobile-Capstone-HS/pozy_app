@@ -222,7 +222,6 @@ abstract final class AcutAestheticParityDebug {
     required double? nimaScore,
     required double? rgnetScore,
     required double? alampScore,
-    required double? icaaScore,
     required double? finalAestheticScore,
     double? technicalScore,
     int? elapsedTotalAestheticMs,
@@ -239,7 +238,6 @@ abstract final class AcutAestheticParityDebug {
       ..write('nima_score=${_score(nimaScore)} ')
       ..write('rgnet_score=${_score(rgnetScore)} ')
       ..write('alamp_score=${_score(alampScore)} ')
-      ..write('icaa_score=${_score(icaaScore)} ')
       ..write('final_aesthetic_score=${_score(finalAestheticScore)}');
 
     if (technicalScore != null) {

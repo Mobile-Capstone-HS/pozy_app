@@ -67,11 +67,6 @@ class OnDeviceImageScoreService implements ImageScoreService {
     if (!disableExplanations) {
       debugPrint('[AcutPerf] ERROR explanation_called_during_batch_scoring');
     }
-    if (ExperimentalFeatures.skipIccaExperiment) {
-      debugPrint(
-        '[AcutPerf] icaa_skip_experiment enabled=true model=icaa_color_aesthetic',
-      );
-    }
 
     for (var index = 0; index < assets.length; index++) {
       final asset = assets[index];

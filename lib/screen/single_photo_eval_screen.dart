@@ -455,7 +455,7 @@ class _AestheticEnsembleDebugSection extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           const Text(
-            'NIMA, ICAA, A-Lamp, RGNet을 각각 실행한 뒤 정규화된 가중합으로 최종 미적 점수를 계산해요.',
+            'NIMA, A-LAMP, RGNet을 각각 실행한 뒤 정규화된 가중합으로 최종 미적 점수를 계산해요.',
             style: TextStyle(
               fontSize: 12,
               height: 1.45,
@@ -473,15 +473,14 @@ class _AestheticEnsembleDebugSection extends StatelessWidget {
             label: '가중치',
             value:
                 'NIMA ${weights.nimaWeight.toStringAsFixed(1)} / '
-                'ICAA ${weights.icaaWeight.toStringAsFixed(1)} / '
-                'A-Lamp ${weights.alampWeight.toStringAsFixed(1)} / '
+                'A-LAMP ${weights.alampWeight.toStringAsFixed(1)} / '
                 'RGNet ${weights.rgnetWeight.toStringAsFixed(1)} '
                 '(코드 고정)',
           ),
           if (!result.hasAnyAestheticEnsembleScore) ...[
             const SizedBox(height: 12),
             const _DebugBanner(
-              text: '이 결과에는 NIMA/ICAA/A-Lamp/RGNet 개별 점수가 아직 없습니다.',
+              text: '이 결과에는 NIMA/A-LAMP/RGNet 개별 점수가 아직 없습니다.',
             ),
           ] else ...[
             const SizedBox(height: 14),
@@ -500,14 +499,7 @@ class _AestheticEnsembleDebugSection extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             _EnsembleScoreRow(
-              label: 'ICAA',
-              score: result.icaaScore,
-              weight: weights.icaaWeight,
-              accent: const Color(0xFF0F766E),
-            ),
-            const SizedBox(height: 12),
-            _EnsembleScoreRow(
-              label: 'A-Lamp',
+              label: 'A-LAMP',
               score: result.alampScore,
               weight: weights.alampWeight,
               accent: const Color(0xFF7C3AED),

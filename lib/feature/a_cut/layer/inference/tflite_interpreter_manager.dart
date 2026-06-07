@@ -362,19 +362,12 @@ enum _AcutDelegateKind { none, nnapi, gpu }
 
 class _AcutTfliteExperimentPlan {
   static const _defaultThreads = 2;
-  static const _targetIcaa = 'icaa_color_aesthetic';
   static const _targetRgnet = 'rgnet_pil_resize_aadb';
   static const _allowedModes = <String>{
     'cpu_baseline',
-    'threads_icaa',
     'threads_rgnet',
-    'threads_icaa_rgnet',
-    'nnapi_icaa',
     'nnapi_rgnet',
-    'nnapi_icaa_rgnet',
-    'gpu_icaa',
     'gpu_rgnet',
-    'gpu_icaa_rgnet',
   };
 
   final String assetPath;
@@ -513,8 +506,7 @@ class _AcutTfliteExperimentPlan {
 
   static bool _targetsModel(String mode, String? modelId) {
     return switch (modelId) {
-      _targetIcaa => mode.endsWith('_icaa') || mode.endsWith('_icaa_rgnet'),
-      _targetRgnet => mode.endsWith('_rgnet') || mode.endsWith('_icaa_rgnet'),
+      _targetRgnet => mode.endsWith('_rgnet'),
       _ => false,
     };
   }

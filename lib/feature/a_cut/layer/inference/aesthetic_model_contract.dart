@@ -509,29 +509,12 @@ const AestheticModelContract mobileAlampV2Contract = AestheticModelContract(
   signatureKey: 'serving_default',
 );
 
-const AestheticModelContract icaaColorAestheticContract =
-    AestheticModelContract(
-      id: 'icaa_color_aesthetic',
-      label: 'ICAA',
-      assetPath: 'assets/models/icaa_dat_tf_native_fp16.tflite',
-      metadataAssetPathOverride:
-          'assets/models/icaa_dat_tf_native.metadata.json',
-      dimension: ModelScoreDimension.aesthetic,
-      inputWidth: 224,
-      inputHeight: 224,
-      expectedOutputLength: 2,
-      normalization: ImageNormalization.imageNet,
-      outputType: AestheticModelOutputType.scalarUnitInterval,
-      outputIndex: 1,
-      weight: 0.20,
-    );
-
 const List<AestheticModelContract> defaultTechnicalModelContracts = [
   koniqMobileContract,
   fliveImageMobileContract,
 ];
 
-/// Active four-model ensemble for A-cut aesthetic scoring.
+/// Active three-model ensemble for A-cut aesthetic scoring.
 const List<AestheticModelContract> activeAestheticEnsembleContracts = [
   nimaMobileContract,
   mobileAlampV2Contract,
