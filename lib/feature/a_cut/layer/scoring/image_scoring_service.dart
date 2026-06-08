@@ -53,6 +53,7 @@ class OnDeviceImageScoreService implements ImageScoreService {
   }) async {
     final batchSw = Stopwatch()..start();
     AcutPerfCollector.reset();
+    AcutTopiqFliveShadowStats.reset();
     final total = assets.length;
     final working = <ScoredPhotoResult>[];
     final disableExplanations =
@@ -179,6 +180,7 @@ class OnDeviceImageScoreService implements ImageScoreService {
         avgMs: avgMs.toDouble(),
       ),
     );
+    AcutTopiqFliveShadowStats.logSummary(totalImages: total);
   }
 
   Future<Uint8List?> _readAnalysisBytes(

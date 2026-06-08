@@ -66,6 +66,126 @@ class MockPhotoEvaluationService implements PhotoEvaluationService {
   }
 }
 
+abstract final class AcutTopiqFliveShadowStats {
+  static int _count = 0;
+  static int _topiqTotalMs = 0;
+  static int _fliveTotalMs = 0;
+  static int _fliveCount = 0;
+  static int _extraTotalMs = 0;
+  static double _shadowSum = 0.0;
+  static double _productionSum = 0.0;
+  static double _absDeltaSum = 0.0;
+  static double? _shadowMin;
+  static double? _shadowMax;
+  static double? _productionMin;
+  static double? _productionMax;
+  static int _deltaGte15Count = 0;
+  static int _deltaGte25Count = 0;
+  static int _suspiciousProduction45Shadow65Count = 0;
+  static int _suspiciousProduction50Shadow70Count = 0;
+
+  static void reset() {
+    _count = 0;
+    _topiqTotalMs = 0;
+    _fliveTotalMs = 0;
+    _fliveCount = 0;
+    _extraTotalMs = 0;
+    _shadowSum = 0.0;
+    _productionSum = 0.0;
+    _absDeltaSum = 0.0;
+    _shadowMin = null;
+    _shadowMax = null;
+    _productionMin = null;
+    _productionMax = null;
+    _deltaGte15Count = 0;
+    _deltaGte25Count = 0;
+    _suspiciousProduction45Shadow65Count = 0;
+    _suspiciousProduction50Shadow70Count = 0;
+  }
+
+  static void record({
+    required double productionScore100,
+    required double shadowScore100,
+    required int topiqMs,
+    required int? fliveMs,
+    required int extraMs,
+  }) {
+    final absDelta = (shadowScore100 - productionScore100).abs();
+    _count += 1;
+    _topiqTotalMs += topiqMs;
+    if (fliveMs != null) {
+      _fliveTotalMs += fliveMs;
+      _fliveCount += 1;
+    }
+    _extraTotalMs += extraMs;
+    _shadowSum += shadowScore100;
+    _productionSum += productionScore100;
+    _absDeltaSum += absDelta;
+    _shadowMin = _shadowMin == null
+        ? shadowScore100
+        : math.min(_shadowMin!, shadowScore100);
+    _shadowMax = _shadowMax == null
+        ? shadowScore100
+        : math.max(_shadowMax!, shadowScore100);
+    _productionMin = _productionMin == null
+        ? productionScore100
+        : math.min(_productionMin!, productionScore100);
+    _productionMax = _productionMax == null
+        ? productionScore100
+        : math.max(_productionMax!, productionScore100);
+
+    if (absDelta >= 15.0) {
+      _deltaGte15Count += 1;
+    }
+    if (absDelta >= 25.0) {
+      _deltaGte25Count += 1;
+    }
+    if (productionScore100 < 45.0 && shadowScore100 > 65.0) {
+      _suspiciousProduction45Shadow65Count += 1;
+    }
+    if (productionScore100 < 50.0 && shadowScore100 > 70.0) {
+      _suspiciousProduction50Shadow70Count += 1;
+    }
+  }
+
+  static void logSummary({required int totalImages}) {
+    if (!ExperimentalFeatures.enableTopiqFlive6040Shadow) {
+      return;
+    }
+    if (_count == 0) {
+      debugPrint(
+        '[AcutTopiqFliveShadowSummary] enabled=true total_images=$totalImages '
+        'shadow_count=0',
+      );
+      return;
+    }
+
+    debugPrint(
+      '[AcutTopiqFliveShadowSummary] enabled=true '
+      'total_images=$totalImages '
+      'shadow_count=$_count '
+      'avg_topiq_ms=${(_topiqTotalMs / _count).toStringAsFixed(1)} '
+      'avg_flive_ms=${_fliveCount == 0 ? 'unavailable' : (_fliveTotalMs / _fliveCount).toStringAsFixed(1)} '
+      'avg_extra_ms=${(_extraTotalMs / _count).toStringAsFixed(1)} '
+      'shadow_min=${_formatScore(_shadowMin)} '
+      'shadow_max=${_formatScore(_shadowMax)} '
+      'shadow_mean=${(_shadowSum / _count).toStringAsFixed(2)} '
+      'production_min=${_formatScore(_productionMin)} '
+      'production_max=${_formatScore(_productionMax)} '
+      'production_mean=${(_productionSum / _count).toStringAsFixed(2)} '
+      'avg_abs_delta=${(_absDeltaSum / _count).toStringAsFixed(2)} '
+      'abs_delta_gte_15=$_deltaGte15Count '
+      'abs_delta_gte_25=$_deltaGte25Count '
+      'suspicious_production_lt45_shadow_gt65=$_suspiciousProduction45Shadow65Count '
+      'suspicious_production_lt50_shadow_gt70=$_suspiciousProduction50Shadow70Count',
+    );
+  }
+
+  static String _formatScore(double? score) {
+    return score == null ? 'unavailable' : score.toStringAsFixed(2);
+  }
+}
+
 class OnDevicePhotoEvaluationService implements PhotoEvaluationService {
   OnDevicePhotoEvaluationService({
     TfliteAestheticService? technicalTfliteService,
@@ -105,12 +225,15 @@ class OnDevicePhotoEvaluationService implements PhotoEvaluationService {
     );
     final inputCache = <String, Future<Uint8List>>{};
     final technicalScoringSw = AcutAestheticTimingDebug.start();
+    final fliveMsBefore = AcutPerfMetrics.totalFliveMs;
     final technicalSummary = await _technicalTfliteService.evaluate(
       imageBytes,
       imageIndex: batchImageIndex,
       preprocessBundle: preprocessBundle,
       sharedInputCache: inputCache,
     );
+    final fliveMsDelta = AcutPerfMetrics.totalFliveMs - fliveMsBefore;
+    final fliveMs = fliveMsDelta > 0 ? fliveMsDelta : null;
     _logTimingElapsedUs(
       stopwatch: technicalScoringSw,
       imageLabel: fileName,
@@ -123,6 +246,16 @@ class OnDevicePhotoEvaluationService implements PhotoEvaluationService {
         'bytes': imageBytes.lengthInBytes,
         'timing_tag': 'AcutTimingTechnicalTotal',
       },
+    );
+    await _runTopiqFliveShadow(
+      imageBytes: imageBytes,
+      technicalSummary: technicalSummary,
+      productionTechnicalScore: technicalSummary.technicalScore,
+      fliveMs: fliveMs,
+      fileName: fileName,
+      batchImageIndex: batchImageIndex,
+      preprocessBundle: preprocessBundle,
+      inputCache: inputCache,
     );
     AestheticEnsembleScoreResult? aestheticSummary;
     final warnings = <String>[];
@@ -245,6 +378,97 @@ class OnDevicePhotoEvaluationService implements PhotoEvaluationService {
       error: aestheticError,
     );
     return result;
+  }
+
+  Future<void> _runTopiqFliveShadow({
+    required Uint8List imageBytes,
+    required TflitePhotoScoreSummary technicalSummary,
+    required double productionTechnicalScore,
+    required int? fliveMs,
+    required String? fileName,
+    required int? batchImageIndex,
+    required AcutImagePreprocessBundle preprocessBundle,
+    required Map<String, Future<Uint8List>> inputCache,
+  }) async {
+    if (!ExperimentalFeatures.enableTopiqFlive6040Shadow) {
+      return;
+    }
+
+    final fliveDetail = _detail(technicalSummary, fliveImageMobileContract.id);
+    if (fliveDetail == null) {
+      debugPrint(
+        '[AcutTopiqFliveShadow] enabled=true '
+        'file="${_escapeAcutParityValue(fileName ?? 'unknown')}" '
+        'image_index=${batchImageIndex ?? '-'} '
+        'skipped=true reason=flive_detail_unavailable',
+      );
+      return;
+    }
+
+    final extraSw = Stopwatch()..start();
+    final topiqSw = Stopwatch()..start();
+    try {
+      final topiqRun = await _technicalTfliteService.evaluateSingleModel(
+        imageBytes,
+        topiqLiteMixed112Contract,
+        imageIndex: batchImageIndex,
+        debugImageLabel: fileName,
+        preprocessBundle: preprocessBundle,
+        inputCache: inputCache,
+      );
+      topiqSw.stop();
+      extraSw.stop();
+
+      final production100 = productionTechnicalScore * 100.0;
+      final topiq100 = topiqRun.detail.normalizedScore * 100.0;
+      final flive100 = fliveDetail.normalizedScore * 100.0;
+      // Official benchmark selected TOPIQ+FLIVE 60:40 for log-only profiling.
+      // Not production replacement. Severe FP cases exist. Production score
+      // must remain unchanged.
+      final shadow100 = (0.6 * topiq100) + (0.4 * flive100);
+      final delta100 = shadow100 - production100;
+      final productionUnchanged =
+          technicalSummary.technicalScore == productionTechnicalScore;
+
+      AcutTopiqFliveShadowStats.record(
+        productionScore100: production100,
+        shadowScore100: shadow100,
+        topiqMs: topiqSw.elapsedMilliseconds,
+        fliveMs: fliveMs,
+        extraMs: extraSw.elapsedMilliseconds,
+      );
+
+      debugPrint(
+        '[AcutTopiqFliveShadow] enabled=true '
+        'file="${_escapeAcutParityValue(fileName ?? 'unknown')}" '
+        'image_index=${batchImageIndex ?? '-'} '
+        'productionTechnical=${production100.toStringAsFixed(2)} '
+        'topiq=${topiq100.toStringAsFixed(2)} '
+        'flive=${flive100.toStringAsFixed(2)} '
+        'shadowTopiqFlive6040=${shadow100.toStringAsFixed(2)} '
+        'deltaShadowMinusProduction=${delta100.toStringAsFixed(2)} '
+        'topiqMs=${topiqSw.elapsedMilliseconds} '
+        'fliveMs=${fliveMs?.toString() ?? 'unavailable'} '
+        'extraMs=${extraSw.elapsedMilliseconds} '
+        'productionUnchanged=$productionUnchanged',
+      );
+    } catch (error) {
+      if (topiqSw.isRunning) {
+        topiqSw.stop();
+      }
+      if (extraSw.isRunning) {
+        extraSw.stop();
+      }
+      debugPrint(
+        '[AcutTopiqFliveShadow] enabled=true '
+        'file="${_escapeAcutParityValue(fileName ?? 'unknown')}" '
+        'image_index=${batchImageIndex ?? '-'} '
+        'skipped=true reason=topiq_error '
+        'topiqMs=${topiqSw.elapsedMilliseconds} '
+        'extraMs=${extraSw.elapsedMilliseconds} '
+        'productionUnchanged=true error="${_escapeAcutParityValue(error.toString())}"',
+      );
+    }
   }
 
   List<String> _buildNotes({

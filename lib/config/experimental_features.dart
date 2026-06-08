@@ -50,6 +50,10 @@ abstract final class ExperimentalFeatures {
     'POZY_DISABLE_ALAMP_DURING_BATCH_SCORING',
     defaultValue: true,
   );
+  static const bool enableTopiqFlive6040Shadow = bool.fromEnvironment(
+    'POZY_ENABLE_TOPIQ_FLIVE_60_40_SHADOW',
+    defaultValue: false,
+  );
   static const bool acutVerboseModelLogs = bool.fromEnvironment(
     'POZY_ACUT_VERBOSE_MODEL_LOGS',
     defaultValue: false,
